@@ -9,6 +9,7 @@ environment:
 dependencies:
   flutter:
     sdk: flutter
+
   
   # Supabase - database + auth
   supabase_flutter: ^2.3.4
@@ -48,3 +49,17 @@ dependencies:
   
   # Icons
   cupertino_icons: ^1.0.6
+
+  flutter_dotenv: ^5.1.0
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^2.0.0
+
+flutter:
+  uses-material-design: true
+
+  # .env MUST be listed here for flutter_dotenv to work!
+  assets:
+    - .env
