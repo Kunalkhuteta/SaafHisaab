@@ -10,8 +10,12 @@ import 'screens/auth/login_screen.dart';
 import 'screens/home/home_screen.dart';
 import 'services/notification_service.dart';
 
+import 'package:shared_preferences/shared_preferences.dart';
+import 'globalVar.dart';
+
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
+  prefs = await SharedPreferences.getInstance();
 
   // Load .env file first
   await dotenv.load(fileName: '.env');

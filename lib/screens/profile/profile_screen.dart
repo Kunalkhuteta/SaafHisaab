@@ -66,6 +66,44 @@ class ProfileScreen extends ConsumerWidget {
                         ),
                 ),
                 const SizedBox(height: 16),
+                
+                // Language Dropdown Setting
+                Container(
+                  margin: const EdgeInsets.only(bottom: 8),
+                  padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 4),
+                  decoration: BoxDecoration(
+                    color: AppColors.surface,
+                    borderRadius: BorderRadius.circular(12),
+                    border: Border.all(color: AppColors.border),
+                  ),
+                  child: Row(
+                    children: [
+                      const Icon(Icons.language_rounded, color: AppColors.primary, size: 20),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: Text(AppLang.tr(isEn, 'App Language', 'ऐप की भाषा'),
+                            style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w500, color: AppColors.textPrimary)),
+                      ),
+                      DropdownButtonHideUnderline(
+                        child: DropdownButton<bool>(
+                          value: isEn,
+                          icon: const Icon(Icons.keyboard_arrow_down_rounded, size: 20, color: AppColors.textHint),
+                          style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w600, color: AppColors.primary),
+                          items: const [
+                            DropdownMenuItem(value: true, child: Text('English')),
+                            DropdownMenuItem(value: false, child: Text('हिन्दी')),
+                          ],
+                          onChanged: (val) {
+                            if (val != null) {
+                              ref.read(appLanguageProvider.notifier).setLanguage(val);
+                            }
+                          },
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+
                 _menuItem(Icons.notifications_outlined, AppLang.tr(isEn, 'Notifications', 'सूचनाएं'), () {}),
                 _menuItem(Icons.help_outline_rounded, AppLang.tr(isEn, 'Help & Support', 'मदद और सहायता'), () {}),
                 _menuItem(Icons.info_outline_rounded, AppLang.tr(isEn, 'About SaafHisaab', 'SaafHisaab के बारे में'), () {

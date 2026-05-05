@@ -78,7 +78,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                   value: isEn,
                   activeColor: AppColors.primary,
                   onChanged: (val) {
-                    ref.read(appLanguageProvider.notifier).state = val;
+                    ref.read(appLanguageProvider.notifier).setLanguage(val);
                     // Close drawer
                     Navigator.pop(context);
                   },
@@ -128,7 +128,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
           BottomNavigationBarItem(icon: const Icon(Icons.receipt_long_rounded), label: AppLang.tr(isEn, 'Bills', 'बिल')),
           BottomNavigationBarItem(icon: const Icon(Icons.inventory_2_rounded), label: AppLang.tr(isEn, 'Stock', 'स्टॉक')),
           BottomNavigationBarItem(icon: const Icon(Icons.people_rounded), label: AppLang.tr(isEn, 'Credit', 'उधार')),
-          BottomNavigationBarItem(icon: const Icon(Icons.more_horiz_rounded), label: AppLang.tr(isEn, 'More', 'अधिक')),
+          BottomNavigationBarItem(icon: const Icon(Icons.settings_rounded), label: AppLang.tr(isEn, 'Settings', 'सेटिंग्स')),
         ],
       ),
     );

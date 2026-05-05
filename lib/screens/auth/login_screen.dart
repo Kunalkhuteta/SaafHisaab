@@ -54,16 +54,29 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
               // Language toggle at the top right
               Align(
                 alignment: Alignment.topRight,
-                child: Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    const Text('हिंदी', style: TextStyle(fontSize: 12)),
-                    Switch(
-                      value: isEn, activeColor: AppColors.primary,
-                      onChanged: (val) => ref.read(appLanguageProvider.notifier).state = val,
+                child: Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+                  decoration: BoxDecoration(
+                    color: AppColors.surface,
+                    borderRadius: BorderRadius.circular(12),
+                    border: Border.all(color: AppColors.border),
+                  ),
+                  child: DropdownButtonHideUnderline(
+                    child: DropdownButton<bool>(
+                      value: isEn,
+                      icon: const Icon(Icons.keyboard_arrow_down_rounded, size: 20),
+                      style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: AppColors.textPrimary),
+                      items: const [
+                        DropdownMenuItem(value: true, child: Text('English')),
+                        DropdownMenuItem(value: false, child: Text('हिन्दी')),
+                      ],
+                      onChanged: (val) {
+                        if (val != null) {
+                          ref.read(appLanguageProvider.notifier).setLanguage(val);
+                        }
+                      },
                     ),
-                    const Text('Eng', style: TextStyle(fontSize: 12)),
-                  ],
+                  ),
                 ),
               ),
               const SizedBox(height: 24),
