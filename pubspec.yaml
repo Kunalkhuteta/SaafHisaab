@@ -1,53 +1,50 @@
 name: saafhisaab
-description: "A new Flutter project."
+description: "Aapki dukaan ka saaf hisaab"
 publish_to: 'none'
 version: 1.0.0+1
 
 environment:
-  sdk: '>=3.0.0 <4.0.0'
+  sdk: '^3.11.0'
 
 dependencies:
   flutter:
     sdk: flutter
 
-  
-  # Supabase - database + auth
+  # ── Core Backend ──
   supabase_flutter: ^2.3.4
-  
-  # Firebase - OTP login + notifications  
-  firebase_core: ^2.27.0
-  firebase_auth: ^4.17.8
-  
-  # Camera + image
+
+  # ── State Management ──
+  flutter_riverpod: ^2.5.1
+
+  # ── Camera + Image ──
   camera: ^0.10.5+9
   image_picker: ^1.0.7
-  
-  # ML Kit OCR - bill scanning
+
+  # ── ML Kit OCR (bill scanning) ──
   google_mlkit_text_recognition: ^0.13.0
-  
-  # Share to WhatsApp
+
+  # ── Share to WhatsApp ──
   share_plus: ^7.2.2
-  
-  # State management
-  flutter_riverpod: ^2.5.1
-  
-  # Local storage - offline mode
+
+  # ── Local Storage (offline) ──
   hive_flutter: ^1.1.0
-  
-  # Charts for dashboard
+
+  # ── Charts ──
   fl_chart: ^0.67.0
-  
-  # PDF generation for reports
+
+  # ── PDF + Excel Reports ──
   pdf: ^3.10.8
   printing: ^5.12.0
-  
-  # Notifications
+
+  # ── Push Notifications ONLY ──
+  firebase_core: ^2.27.0
+  firebase_messaging: ^14.7.10
   flutter_local_notifications: ^17.0.0
-  
-  # Razorpay payments
+
+  # ── Payments ──
   razorpay_flutter: ^1.3.5
-  
-  # Icons
+
+  # ── Icons ──
   cupertino_icons: ^1.0.6
 
   flutter_dotenv: ^5.1.0
@@ -55,11 +52,9 @@ dependencies:
 dev_dependencies:
   flutter_test:
     sdk: flutter
-  flutter_lints: ^2.0.0
+  flutter_lints: ^4.0.0
 
 flutter:
   uses-material-design: true
-
-  # .env MUST be listed here for flutter_dotenv to work!
   assets:
     - .env

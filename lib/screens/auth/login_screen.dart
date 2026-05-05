@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:saafhisaab/services/auth_service.dart';
 import '../../constants/app_colors.dart';
 import 'otp_screen.dart';
 
@@ -13,23 +14,39 @@ class _LoginScreenState extends State<LoginScreen> {
   bool _isLoading = false;
 
   void _sendOTP() async {
-    if (_phoneController.text.length != 10) {
+  if (_phoneController.text.trim().length != 10) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(
+        content: Text('Sahi 10 digit mobile number daalein'),
+        backgroundColor: AppColors.error,
+      ),
+    );
+    return;
+  }
+  setState(() => _isLoading = true);
+  try {
+    await AuthService.sendOTP(_phoneController.text.trim());
+    if (mounted) {
+      Navigator.push(
+        context,
+        MaterialPageRoute(
+          builder: (_) => OTPScreen(phone: _phoneController.text.trim()),
+        ),
+      );
+    }
+  } catch (e) {
+    if (mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Sahi 10 digit mobile number daalein'),
+        SnackBar(
+          content: Text('OTP nahi gaya: ${e.toString()}'),
           backgroundColor: AppColors.error,
         ),
       );
-      return;
     }
-    setState(() => _isLoading = true);
-    await Future.delayed(const Duration(seconds: 1));
-    setState(() => _isLoading = false);
-    if (mounted) {
-      Navigator.push(context,
-          MaterialPageRoute(builder: (_) => OTPScreen(phone: _phoneController.text)));
-    }
+  } finally {
+    if (mounted) setState(() => _isLoading = false);
   }
+}
 
   @override
   Widget build(BuildContext context) {
