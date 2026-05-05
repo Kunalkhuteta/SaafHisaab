@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import '../../constants/app_colors.dart';
 import '../home/home_screen.dart';
+import '../../services/auth_service.dart';
+import '../../services/supabase_service.dart';
 
 class ShopSetupScreen extends StatefulWidget {
   const ShopSetupScreen({super.key});
@@ -12,6 +14,7 @@ class _ShopSetupScreenState extends State<ShopSetupScreen> {
   final _shopNameController = TextEditingController();
   final _cityController = TextEditingController();
   final _gstController = TextEditingController();
+  final _ownerNameController = TextEditingController();
   String _selectedType = 'Kirana Store';
   bool _isLoading = false;
 
@@ -21,27 +24,64 @@ class _ShopSetupScreenState extends State<ShopSetupScreen> {
     'Restaurant / Dhaba', 'Jewellery', 'Other',
   ];
 
-  void _saveShop() async {
-    if (_shopNameController.text.isEmpty || _cityController.text.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-            content: Text('Dukaan ka naam aur shahar zaroori hai'),
-            backgroundColor: AppColors.error),
-      );
-      return;
-    }
-    setState(() => _isLoading = true);
-    await Future.delayed(const Duration(seconds: 1));
-    setState(() => _isLoading = false);
+void _saveShop() async {
+  if (_ownerNameController.text.trim().isEmpty ||
+      _shopNameController.text.trim().isEmpty ||
+      _cityController.text.trim().isEmpty) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(
+        content: Text('Naam, dukaan aur shahar zaroori hai'),
+        backgroundColor: AppColors.error,
+      ),
+    );
+    return;
+  }
+  setState(() => _isLoading = true);
+  try {
+    final userId = AuthService.currentUserId;
+    final userPhone = AuthService.currentUserPhone;
+    if (userId == null) throw Exception('User not logged in');
+
+    await SupabaseService.saveShop(
+      userId: userId,
+      ownerName: _ownerNameController.text.trim(),
+      shopName: _shopNameController.text.trim(),
+      city: _cityController.text.trim(),
+      shopType: _selectedType,
+      phone: userPhone ?? '',
+      gstNumber: _gstController.text.trim(),
+    );
+
     if (mounted) {
       Navigator.pushAndRemoveUntil(
-          context,
-          MaterialPageRoute(builder: (_) => const HomeScreen()),
-          (route) => false);
+        context,
+        MaterialPageRoute(builder: (_) => const HomeScreen()),
+        (route) => false,
+      );
     }
+  } catch (e) {
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Error: ${e.toString()}'),
+          backgroundColor: AppColors.error,
+        ),
+      );
+    }
+  } finally {
+    if (mounted) setState(() => _isLoading = false);
   }
+}
 
   @override
+  void dispose() {
+  _ownerNameController.dispose();
+  _shopNameController.dispose();
+  _cityController.dispose();
+  _gstController.dispose();
+  super.dispose();
+}
+
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: AppColors.background,
@@ -88,9 +128,8 @@ class _ShopSetupScreenState extends State<ShopSetupScreen> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  _buildField('Dukaan ka naam *', 'Jaise: Sharma General Store',
-                      _shopNameController),
-                  const SizedBox(height: 16),
+                  _buildField('Aapka naam *', 'Jaise: Ramesh Sharma', _ownerNameController),
+const SizedBox(height: 16),
                   _buildField('Shahar / City *', 'Jaise: Kota, Rajasthan',
                       _cityController),
                   const SizedBox(height: 16),
@@ -244,3 +283,4 @@ class _ShopSetupScreenState extends State<ShopSetupScreen> {
     );
   }
 }
+

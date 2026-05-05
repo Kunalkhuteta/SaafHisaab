@@ -1,36 +1,41 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:flutter_dotenv/flutter_dotenv.dart';
+import 'package:saafhisaab/firebase_options.dart';
+import 'package:saafhisaab/services/supabase_service.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
+import 'package:firebase_core/firebase_core.dart';
 import 'constants/app_colors.dart';
 import 'screens/auth/login_screen.dart';
 import 'screens/home/home_screen.dart';
-import 'package:flutter_dotenv/flutter_dotenv.dart';
+import 'services/notification_service.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
-  // Load .env file FIRST — without this, all env vars are empty!
+  // Load .env file first
   await dotenv.load(fileName: '.env');
 
-  final projectUrl = dotenv.env['PROJECT_URL'] ?? '';
-  final anonKey = dotenv.env['ANON_PUBLIC_KEY'] ?? '';
-
-  if (projectUrl.isEmpty || anonKey.isEmpty) {
-    print('❌ ERROR: Supabase credentials missing from .env file!');
-    print('   PROJECT_URL: ${projectUrl.isEmpty ? "MISSING" : "OK"}');
-    print('   ANON_PUBLIC_KEY: ${anonKey.isEmpty ? "MISSING" : "OK"}');
-  }
-
-  // Initialize Supabase
+  // Initialize Supabase using .env values
   await Supabase.initialize(
-    url: projectUrl,
-    anonKey: anonKey,
+    url: dotenv.env['PROJECT_URL']!,
+    anonKey: dotenv.env['ANON_PUBLIC_KEY']!,
   );
+
+  // Test connection
+  final connected = await SupabaseService.testConnection();
+  print(connected ? '✅ Supabase connected' : '❌ Supabase failed');
+
+  // Initialize Firebase — push notifications ONLY
+  await Firebase.initializeApp(
+    options: DefaultFirebaseOptions.currentPlatform,
+  );
+  await NotificationService.initialize();
 
   runApp(const ProviderScope(child: SaafHisaabApp()));
 }
 
-// Global supabase client — use this anywhere in the app
+// Global Supabase client
 final supabase = Supabase.instance.client;
 
 class SaafHisaabApp extends ConsumerWidget {
@@ -55,8 +60,43 @@ class SaafHisaabApp extends ConsumerWidget {
           centerTitle: true,
         ),
       ),
-      // For now goes to login — Day 4 we add smart routing
-      home: const LoginScreen(),
+      home: const AuthWrapper(),
+    );
+  }
+}
+
+// Smart routing
+class AuthWrapper extends ConsumerWidget {
+  const AuthWrapper({super.key});
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    return StreamBuilder<AuthState>(
+      stream: supabase.auth.onAuthStateChange,
+      builder: (context, snapshot) {
+        if (snapshot.connectionState == ConnectionState.waiting) {
+          return const Scaffold(
+            backgroundColor: AppColors.background,
+            body: Center(
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  CircularProgressIndicator(color: AppColors.primary),
+                  SizedBox(height: 16),
+                  Text('SaafHisaab...',
+                      style: TextStyle(
+                          color: AppColors.primary,
+                          fontSize: 16,
+                          fontWeight: FontWeight.w500)),
+                ],
+              ),
+            ),
+          );
+        }
+        final session = supabase.auth.currentSession;
+        if (session != null) return const HomeScreen();
+        return const LoginScreen();
+      },
     );
   }
 }

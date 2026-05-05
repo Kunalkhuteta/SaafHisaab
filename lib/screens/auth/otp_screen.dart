@@ -1,6 +1,9 @@
 import 'package:flutter/material.dart';
 import '../../constants/app_colors.dart';
 import 'shop_setup_screen.dart';
+import '../../services/auth_service.dart';
+import '../../services/supabase_service.dart';
+import '../home/home_screen.dart';
 
 class OTPScreen extends StatefulWidget {
   final String phone;
@@ -29,24 +32,64 @@ class _OTPScreenState extends State<OTPScreen> {
     }
   }
 
-  void _verifyOTP() async {
-    String otp = _controllers.map((c) => c.text).join();
-    if (otp.length != 6) {
+void _verifyOTP() async {
+  String otp = _controllers.map((c) => c.text).join();
+  if (otp.length != 6) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(
+        content: Text('Poora 6-digit OTP daalein'),
+        backgroundColor: AppColors.error,
+      ),
+    );
+    return;
+  }
+  setState(() => _isLoading = true);
+  try {
+    final response = await AuthService.verifyOTP(
+      phone: widget.phone,
+      otp: otp,
+    );
+
+    if (response.user != null) {
+      // Check if this user already has a shop
+      final shopExists = await SupabaseService.shopExists(response.user!.id);
+
+      if (mounted) {
+        if (shopExists) {
+          // Returning user → go home
+          Navigator.pushAndRemoveUntil(
+            context,
+            MaterialPageRoute(builder: (_) => const HomeScreen()),
+            (route) => false,
+          );
+        } else {
+          // New user → go to shop setup
+          Navigator.pushAndRemoveUntil(
+            context,
+            MaterialPageRoute(builder: (_) => const ShopSetupScreen()),
+            (route) => false,
+          );
+        }
+      }
+    }
+  } catch (e) {
+    if (mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
-            content: Text('Poora 6-digit OTP daalein'),
-            backgroundColor: AppColors.error),
+          content: Text('Galat OTP — dobara try karein'),
+          backgroundColor: AppColors.error,
+        ),
       );
-      return;
+      // Clear OTP boxes
+      for (var c in _controllers) {
+        c.clear();
+      }
+      _focusNodes[0].requestFocus();
     }
-    setState(() => _isLoading = true);
-    await Future.delayed(const Duration(seconds: 1));
-    setState(() => _isLoading = false);
-    if (mounted) {
-      Navigator.pushReplacement(context,
-          MaterialPageRoute(builder: (_) => const ShopSetupScreen()));
-    }
+  } finally {
+    if (mounted) setState(() => _isLoading = false);
   }
+}
 
   @override
   Widget build(BuildContext context) {
