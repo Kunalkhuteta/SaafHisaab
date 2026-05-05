@@ -5,6 +5,7 @@ import '../../providers/app_providers.dart';
 import '../../services/auth_service.dart';
 import '../../services/supabase_service.dart';
 import '../../models/bill_model.dart';
+import '../../globalVar.dart';
 
 class BillScanScreen extends ConsumerStatefulWidget {
   const BillScanScreen({super.key});
@@ -15,30 +16,27 @@ class BillScanScreen extends ConsumerStatefulWidget {
 class _BillScanScreenState extends ConsumerState<BillScanScreen> {
   @override
   Widget build(BuildContext context) {
+    final isEn = ref.watch(appLanguageProvider);
     final billsAsync = ref.watch(todayBillsProvider);
     return Column(
       children: [
         Container(
           color: AppColors.primary,
-          padding: EdgeInsets.only(
-            top: MediaQuery.of(context).padding.top + 12,
-            left: 20, right: 20, bottom: 16,
-          ),
+          padding: EdgeInsets.only(top: MediaQuery.of(context).padding.top + 12, left: 20, right: 20, bottom: 16),
           child: Row(
             children: [
-              const Expanded(
-                child: Text('Bills',
-                    style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold, color: Colors.white)),
+              Expanded(
+                child: Text(AppLang.tr(isEn, 'Bills', 'बिल'), style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold, color: Colors.white)),
               ),
               GestureDetector(
-                onTap: () => _showAddBillDialog(context),
+                onTap: () => _showAddBillDialog(context, isEn),
                 child: Container(
                   padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
                   decoration: BoxDecoration(color: Colors.white.withOpacity(0.2), borderRadius: BorderRadius.circular(10)),
-                  child: const Row(children: [
-                    Icon(Icons.add_rounded, color: Colors.white, size: 18),
-                    SizedBox(width: 4),
-                    Text('Add Bill', style: TextStyle(color: Colors.white, fontSize: 13, fontWeight: FontWeight.w600)),
+                  child: Row(children: [
+                    const Icon(Icons.add_rounded, color: Colors.white, size: 18),
+                    const SizedBox(width: 4),
+                    Text(AppLang.tr(isEn, 'Add Bill', 'बिल जोड़ें'), style: const TextStyle(color: Colors.white, fontSize: 13, fontWeight: FontWeight.w600)),
                   ]),
                 ),
               ),
@@ -53,9 +51,9 @@ class _BillScanScreenState extends ConsumerState<BillScanScreen> {
                 ? Center(child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [
                     const Icon(Icons.receipt_long_outlined, color: AppColors.textHint, size: 48),
                     const SizedBox(height: 12),
-                    const Text('Aaj koi bill nahi', style: TextStyle(fontSize: 16, color: AppColors.textSecondary)),
+                    Text(AppLang.tr(isEn, 'No bills today', 'आज कोई बिल नहीं'), style: const TextStyle(fontSize: 16, color: AppColors.textSecondary)),
                     const SizedBox(height: 4),
-                    const Text('+ Add Bill se naya bill add karein', style: TextStyle(fontSize: 13, color: AppColors.textHint)),
+                    Text(AppLang.tr(isEn, 'Click + Add Bill to insert', '+ Add Bill से नया बिल जोड़ें'), style: const TextStyle(fontSize: 13, color: AppColors.textHint)),
                   ]))
                 : RefreshIndicator(
                     color: AppColors.primary,
@@ -66,7 +64,7 @@ class _BillScanScreenState extends ConsumerState<BillScanScreen> {
                     child: ListView.builder(
                       padding: const EdgeInsets.all(16),
                       itemCount: bills.length,
-                      itemBuilder: (_, i) => _billCard(bills[i]),
+                      itemBuilder: (_, i) => _billCard(bills[i], isEn),
                     ),
                   ),
           ),
@@ -75,38 +73,28 @@ class _BillScanScreenState extends ConsumerState<BillScanScreen> {
     );
   }
 
-  Widget _billCard(BillModel bill) {
+  Widget _billCard(BillModel bill, bool isEn) {
     return Container(
       margin: const EdgeInsets.only(bottom: 10),
       padding: const EdgeInsets.all(14),
-      decoration: BoxDecoration(
-        color: AppColors.surface, borderRadius: BorderRadius.circular(14),
-        border: Border.all(color: AppColors.border),
-      ),
+      decoration: BoxDecoration(color: AppColors.surface, borderRadius: BorderRadius.circular(14), border: Border.all(color: AppColors.border)),
       child: Row(children: [
         Container(
           width: 42, height: 42,
           decoration: BoxDecoration(color: AppColors.primaryBg, borderRadius: BorderRadius.circular(10)),
-          child: Icon(
-            bill.billType == 'sale' ? Icons.trending_up_rounded : Icons.receipt_rounded,
-            color: bill.billType == 'sale' ? AppColors.success : AppColors.primary, size: 20,
-          ),
+          child: Icon(bill.billType == 'sale' ? Icons.trending_up_rounded : Icons.receipt_rounded, color: bill.billType == 'sale' ? AppColors.success : AppColors.primary, size: 20),
         ),
         const SizedBox(width: 12),
         Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-          Text(bill.vendorName.isEmpty ? 'Bill' : bill.vendorName,
-              style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w600, color: AppColors.textPrimary)),
-          Text('${bill.category} • ${bill.billType}',
-              style: const TextStyle(fontSize: 12, color: AppColors.textSecondary)),
+          Text(bill.vendorName.isEmpty ? AppLang.tr(isEn, 'Bill', 'बिल') : bill.vendorName, style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w600, color: AppColors.textPrimary)),
+          Text('${bill.category} • ${bill.billType}', style: const TextStyle(fontSize: 12, color: AppColors.textSecondary)),
         ])),
-        Text('₹${bill.amount.toStringAsFixed(0)}',
-            style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold,
-                color: bill.billType == 'sale' ? AppColors.success : AppColors.primary)),
+        Text('₹${bill.amount.toStringAsFixed(0)}', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: bill.billType == 'sale' ? AppColors.success : AppColors.primary)),
       ]),
     );
   }
 
-  void _showAddBillDialog(BuildContext context) {
+  void _showAddBillDialog(BuildContext context, bool isEn) {
     final vendorCtrl = TextEditingController();
     final amountCtrl = TextEditingController();
     String billType = 'purchase';
@@ -118,18 +106,17 @@ class _BillScanScreenState extends ConsumerState<BillScanScreen> {
           padding: EdgeInsets.only(left: 24, right: 24, top: 24, bottom: MediaQuery.of(ctx).viewInsets.bottom + 24),
           decoration: const BoxDecoration(color: AppColors.surface, borderRadius: BorderRadius.vertical(top: Radius.circular(24))),
           child: SingleChildScrollView(child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
-            const Text('Naya Bill Add Karein', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: AppColors.textPrimary)),
+            Text(AppLang.tr(isEn, 'Add New Bill', 'नया बिल जोड़ें'), style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: AppColors.textPrimary)),
             const SizedBox(height: 20),
-            // Bill type toggle
             Row(children: [
-              _typeChip('Purchase', billType == 'purchase', () => setDialogState(() => billType = 'purchase')),
+              _typeChip(AppLang.tr(isEn, 'Purchase', 'खरीद'), billType == 'purchase', () => setDialogState(() => billType = 'purchase')),
               const SizedBox(width: 10),
-              _typeChip('Sale', billType == 'sale', () => setDialogState(() => billType = 'sale')),
+              _typeChip(AppLang.tr(isEn, 'Sale', 'बिक्री'), billType == 'sale', () => setDialogState(() => billType = 'sale')),
             ]),
             const SizedBox(height: 16),
-            TextField(controller: vendorCtrl, decoration: _inputDeco('Vendor / Party naam')),
+            TextField(controller: vendorCtrl, decoration: _inputDeco(AppLang.tr(isEn, 'Vendor / Party name', 'वेंडर / पार्टी का नाम'))),
             const SizedBox(height: 12),
-            TextField(controller: amountCtrl, keyboardType: TextInputType.number, decoration: _inputDeco('Amount (₹) *')),
+            TextField(controller: amountCtrl, keyboardType: TextInputType.number, decoration: _inputDeco(AppLang.tr(isEn, 'Amount (₹) *', 'राशि (₹) *'))),
             const SizedBox(height: 24),
             SizedBox(width: double.infinity, height: 50, child: ElevatedButton(
               onPressed: () async {
@@ -148,7 +135,7 @@ class _BillScanScreenState extends ConsumerState<BillScanScreen> {
                 if (ctx.mounted) Navigator.pop(ctx);
               },
               style: ElevatedButton.styleFrom(backgroundColor: AppColors.primary, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)), elevation: 0),
-              child: const Text('Save Bill', style: TextStyle(fontSize: 15, fontWeight: FontWeight.w600, color: Colors.white)),
+              child: Text(AppLang.tr(isEn, 'Save Bill', 'बिल सहेजें'), style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w600, color: Colors.white)),
             )),
           ])),
         ),
@@ -166,10 +153,7 @@ class _BillScanScreenState extends ConsumerState<BillScanScreen> {
           borderRadius: BorderRadius.circular(10),
           border: Border.all(color: selected ? AppColors.primary : AppColors.border),
         ),
-        child: Text(label, style: TextStyle(
-          fontSize: 13, fontWeight: FontWeight.w600,
-          color: selected ? Colors.white : AppColors.textSecondary,
-        )),
+        child: Text(label, style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: selected ? Colors.white : AppColors.textSecondary)),
       ),
     );
   }

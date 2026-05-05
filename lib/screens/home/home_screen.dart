@@ -10,6 +10,7 @@ import '../bills/bill_scan_screen.dart';
 import '../stock/stock_screen.dart';
 import '../udhar/udhar_screen.dart';
 import '../profile/profile_screen.dart';
+import '../../globalVar.dart';
 
 class HomeScreen extends ConsumerStatefulWidget {
   const HomeScreen({super.key});
@@ -23,7 +24,6 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
   @override
   void initState() {
     super.initState();
-    // Save FCM token after login
     final userId = AuthService.currentUserId;
     if (userId != null) {
       NotificationService.saveTokenToSupabase(userId);
@@ -32,6 +32,9 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final isEn = ref.watch(appLanguageProvider);
+    final shopAsync = ref.watch(shopProvider);
+
     final screens = [
       _DashboardTab(ref: ref),
       const BillScanScreen(),
@@ -42,55 +45,113 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
 
     return Scaffold(
       backgroundColor: AppColors.background,
-      body: IndexedStack(
-        index: _currentIndex,
-        children: screens,
+      // Add Drawer
+      drawer: Drawer(
+        child: Container(
+          color: AppColors.background,
+          child: ListView(
+            padding: EdgeInsets.zero,
+            children: [
+              DrawerHeader(
+                decoration: const BoxDecoration(color: AppColors.primary),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  mainAxisAlignment: MainAxisAlignment.end,
+                  children: [
+                    const Icon(Icons.receipt_long_rounded, color: Colors.white, size: 40),
+                    const SizedBox(height: 10),
+                    Text(
+                      AppLang.tr(isEn, 'SaafHisaab', 'साफ़हिसाब'),
+                      style: const TextStyle(color: Colors.white, fontSize: 24, fontWeight: FontWeight.bold),
+                    ),
+                    Text(
+                      AppLang.tr(isEn, 'Clean Accounts for Your Shop', 'आपकी दुकान का साफ़ हिसाब'),
+                      style: TextStyle(color: Colors.white.withOpacity(0.8), fontSize: 13),
+                    ),
+                  ],
+                ),
+              ),
+              ListTile(
+                leading: const Icon(Icons.language_rounded, color: AppColors.primary),
+                title: Text(AppLang.tr(isEn, 'Language (भाषा)', 'भाषा (Language)'), style: const TextStyle(fontWeight: FontWeight.w600)),
+                trailing: Switch(
+                  value: isEn,
+                  activeColor: AppColors.primary,
+                  onChanged: (val) {
+                    ref.read(appLanguageProvider.notifier).state = val;
+                    // Close drawer
+                    Navigator.pop(context);
+                  },
+                ),
+                subtitle: Text(isEn ? 'English' : 'हिन्दी (Hindi)'),
+              ),
+              const Divider(),
+              ListTile(
+                leading: const Icon(Icons.person_rounded, color: AppColors.textSecondary),
+                title: Text(AppLang.tr(isEn, 'My Profile', 'मेरी प्रोफाइल')),
+                onTap: () {
+                  Navigator.pop(context);
+                  setState(() => _currentIndex = 4);
+                },
+              ),
+              ListTile(
+                leading: const Icon(Icons.help_outline_rounded, color: AppColors.textSecondary),
+                title: Text(AppLang.tr(isEn, 'Help & Support', 'मदद और सहायता')),
+                onTap: () => Navigator.pop(context),
+              ),
+              const Divider(),
+              ListTile(
+                leading: const Icon(Icons.logout_rounded, color: AppColors.error),
+                title: Text(AppLang.tr(isEn, 'Sign Out', 'लॉग आउट करें'), style: const TextStyle(color: AppColors.error)),
+                onTap: () async {
+                  await AuthService.signOut();
+                  if (context.mounted) {
+                    Navigator.pushAndRemoveUntil(context, MaterialPageRoute(builder: (_) => const LoginScreen()), (r) => false);
+                  }
+                },
+              ),
+            ],
+          ),
+        ),
       ),
+      body: IndexedStack(index: _currentIndex, children: screens),
       bottomNavigationBar: BottomNavigationBar(
         currentIndex: _currentIndex,
         onTap: (i) => setState(() => _currentIndex = i),
         type: BottomNavigationBarType.fixed,
         selectedItemColor: AppColors.primary,
         unselectedItemColor: AppColors.textHint,
-        selectedLabelStyle:
-            const TextStyle(fontSize: 11, fontWeight: FontWeight.w500),
+        selectedLabelStyle: const TextStyle(fontSize: 11, fontWeight: FontWeight.w500),
         unselectedLabelStyle: const TextStyle(fontSize: 11),
-        items: const [
-          BottomNavigationBarItem(
-              icon: Icon(Icons.home_rounded), label: 'Home'),
-          BottomNavigationBarItem(
-              icon: Icon(Icons.receipt_long_rounded), label: 'Bills'),
-          BottomNavigationBarItem(
-              icon: Icon(Icons.inventory_2_rounded), label: 'Stock'),
-          BottomNavigationBarItem(
-              icon: Icon(Icons.people_rounded), label: 'Udhar'),
-          BottomNavigationBarItem(
-              icon: Icon(Icons.more_horiz_rounded), label: 'More'),
+        items: [
+          BottomNavigationBarItem(icon: const Icon(Icons.home_rounded), label: AppLang.tr(isEn, 'Home', 'होम')),
+          BottomNavigationBarItem(icon: const Icon(Icons.receipt_long_rounded), label: AppLang.tr(isEn, 'Bills', 'बिल')),
+          BottomNavigationBarItem(icon: const Icon(Icons.inventory_2_rounded), label: AppLang.tr(isEn, 'Stock', 'स्टॉक')),
+          BottomNavigationBarItem(icon: const Icon(Icons.people_rounded), label: AppLang.tr(isEn, 'Credit', 'उधार')),
+          BottomNavigationBarItem(icon: const Icon(Icons.more_horiz_rounded), label: AppLang.tr(isEn, 'More', 'अधिक')),
         ],
       ),
     );
   }
 }
 
-// ─── Dashboard Tab (was the old HomeScreen body) ──────────
+// ─── Dashboard Tab ──────────
 class _DashboardTab extends StatelessWidget {
   final WidgetRef ref;
   const _DashboardTab({required this.ref});
 
   @override
   Widget build(BuildContext context) {
+    final isEn = ref.watch(appLanguageProvider);
     final shopAsync = ref.watch(shopProvider);
     final statsAsync = ref.watch(dashboardStatsProvider);
     final billsAsync = ref.watch(todayBillsProvider);
 
     return shopAsync.when(
-      loading: () => const Center(
-        child: CircularProgressIndicator(color: AppColors.primary),
-      ),
+      loading: () => const Center(child: CircularProgressIndicator(color: AppColors.primary)),
       error: (e, _) => Center(child: Text('Error: $e')),
       data: (shop) => Column(
         children: [
-          // Blue header with real shop name
           Container(
             color: AppColors.primary,
             padding: EdgeInsets.only(
@@ -99,42 +160,36 @@ class _DashboardTab extends StatelessWidget {
             ),
             child: Row(
               children: [
+                // Hamburger icon to open drawer
+                GestureDetector(
+                  onTap: () => Scaffold.of(context).openDrawer(),
+                  child: const Icon(Icons.menu_rounded, color: Colors.white, size: 28),
+                ),
+                const SizedBox(width: 16),
                 Expanded(
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       Text(
-                        'Namaste, ${shop?.ownerName ?? 'ji'} 👋',
-                        style: const TextStyle(
-                          fontSize: 18,
-                          fontWeight: FontWeight.bold,
-                          color: Colors.white,
-                        ),
+                        AppLang.tr(isEn, 'Hello, ${shop?.ownerName ?? 'User'} 👋', 'नमस्ते, ${shop?.ownerName ?? 'जी'} 👋'),
+                        style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Colors.white),
                       ),
                       const SizedBox(height: 2),
                       Text(
-                        shop?.shopName ?? 'Aapki Dukaan',
-                        style: TextStyle(
-                          fontSize: 13,
-                          color: Colors.white.withOpacity(0.75),
-                        ),
+                        shop?.shopName ?? AppLang.tr(isEn, 'Your Shop', 'आपकी दुकान'),
+                        style: TextStyle(fontSize: 13, color: Colors.white.withOpacity(0.75)),
                       ),
                     ],
                   ),
                 ),
                 Container(
                   width: 40, height: 40,
-                  decoration: BoxDecoration(
-                    color: Colors.white.withOpacity(0.2),
-                    shape: BoxShape.circle,
-                  ),
-                  child: const Icon(Icons.notifications_outlined,
-                      color: Colors.white, size: 20),
+                  decoration: BoxDecoration(color: Colors.white.withOpacity(0.2), shape: BoxShape.circle),
+                  child: const Icon(Icons.notifications_outlined, color: Colors.white, size: 20),
                 ),
               ],
             ),
           ),
-
           Expanded(
             child: RefreshIndicator(
               color: AppColors.primary,
@@ -149,165 +204,88 @@ class _DashboardTab extends StatelessWidget {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    // Real stats from Supabase
                     statsAsync.when(
-                      loading: () => const SizedBox(
-                        height: 100,
-                        child: Center(
-                          child: CircularProgressIndicator(
-                            color: AppColors.primary, strokeWidth: 2),
-                        ),
-                      ),
+                      loading: () => const SizedBox(height: 100, child: Center(child: CircularProgressIndicator(color: AppColors.primary, strokeWidth: 2))),
                       error: (e, _) => const SizedBox(),
                       data: (stats) => Column(
                         children: [
                           Row(
                             children: [
-                              Expanded(child: _statCard(
-                                '₹${(stats['today_sales'] ?? 0).toStringAsFixed(0)}',
-                                'Aaj ki sale',
-                                Icons.trending_up_rounded,
-                                AppColors.primary,
-                              )),
+                              Expanded(child: _statCard('₹${(stats['today_sales'] ?? 0).toStringAsFixed(0)}', AppLang.tr(isEn, 'Today\'s Sales', 'आज की बिक्री'), Icons.trending_up_rounded, AppColors.primary)),
                               const SizedBox(width: 12),
-                              Expanded(child: _statCard(
-                                '₹${(stats['total_udhar'] ?? 0).toStringAsFixed(0)}',
-                                'Pending udhar',
-                                Icons.people_outline_rounded,
-                                AppColors.warning,
-                              )),
+                              Expanded(child: _statCard('₹${(stats['total_udhar'] ?? 0).toStringAsFixed(0)}', AppLang.tr(isEn, 'Pending Credit', 'बकाया उधार'), Icons.people_outline_rounded, AppColors.warning)),
                             ],
                           ),
                           const SizedBox(height: 12),
                           Row(
                             children: [
-                              Expanded(child: _statCard(
-                                '${stats['today_bills'] ?? 0}',
-                                'Bills aaj',
-                                Icons.receipt_outlined,
-                                AppColors.success,
-                              )),
+                              Expanded(child: _statCard('${stats['today_bills'] ?? 0}', AppLang.tr(isEn, 'Bills Today', 'आज के बिल'), Icons.receipt_outlined, AppColors.success)),
                               const SizedBox(width: 12),
-                              Expanded(child: _statCard(
-                                '${stats['low_stock'] ?? 0}',
-                                'Low stock',
-                                Icons.inventory_2_outlined,
-                                AppColors.error,
-                              )),
+                              Expanded(child: _statCard('${stats['low_stock'] ?? 0}', AppLang.tr(isEn, 'Low Stock', 'कम स्टॉक'), Icons.inventory_2_outlined, AppColors.error)),
                             ],
                           ),
                         ],
                       ),
                     ),
-
                     const SizedBox(height: 24),
-
-                    // Quick actions
-                    const Text('Quick Actions',
-                        style: TextStyle(
-                          fontSize: 16,
-                          fontWeight: FontWeight.w600,
-                          color: AppColors.textPrimary,
-                        )),
+                    Text(AppLang.tr(isEn, 'Quick Actions', 'त्वरित कार्य'), style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w600, color: AppColors.textPrimary)),
                     const SizedBox(height: 12),
                     GridView.count(
-                      crossAxisCount: 4,
-                      shrinkWrap: true,
-                      physics: const NeverScrollableScrollPhysics(),
-                      crossAxisSpacing: 10,
-                      mainAxisSpacing: 10,
+                      crossAxisCount: 4, shrinkWrap: true, physics: const NeverScrollableScrollPhysics(),
+                      crossAxisSpacing: 10, mainAxisSpacing: 10,
                       children: [
-                        _quickAction(Icons.document_scanner_rounded,
-                            'Bill\nScan', AppColors.primary, () {
-                          // Navigate to Bills tab
+                        _quickAction(Icons.document_scanner_rounded, AppLang.tr(isEn, 'Bill\nScan', 'बिल\nस्कैन'), AppColors.primary, () {
                           final homeState = context.findAncestorStateOfType<_HomeScreenState>();
                           homeState?.setState(() => homeState._currentIndex = 1);
                         }),
-                        _quickAction(Icons.add_circle_outline_rounded,
-                            'Sale\nAdd', AppColors.success, () {
-                          Navigator.push(context,
-                              MaterialPageRoute(builder: (_) => const BillScanScreen()));
+                        _quickAction(Icons.add_circle_outline_rounded, AppLang.tr(isEn, 'Add\nSale', 'बिक्री\nजोड़ें'), AppColors.success, () {
+                          final homeState = context.findAncestorStateOfType<_HomeScreenState>();
+                          homeState?.setState(() => homeState._currentIndex = 1);
                         }),
-                        _quickAction(Icons.people_outline_rounded,
-                            'Udhar', AppColors.warning, () {
+                        _quickAction(Icons.people_outline_rounded, AppLang.tr(isEn, 'Credit', 'उधार'), AppColors.warning, () {
                           final homeState = context.findAncestorStateOfType<_HomeScreenState>();
                           homeState?.setState(() => homeState._currentIndex = 3);
                         }),
-                        _quickAction(Icons.inventory_2_outlined,
-                            'Stock', AppColors.purple, () {
+                        _quickAction(Icons.inventory_2_outlined, AppLang.tr(isEn, 'Stock', 'स्टॉक'), AppColors.purple, () {
                           final homeState = context.findAncestorStateOfType<_HomeScreenState>();
                           homeState?.setState(() => homeState._currentIndex = 2);
                         }),
                       ],
                     ),
-
                     const SizedBox(height: 24),
-
-                    // Today's bills — real data
                     Row(
                       mainAxisAlignment: MainAxisAlignment.spaceBetween,
                       children: [
-                        const Text('Aaj ke Bills',
-                            style: TextStyle(
-                              fontSize: 16,
-                              fontWeight: FontWeight.w600,
-                              color: AppColors.textPrimary,
-                            )),
+                        Text(AppLang.tr(isEn, 'Today\'s Bills', 'आज के बिल'), style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w600, color: AppColors.textPrimary)),
                         TextButton(
                           onPressed: () {
                             final homeState = context.findAncestorStateOfType<_HomeScreenState>();
                             homeState?.setState(() => homeState._currentIndex = 1);
                           },
-                          child: const Text('Sab dekho',
-                              style: TextStyle(
-                                  fontSize: 13, color: AppColors.primary)),
+                          child: Text(AppLang.tr(isEn, 'View All', 'सभी देखें'), style: const TextStyle(fontSize: 13, color: AppColors.primary)),
                         ),
                       ],
                     ),
                     const SizedBox(height: 8),
-
                     billsAsync.when(
-                      loading: () => const Center(
-                        child: CircularProgressIndicator(
-                            color: AppColors.primary, strokeWidth: 2),
-                      ),
+                      loading: () => const Center(child: CircularProgressIndicator(color: AppColors.primary, strokeWidth: 2)),
                       error: (e, _) => const SizedBox(),
                       data: (bills) => bills.isEmpty
                           ? Container(
                               padding: const EdgeInsets.all(24),
-                              decoration: BoxDecoration(
-                                color: AppColors.surface,
-                                borderRadius: BorderRadius.circular(12),
-                                border: Border.all(color: AppColors.border),
-                              ),
-                              child: const Center(
+                              decoration: BoxDecoration(color: AppColors.surface, borderRadius: BorderRadius.circular(12), border: Border.all(color: AppColors.border)),
+                              child: Center(
                                 child: Column(
                                   children: [
-                                    Icon(Icons.receipt_long_outlined,
-                                        color: AppColors.textHint, size: 32),
-                                    SizedBox(height: 8),
-                                    Text('Aaj koi bill nahi',
-                                        style: TextStyle(
-                                            color: AppColors.textSecondary,
-                                            fontSize: 14)),
-                                    Text('Bill scan karo ya sale add karo',
-                                        style: TextStyle(
-                                            color: AppColors.textHint,
-                                            fontSize: 12)),
+                                    const Icon(Icons.receipt_long_outlined, color: AppColors.textHint, size: 32),
+                                    const SizedBox(height: 8),
+                                    Text(AppLang.tr(isEn, 'No bills today', 'आज कोई बिल नहीं'), style: const TextStyle(color: AppColors.textSecondary, fontSize: 14)),
+                                    Text(AppLang.tr(isEn, 'Scan a bill or add a sale', 'बिल स्कैन करें या बिक्री जोड़ें'), style: const TextStyle(color: AppColors.textHint, fontSize: 12)),
                                   ],
                                 ),
                               ),
                             )
-                          : Column(
-                              children: bills
-                                  .map((bill) => _billItem(
-                                        bill.vendorName.isEmpty
-                                            ? 'Bill'
-                                            : bill.vendorName,
-                                        '₹${bill.amount.toStringAsFixed(0)}',
-                                      ))
-                                  .toList(),
-                            ),
+                          : Column(children: bills.map((bill) => _billItem(bill.vendorName.isEmpty ? AppLang.tr(isEn, 'Bill', 'बिल') : bill.vendorName, '₹${bill.amount.toStringAsFixed(0)}')).toList()),
                     ),
                   ],
                 ),
@@ -322,70 +300,31 @@ class _DashboardTab extends StatelessWidget {
   Widget _statCard(String value, String label, IconData icon, Color color) {
     return Container(
       padding: const EdgeInsets.all(14),
-      decoration: BoxDecoration(
-        color: AppColors.surface,
-        borderRadius: BorderRadius.circular(14),
-        border: Border.all(color: AppColors.border),
-      ),
+      decoration: BoxDecoration(color: AppColors.surface, borderRadius: BorderRadius.circular(14), border: Border.all(color: AppColors.border)),
       child: Row(
         children: [
-          Container(
-            padding: const EdgeInsets.all(8),
-            decoration: BoxDecoration(
-              color: color.withOpacity(0.1),
-              borderRadius: BorderRadius.circular(10),
-            ),
-            child: Icon(icon, color: color, size: 18),
-          ),
+          Container(padding: const EdgeInsets.all(8), decoration: BoxDecoration(color: color.withOpacity(0.1), borderRadius: BorderRadius.circular(10)), child: Icon(icon, color: color, size: 18)),
           const SizedBox(width: 10),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(value,
-                    style: TextStyle(
-                        fontSize: 16,
-                        fontWeight: FontWeight.bold,
-                        color: color)),
-                Text(label,
-                    style: const TextStyle(
-                        fontSize: 10, color: AppColors.textSecondary)),
-              ],
-            ),
-          ),
+          Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            Text(value, style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: color)),
+            Text(label, style: const TextStyle(fontSize: 10, color: AppColors.textSecondary)),
+          ])),
         ],
       ),
     );
   }
 
-  Widget _quickAction(
-      IconData icon, String label, Color color, VoidCallback onTap) {
+  Widget _quickAction(IconData icon, String label, Color color, VoidCallback onTap) {
     return GestureDetector(
       onTap: onTap,
       child: Container(
-        decoration: BoxDecoration(
-          color: AppColors.surface,
-          borderRadius: BorderRadius.circular(12),
-          border: Border.all(color: AppColors.border),
-        ),
+        decoration: BoxDecoration(color: AppColors.surface, borderRadius: BorderRadius.circular(12), border: Border.all(color: AppColors.border)),
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            Container(
-              padding: const EdgeInsets.all(10),
-              decoration: BoxDecoration(
-                color: color.withOpacity(0.1),
-                borderRadius: BorderRadius.circular(10),
-              ),
-              child: Icon(icon, color: color, size: 22),
-            ),
+            Container(padding: const EdgeInsets.all(10), decoration: BoxDecoration(color: color.withOpacity(0.1), borderRadius: BorderRadius.circular(10)), child: Icon(icon, color: color, size: 22)),
             const SizedBox(height: 6),
-            Text(label,
-                textAlign: TextAlign.center,
-                style: const TextStyle(
-                    fontSize: 10,
-                    fontWeight: FontWeight.w500,
-                    color: AppColors.textPrimary)),
+            Text(label, textAlign: TextAlign.center, style: const TextStyle(fontSize: 10, fontWeight: FontWeight.w500, color: AppColors.textPrimary)),
           ],
         ),
       ),
@@ -394,37 +333,14 @@ class _DashboardTab extends StatelessWidget {
 
   Widget _billItem(String name, String amount) {
     return Container(
-      margin: const EdgeInsets.only(bottom: 8),
-      padding: const EdgeInsets.all(14),
-      decoration: BoxDecoration(
-        color: AppColors.surface,
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: AppColors.border),
-      ),
+      margin: const EdgeInsets.only(bottom: 8), padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(color: AppColors.surface, borderRadius: BorderRadius.circular(12), border: Border.all(color: AppColors.border)),
       child: Row(
         children: [
-          Container(
-            width: 38, height: 38,
-            decoration: BoxDecoration(
-              color: AppColors.primaryBg,
-              borderRadius: BorderRadius.circular(10),
-            ),
-            child: const Icon(Icons.receipt_rounded,
-                color: AppColors.primary, size: 18),
-          ),
+          Container(width: 38, height: 38, decoration: BoxDecoration(color: AppColors.primaryBg, borderRadius: BorderRadius.circular(10)), child: const Icon(Icons.receipt_rounded, color: AppColors.primary, size: 18)),
           const SizedBox(width: 12),
-          Expanded(
-            child: Text(name,
-                style: const TextStyle(
-                    fontSize: 14,
-                    fontWeight: FontWeight.w500,
-                    color: AppColors.textPrimary)),
-          ),
-          Text(amount,
-              style: const TextStyle(
-                  fontSize: 15,
-                  fontWeight: FontWeight.bold,
-                  color: AppColors.primary)),
+          Expanded(child: Text(name, style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w500, color: AppColors.textPrimary))),
+          Text(amount, style: const TextStyle(fontSize: 15, fontWeight: FontWeight.bold, color: AppColors.primary)),
         ],
       ),
     );

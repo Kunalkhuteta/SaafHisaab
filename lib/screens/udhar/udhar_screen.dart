@@ -5,6 +5,7 @@ import '../../providers/app_providers.dart';
 import '../../services/auth_service.dart';
 import '../../services/supabase_service.dart';
 import '../../models/udhar_model.dart';
+import '../../globalVar.dart';
 
 class UdharScreen extends ConsumerStatefulWidget {
   const UdharScreen({super.key});
@@ -15,30 +16,28 @@ class UdharScreen extends ConsumerStatefulWidget {
 class _UdharScreenState extends ConsumerState<UdharScreen> {
   @override
   Widget build(BuildContext context) {
+    final isEn = ref.watch(appLanguageProvider);
     final udharAsync = ref.watch(udharCustomersProvider);
+    
     return Column(
       children: [
         Container(
           color: AppColors.primary,
-          padding: EdgeInsets.only(
-            top: MediaQuery.of(context).padding.top + 12,
-            left: 20, right: 20, bottom: 16,
-          ),
+          padding: EdgeInsets.only(top: MediaQuery.of(context).padding.top + 12, left: 20, right: 20, bottom: 16),
           child: Row(
             children: [
-              const Expanded(
-                child: Text('Udhar Khata',
-                    style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold, color: Colors.white)),
+              Expanded(
+                child: Text(AppLang.tr(isEn, 'Credit Account', 'उधार खाता'), style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold, color: Colors.white)),
               ),
               GestureDetector(
-                onTap: () => _showAddCustomerDialog(context),
+                onTap: () => _showAddCustomerDialog(context, isEn),
                 child: Container(
                   padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
                   decoration: BoxDecoration(color: Colors.white.withOpacity(0.2), borderRadius: BorderRadius.circular(10)),
-                  child: const Row(children: [
-                    Icon(Icons.person_add_rounded, color: Colors.white, size: 18),
-                    SizedBox(width: 4),
-                    Text('Add', style: TextStyle(color: Colors.white, fontSize: 13, fontWeight: FontWeight.w600)),
+                  child: Row(children: [
+                    const Icon(Icons.person_add_rounded, color: Colors.white, size: 18),
+                    const SizedBox(width: 4),
+                    Text(AppLang.tr(isEn, 'Add', 'जोड़ें'), style: const TextStyle(color: Colors.white, fontSize: 13, fontWeight: FontWeight.w600)),
                   ]),
                 ),
               ),
@@ -53,7 +52,7 @@ class _UdharScreenState extends ConsumerState<UdharScreen> {
                 ? Center(child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [
                     const Icon(Icons.people_outline_rounded, color: AppColors.textHint, size: 48),
                     const SizedBox(height: 12),
-                    const Text('Koi udhar nahi', style: TextStyle(fontSize: 16, color: AppColors.textSecondary)),
+                    Text(AppLang.tr(isEn, 'No credit records', 'कोई उधार नहीं'), style: const TextStyle(fontSize: 16, color: AppColors.textSecondary)),
                   ]))
                 : RefreshIndicator(
                     color: AppColors.primary,
@@ -61,7 +60,7 @@ class _UdharScreenState extends ConsumerState<UdharScreen> {
                     child: ListView.builder(
                       padding: const EdgeInsets.all(16),
                       itemCount: customers.length,
-                      itemBuilder: (_, i) => _customerCard(customers[i]),
+                      itemBuilder: (_, i) => _customerCard(customers[i], isEn),
                     ),
                   ),
           ),
@@ -70,14 +69,11 @@ class _UdharScreenState extends ConsumerState<UdharScreen> {
     );
   }
 
-  Widget _customerCard(UdharCustomerModel customer) {
+  Widget _customerCard(UdharCustomerModel customer, bool isEn) {
     return Container(
       margin: const EdgeInsets.only(bottom: 10),
       padding: const EdgeInsets.all(14),
-      decoration: BoxDecoration(
-        color: AppColors.surface, borderRadius: BorderRadius.circular(14),
-        border: Border.all(color: AppColors.border),
-      ),
+      decoration: BoxDecoration(color: AppColors.surface, borderRadius: BorderRadius.circular(14), border: Border.all(color: AppColors.border)),
       child: Row(children: [
         Container(
           width: 42, height: 42,
@@ -93,8 +89,7 @@ class _UdharScreenState extends ConsumerState<UdharScreen> {
           if (customer.customerPhone.isNotEmpty)
             Text(customer.customerPhone, style: const TextStyle(fontSize: 12, color: AppColors.textSecondary)),
         ])),
-        Text('₹${customer.totalDue.toStringAsFixed(0)}',
-            style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: AppColors.error)),
+        Text('₹${customer.totalDue.toStringAsFixed(0)}', style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: AppColors.error)),
         PopupMenuButton<String>(
           icon: const Icon(Icons.more_vert_rounded, color: AppColors.textHint, size: 20),
           onSelected: (val) async {
@@ -104,13 +99,13 @@ class _UdharScreenState extends ConsumerState<UdharScreen> {
               ref.invalidate(dashboardStatsProvider);
             }
           },
-          itemBuilder: (_) => [const PopupMenuItem(value: 'paid', child: Text('✅ Poora paid'))],
+          itemBuilder: (_) => [PopupMenuItem(value: 'paid', child: Text(AppLang.tr(isEn, '✅ Mark as Paid', '✅ पूरा चुकाया')))],
         ),
       ]),
     );
   }
 
-  void _showAddCustomerDialog(BuildContext context) {
+  void _showAddCustomerDialog(BuildContext context, bool isEn) {
     final nameCtrl = TextEditingController();
     final phoneCtrl = TextEditingController();
     final amountCtrl = TextEditingController();
@@ -120,13 +115,13 @@ class _UdharScreenState extends ConsumerState<UdharScreen> {
         padding: EdgeInsets.only(left: 24, right: 24, top: 24, bottom: MediaQuery.of(ctx).viewInsets.bottom + 24),
         decoration: const BoxDecoration(color: AppColors.surface, borderRadius: BorderRadius.vertical(top: Radius.circular(24))),
         child: SingleChildScrollView(child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
-          const Text('Naya Udhar Customer', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: AppColors.textPrimary)),
+          Text(AppLang.tr(isEn, 'New Credit Customer', 'नया उधार ग्राहक'), style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: AppColors.textPrimary)),
           const SizedBox(height: 20),
-          TextField(controller: nameCtrl, decoration: _inputDeco('Customer ka naam *')),
+          TextField(controller: nameCtrl, decoration: _inputDeco(AppLang.tr(isEn, 'Customer Name *', 'ग्राहक का नाम *'))),
           const SizedBox(height: 12),
-          TextField(controller: phoneCtrl, keyboardType: TextInputType.phone, decoration: _inputDeco('Phone number')),
+          TextField(controller: phoneCtrl, keyboardType: TextInputType.phone, decoration: _inputDeco(AppLang.tr(isEn, 'Phone number', 'फ़ोन नंबर'))),
           const SizedBox(height: 12),
-          TextField(controller: amountCtrl, keyboardType: TextInputType.number, decoration: _inputDeco('Udhar amount (₹) *')),
+          TextField(controller: amountCtrl, keyboardType: TextInputType.number, decoration: _inputDeco(AppLang.tr(isEn, 'Credit amount (₹) *', 'उधार राशि (₹) *'))),
           const SizedBox(height: 24),
           SizedBox(width: double.infinity, height: 50, child: ElevatedButton(
             onPressed: () async {
@@ -144,7 +139,7 @@ class _UdharScreenState extends ConsumerState<UdharScreen> {
               if (ctx.mounted) Navigator.pop(ctx);
             },
             style: ElevatedButton.styleFrom(backgroundColor: AppColors.primary, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)), elevation: 0),
-            child: const Text('Save', style: TextStyle(fontSize: 15, fontWeight: FontWeight.w600, color: Colors.white)),
+            child: Text(AppLang.tr(isEn, 'Save', 'सहेजें'), style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w600, color: Colors.white)),
           )),
         ])),
       ),
