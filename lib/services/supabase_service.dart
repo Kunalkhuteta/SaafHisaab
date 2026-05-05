@@ -1,89 +1,326 @@
 import 'package:supabase_flutter/supabase_flutter.dart';
+import '../models/shop_model.dart';
+import '../models/bill_model.dart';
+import '../models/sale_model.dart';
+import '../models/stock_model.dart';
+import '../models/udhar_model.dart';
 
-/// Central Supabase service — all DB operations go through here.
 class SupabaseService {
-  static final client = Supabase.instance.client;
 
-  // ─── Shop ───────────────────────────────────────────────
-  static Future<Map<String, dynamic>?> getShopByOwnerId(String userId) async {
-    final response = await client
+  // Use getter so it's always fresh
+  static SupabaseClient get _client => Supabase.instance.client;
+
+  // ─────────────────────────────────────────
+  // SHOP
+  // ─────────────────────────────────────────
+
+  static Future<bool> shopExists(String userId) async {
+    final response = await _client
+        .from('shops')
+        .select('id')
+        .eq('user_id', userId)
+        .maybeSingle();
+    return response != null;
+  }
+
+  static Future<ShopModel> saveShop({
+    required String userId,
+    required String ownerName,
+    required String shopName,
+    required String city,
+    required String shopType,
+    required String phone,
+    String gstNumber = '',
+  }) async {
+    final data = await _client
+        .from('shops')
+        .insert({
+          'user_id': userId,
+          'owner_name': ownerName,
+          'shop_name': shopName,
+          'city': city,
+          'shop_type': shopType,
+          'phone': phone,
+          'gst_number': gstNumber,
+        })
+        .select()
+        .single();
+    return ShopModel.fromJson(data);
+  }
+
+  static Future<ShopModel?> getShop(String userId) async {
+    final data = await _client
         .from('shops')
         .select()
-        .eq('owner_id', userId)
+        .eq('user_id', userId)
         .maybeSingle();
-    return response;
+    if (data == null) return null;
+    return ShopModel.fromJson(data);
   }
 
-  static Future<void> createShop(Map<String, dynamic> data) async {
-    await client.from('shops').insert(data);
+  static Future<void> updateShop(
+      String shopId, Map<String, dynamic> updates) async {
+    await _client
+        .from('shops')
+        .update({
+          ...updates,
+          'updated_at': DateTime.now().toIso8601String(),
+        })
+        .eq('id', shopId);
   }
 
-  static Future<void> updateShop(String shopId, Map<String, dynamic> data) async {
-    await client.from('shops').update(data).eq('id', shopId);
+  static Future<void> saveFcmToken(String userId, String token) async {
+    await _client
+        .from('shops')
+        .update({'fcm_token': token})
+        .eq('user_id', userId);
   }
 
-  // ─── Sales / Bills ─────────────────────────────────────
-  static Future<List<Map<String, dynamic>>> getTodaySales(String shopId) async {
-    final today = DateTime.now().toIso8601String().substring(0, 10);
-    final response = await client
+  // ─────────────────────────────────────────
+  // BILLS
+  // ─────────────────────────────────────────
+
+  static Future<BillModel> saveBill(BillModel bill) async {
+    final data = await _client
+        .from('bills')
+        .insert(bill.toJson())
+        .select()
+        .single();
+    return BillModel.fromJson(data);
+  }
+
+  static Future<List<BillModel>> getTodayBills(String shopId) async {
+    final today = DateTime.now().toIso8601String().split('T')[0];
+    final data = await _client
+        .from('bills')
+        .select()
+        .eq('shop_id', shopId)
+        .eq('bill_date', today)
+        .order('created_at', ascending: false);
+    return (data as List).map((b) => BillModel.fromJson(b)).toList();
+  }
+
+  static Future<List<BillModel>> getBills(
+      String shopId, DateTime from, DateTime to) async {
+    final data = await _client
+        .from('bills')
+        .select()
+        .eq('shop_id', shopId)
+        .gte('bill_date', from.toIso8601String().split('T')[0])
+        .lte('bill_date', to.toIso8601String().split('T')[0])
+        .order('created_at', ascending: false);
+    return (data as List).map((b) => BillModel.fromJson(b)).toList();
+  }
+
+  // ─────────────────────────────────────────
+  // SALES
+  // ─────────────────────────────────────────
+
+  static Future<SaleModel> saveSale(SaleModel sale) async {
+    final data = await _client
+        .from('sales')
+        .insert(sale.toJson())
+        .select()
+        .single();
+    return SaleModel.fromJson(data);
+  }
+
+static Future<double> getTodaySalesTotal(String shopId) async {
+  final today = DateTime.now().toIso8601String().split('T')[0];
+  final data = await _client
+      .from('sales')
+      .select('total_amount')
+      .eq('shop_id', shopId)
+      .eq('sale_date', today);
+  if ((data as List).isEmpty) return 0.0;
+  // ✅ Fixed — cast to double directly
+  double total = 0.0;
+  for (final s in data) {
+    total += (s['total_amount'] as num?)?.toDouble() ?? 0.0;
+  }
+  return total;
+}
+
+  static Future<int> getTodaySalesCount(String shopId) async {
+    final today = DateTime.now().toIso8601String().split('T')[0];
+    final data = await _client
+        .from('sales')
+        .select('id')
+        .eq('shop_id', shopId)
+        .eq('sale_date', today);
+    return (data as List).length;
+  }
+
+  static Future<List<SaleModel>> getSales(
+      String shopId, DateTime from, DateTime to) async {
+    final data = await _client
         .from('sales')
         .select()
         .eq('shop_id', shopId)
-        .gte('created_at', '${today}T00:00:00')
+        .gte('sale_date', from.toIso8601String().split('T')[0])
+        .lte('sale_date', to.toIso8601String().split('T')[0])
         .order('created_at', ascending: false);
-    return List<Map<String, dynamic>>.from(response);
+    return (data as List).map((s) => SaleModel.fromJson(s)).toList();
   }
 
-  static Future<void> addSale(Map<String, dynamic> data) async {
-    await client.from('sales').insert(data);
+  // ─────────────────────────────────────────
+  // STOCK
+  // ─────────────────────────────────────────
+
+  static Future<StockItemModel> saveStockItem(StockItemModel item) async {
+    final data = await _client
+        .from('stock_items')
+        .insert(item.toJson())
+        .select()
+        .single();
+    return StockItemModel.fromJson(data);
   }
 
-  // ─── Stock ──────────────────────────────────────────────
-  static Future<List<Map<String, dynamic>>> getStock(String shopId) async {
-    final response = await client
-        .from('stock')
+  static Future<List<StockItemModel>> getStockItems(String shopId) async {
+    final data = await _client
+        .from('stock_items')
         .select()
         .eq('shop_id', shopId)
         .order('item_name');
-    return List<Map<String, dynamic>>.from(response);
+    return (data as List).map((s) => StockItemModel.fromJson(s)).toList();
   }
 
-  static Future<List<Map<String, dynamic>>> getLowStock(String shopId, {int threshold = 5}) async {
-    final response = await client
-        .from('stock')
+  static Future<int> getLowStockCount(String shopId) async {
+    final items = await getStockItems(shopId);
+    return items.where((i) => i.isLowStock).length;
+  }
+
+  static Future<void> updateStockQuantity(
+      String itemId, double newQuantity) async {
+    await _client
+        .from('stock_items')
+        .update({
+          'current_quantity': newQuantity,
+          'updated_at': DateTime.now().toIso8601String(),
+        })
+        .eq('id', itemId);
+  }
+
+static Future<void> deductStock(
+    String shopId, String itemName, double quantity) async {
+  final data = await _client
+      .from('stock_items')
+      .select()
+      .eq('shop_id', shopId)
+      .eq('item_name', itemName)
+      .maybeSingle();
+  if (data != null) {
+    final current = (data['current_quantity'] as num?)?.toDouble() ?? 0.0;
+    // ✅ Fixed — clamp returns num, cast to double explicitly
+    final newQty = (current - quantity).clamp(0.0, double.maxFinite).toDouble();
+    await updateStockQuantity(data['id'], newQty);
+  }
+}
+  // ─────────────────────────────────────────
+  // UDHAR
+  // ─────────────────────────────────────────
+
+  static Future<UdharCustomerModel> saveUdharCustomer(
+      UdharCustomerModel customer) async {
+    final data = await _client
+        .from('udhar_customers')
+        .insert(customer.toJson())
+        .select()
+        .single();
+    return UdharCustomerModel.fromJson(data);
+  }
+
+  static Future<List<UdharCustomerModel>> getUdharCustomers(
+      String shopId) async {
+    final data = await _client
+        .from('udhar_customers')
         .select()
         .eq('shop_id', shopId)
-        .lte('quantity', threshold)
-        .order('quantity');
-    return List<Map<String, dynamic>>.from(response);
+        .gt('total_due', 0)
+        .order('total_due', ascending: false);
+    return (data as List)
+        .map((u) => UdharCustomerModel.fromJson(u))
+        .toList();
   }
 
-  // ─── Udhar (Credit) ────────────────────────────────────
-  static Future<List<Map<String, dynamic>>> getPendingUdhar(String shopId) async {
-    final response = await client
-        .from('udhar')
-        .select()
-        .eq('shop_id', shopId)
-        .eq('is_paid', false)
-        .order('created_at', ascending: false);
-    return List<Map<String, dynamic>>.from(response);
+static Future<double> getTotalUdhar(String shopId) async {
+  final data = await _client
+      .from('udhar_customers')
+      .select('total_due')
+      .eq('shop_id', shopId);
+  if ((data as List).isEmpty) return 0.0;
+  // ✅ Fixed — cast to double directly
+  double total = 0.0;
+  for (final u in data) {
+    total += (u['total_due'] as num?)?.toDouble() ?? 0.0;
+  }
+  return total;
+}
+  static Future<void> addUdharEntry(
+      UdharEntryModel entry, String customerId) async {
+    await _client.from('udhar_entries').insert(entry.toJson());
+
+    final customer = await _client
+        .from('udhar_customers')
+        .select('total_due')
+        .eq('id', customerId)
+        .single();
+
+    double currentDue =
+        ((customer['total_due'] ?? 0) as num).toDouble();
+    double newDue = entry.entryType == 'credit'
+        ? currentDue + entry.amount
+        : currentDue - entry.amount;
+    newDue = newDue.clamp(0, double.infinity);
+
+    await _client
+        .from('udhar_customers')
+        .update({
+          'total_due': newDue,
+          'updated_at': DateTime.now().toIso8601String(),
+        })
+        .eq('id', customerId);
   }
 
-  static Future<void> addUdhar(Map<String, dynamic> data) async {
-    await client.from('udhar').insert(data);
+  static Future<void> markUdharPaid(String customerId) async {
+    await _client
+        .from('udhar_customers')
+        .update({
+          'total_due': 0,
+          'updated_at': DateTime.now().toIso8601String(),
+        })
+        .eq('id', customerId);
   }
 
-  static Future<void> markUdharPaid(String udharId) async {
-    await client.from('udhar').update({'is_paid': true}).eq('id', udharId);
+  // ─────────────────────────────────────────
+  // DASHBOARD
+  // ─────────────────────────────────────────
+
+  static Future<Map<String, dynamic>> getDashboardStats(
+      String shopId) async {
+    final results = await Future.wait([
+      getTodaySalesTotal(shopId),
+      getTodaySalesCount(shopId),
+      getTotalUdhar(shopId),
+      getLowStockCount(shopId),
+    ]);
+    return {
+      'today_sales': results[0],
+      'today_bills': results[1],
+      'total_udhar': results[2],
+      'low_stock': results[3],
+    };
   }
 
-  // ─── Connection Test ───────────────────────────────────
+  // ─────────────────────────────────────────
+  // CONNECTION TEST
+  // ─────────────────────────────────────────
+
   static Future<bool> testConnection() async {
     try {
-      await client.from('shops').select().limit(1);
+      await _client.from('shops').select().limit(1);
       return true;
     } catch (e) {
-      print('❌ Supabase connection test failed: $e');
       return false;
     }
   }

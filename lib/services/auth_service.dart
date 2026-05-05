@@ -1,40 +1,46 @@
 import 'package:supabase_flutter/supabase_flutter.dart';
+import '../../main.dart';
 
-/// Auth service using Supabase Auth (phone OTP).
 class AuthService {
-  static final _auth = Supabase.instance.client.auth;
 
-  /// Send OTP to the given phone number.
+  // Send OTP to phone
   static Future<void> sendOTP(String phone) async {
-    final fullPhone = phone.startsWith('+') ? phone : '+91$phone';
-    await _auth.signInWithOtp(phone: fullPhone);
+    await supabase.auth.signInWithOtp(
+      phone: '+91$phone',
+    );
   }
 
-  /// Verify the OTP code for the given phone number.
-  static Future<AuthResponse> verifyOTP(String phone, String otp) async {
-    final fullPhone = phone.startsWith('+') ? phone : '+91$phone';
-    final response = await _auth.verifyOTP(
-      phone: fullPhone,
+  // Verify OTP
+  static Future<AuthResponse> verifyOTP({
+    required String phone,
+    required String otp,
+  }) async {
+    final response = await supabase.auth.verifyOTP(
+      phone: '+91$phone',
       token: otp,
       type: OtpType.sms,
     );
     return response;
   }
 
-  /// Get the currently logged-in user (or null).
-  static User? get currentUser => _auth.currentUser;
+  // Get current user
+  static User? get currentUser => supabase.auth.currentUser;
 
-  /// Check if user is logged in.
-  static bool get isLoggedIn => _auth.currentUser != null;
+  // Get current user ID
+  static String? get currentUserId => supabase.auth.currentUser?.id;
 
-  /// Get the current session.
-  static Session? get currentSession => _auth.currentSession;
+  // Get current user phone
+  static String? get currentUserPhone => supabase.auth.currentUser?.phone;
 
-  /// Sign out the current user.
+  // Is logged in
+  static bool get isLoggedIn => supabase.auth.currentSession != null;
+
+  // Sign out
   static Future<void> signOut() async {
-    await _auth.signOut();
+    await supabase.auth.signOut();
   }
 
-  /// Listen to auth state changes.
-  static Stream<AuthState> get onAuthStateChange => _auth.onAuthStateChange;
+  // Auth state stream
+  static Stream<AuthState> get authStateChanges =>
+      supabase.auth.onAuthStateChange;
 }
