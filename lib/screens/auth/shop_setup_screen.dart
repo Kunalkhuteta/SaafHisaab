@@ -129,7 +129,9 @@ void _saveShop() async {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   _buildField('Aapka naam *', 'Jaise: Ramesh Sharma', _ownerNameController),
-const SizedBox(height: 16),
+                  const SizedBox(height: 16),
+                  _buildField('Dukaan ka naam *', 'Jaise: Sharma General Store', _shopNameController),
+                  const SizedBox(height: 16),
                   _buildField('Shahar / City *', 'Jaise: Kota, Rajasthan',
                       _cityController),
                   const SizedBox(height: 16),

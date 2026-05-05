@@ -3,86 +3,148 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../constants/app_colors.dart';
 import '../../providers/app_providers.dart';
 import '../../services/auth_service.dart';
+import '../../services/supabase_service.dart';
+import '../../services/notification_service.dart';
 import '../auth/login_screen.dart';
+import '../bills/bill_scan_screen.dart';
+import '../stock/stock_screen.dart';
+import '../udhar/udhar_screen.dart';
+import '../profile/profile_screen.dart';
 
-class HomeScreen extends ConsumerWidget {
+class HomeScreen extends ConsumerStatefulWidget {
   const HomeScreen({super.key});
+  @override
+  ConsumerState<HomeScreen> createState() => _HomeScreenState();
+}
+
+class _HomeScreenState extends ConsumerState<HomeScreen> {
+  int _currentIndex = 0;
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  void initState() {
+    super.initState();
+    // Save FCM token after login
+    final userId = AuthService.currentUserId;
+    if (userId != null) {
+      NotificationService.saveTokenToSupabase(userId);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final screens = [
+      _DashboardTab(ref: ref),
+      const BillScanScreen(),
+      const StockScreen(),
+      const UdharScreen(),
+      const ProfileScreen(),
+    ];
+
+    return Scaffold(
+      backgroundColor: AppColors.background,
+      body: IndexedStack(
+        index: _currentIndex,
+        children: screens,
+      ),
+      bottomNavigationBar: BottomNavigationBar(
+        currentIndex: _currentIndex,
+        onTap: (i) => setState(() => _currentIndex = i),
+        type: BottomNavigationBarType.fixed,
+        selectedItemColor: AppColors.primary,
+        unselectedItemColor: AppColors.textHint,
+        selectedLabelStyle:
+            const TextStyle(fontSize: 11, fontWeight: FontWeight.w500),
+        unselectedLabelStyle: const TextStyle(fontSize: 11),
+        items: const [
+          BottomNavigationBarItem(
+              icon: Icon(Icons.home_rounded), label: 'Home'),
+          BottomNavigationBarItem(
+              icon: Icon(Icons.receipt_long_rounded), label: 'Bills'),
+          BottomNavigationBarItem(
+              icon: Icon(Icons.inventory_2_rounded), label: 'Stock'),
+          BottomNavigationBarItem(
+              icon: Icon(Icons.people_rounded), label: 'Udhar'),
+          BottomNavigationBarItem(
+              icon: Icon(Icons.more_horiz_rounded), label: 'More'),
+        ],
+      ),
+    );
+  }
+}
+
+// ─── Dashboard Tab (was the old HomeScreen body) ──────────
+class _DashboardTab extends StatelessWidget {
+  final WidgetRef ref;
+  const _DashboardTab({required this.ref});
+
+  @override
+  Widget build(BuildContext context) {
     final shopAsync = ref.watch(shopProvider);
     final statsAsync = ref.watch(dashboardStatsProvider);
     final billsAsync = ref.watch(todayBillsProvider);
 
-    return Scaffold(
-      backgroundColor: AppColors.background,
-      body: shopAsync.when(
-        loading: () => const Center(
-          child: CircularProgressIndicator(color: AppColors.primary),
-        ),
-        error: (e, _) => Center(child: Text('Error: $e')),
-        data: (shop) => Column(
-          children: [
-            // Blue header with real shop name
-            Container(
-              color: AppColors.primary,
-              padding: EdgeInsets.only(
-                top: MediaQuery.of(context).padding.top + 12,
-                left: 20, right: 20, bottom: 20,
-              ),
-              child: Row(
-                children: [
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          'Namaste, ${shop?.ownerName ?? 'ji'} 👋',
-                          style: const TextStyle(
-                            fontSize: 18,
-                            fontWeight: FontWeight.bold,
-                            color: Colors.white,
-                          ),
-                        ),
-                        const SizedBox(height: 2),
-                        Text(
-                          shop?.shopName ?? 'Aapki Dukaan',
-                          style: TextStyle(
-                            fontSize: 13,
-                            color: Colors.white.withOpacity(0.75),
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                  // Sign out button
-                  GestureDetector(
-                    onTap: () async {
-                      await AuthService.signOut();
-                      if (context.mounted) {
-                        Navigator.pushAndRemoveUntil(
-                          context,
-                          MaterialPageRoute(builder: (_) => const LoginScreen()),
-                          (route) => false,
-                        );
-                      }
-                    },
-                    child: Container(
-                      width: 40, height: 40,
-                      decoration: BoxDecoration(
-                        color: Colors.white.withOpacity(0.2),
-                        shape: BoxShape.circle,
-                      ),
-                      child: const Icon(Icons.person_outline_rounded,
-                          color: Colors.white, size: 20),
-                    ),
-                  ),
-                ],
-              ),
+    return shopAsync.when(
+      loading: () => const Center(
+        child: CircularProgressIndicator(color: AppColors.primary),
+      ),
+      error: (e, _) => Center(child: Text('Error: $e')),
+      data: (shop) => Column(
+        children: [
+          // Blue header with real shop name
+          Container(
+            color: AppColors.primary,
+            padding: EdgeInsets.only(
+              top: MediaQuery.of(context).padding.top + 12,
+              left: 20, right: 20, bottom: 20,
             ),
+            child: Row(
+              children: [
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        'Namaste, ${shop?.ownerName ?? 'ji'} 👋',
+                        style: const TextStyle(
+                          fontSize: 18,
+                          fontWeight: FontWeight.bold,
+                          color: Colors.white,
+                        ),
+                      ),
+                      const SizedBox(height: 2),
+                      Text(
+                        shop?.shopName ?? 'Aapki Dukaan',
+                        style: TextStyle(
+                          fontSize: 13,
+                          color: Colors.white.withOpacity(0.75),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                Container(
+                  width: 40, height: 40,
+                  decoration: BoxDecoration(
+                    color: Colors.white.withOpacity(0.2),
+                    shape: BoxShape.circle,
+                  ),
+                  child: const Icon(Icons.notifications_outlined,
+                      color: Colors.white, size: 20),
+                ),
+              ],
+            ),
+          ),
 
-            Expanded(
+          Expanded(
+            child: RefreshIndicator(
+              color: AppColors.primary,
+              onRefresh: () async {
+                ref.invalidate(dashboardStatsProvider);
+                ref.invalidate(todayBillsProvider);
+                ref.invalidate(shopProvider);
+              },
               child: SingleChildScrollView(
+                physics: const AlwaysScrollableScrollPhysics(),
                 padding: const EdgeInsets.all(20),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
@@ -156,13 +218,26 @@ class HomeScreen extends ConsumerWidget {
                       mainAxisSpacing: 10,
                       children: [
                         _quickAction(Icons.document_scanner_rounded,
-                            'Bill\nScan', AppColors.primary, () {}),
+                            'Bill\nScan', AppColors.primary, () {
+                          // Navigate to Bills tab
+                          final homeState = context.findAncestorStateOfType<_HomeScreenState>();
+                          homeState?.setState(() => homeState._currentIndex = 1);
+                        }),
                         _quickAction(Icons.add_circle_outline_rounded,
-                            'Sale\nAdd', AppColors.success, () {}),
+                            'Sale\nAdd', AppColors.success, () {
+                          Navigator.push(context,
+                              MaterialPageRoute(builder: (_) => const BillScanScreen()));
+                        }),
                         _quickAction(Icons.people_outline_rounded,
-                            'Udhar', AppColors.warning, () {}),
+                            'Udhar', AppColors.warning, () {
+                          final homeState = context.findAncestorStateOfType<_HomeScreenState>();
+                          homeState?.setState(() => homeState._currentIndex = 3);
+                        }),
                         _quickAction(Icons.inventory_2_outlined,
-                            'Stock', AppColors.purple, () {}),
+                            'Stock', AppColors.purple, () {
+                          final homeState = context.findAncestorStateOfType<_HomeScreenState>();
+                          homeState?.setState(() => homeState._currentIndex = 2);
+                        }),
                       ],
                     ),
 
@@ -179,7 +254,10 @@ class HomeScreen extends ConsumerWidget {
                               color: AppColors.textPrimary,
                             )),
                         TextButton(
-                          onPressed: () {},
+                          onPressed: () {
+                            final homeState = context.findAncestorStateOfType<_HomeScreenState>();
+                            homeState?.setState(() => homeState._currentIndex = 1);
+                          },
                           child: const Text('Sab dekho',
                               style: TextStyle(
                                   fontSize: 13, color: AppColors.primary)),
@@ -235,29 +313,7 @@ class HomeScreen extends ConsumerWidget {
                 ),
               ),
             ),
-          ],
-        ),
-      ),
-
-      bottomNavigationBar: BottomNavigationBar(
-        currentIndex: 0,
-        type: BottomNavigationBarType.fixed,
-        selectedItemColor: AppColors.primary,
-        unselectedItemColor: AppColors.textHint,
-        selectedLabelStyle:
-            const TextStyle(fontSize: 11, fontWeight: FontWeight.w500),
-        unselectedLabelStyle: const TextStyle(fontSize: 11),
-        items: const [
-          BottomNavigationBarItem(
-              icon: Icon(Icons.home_rounded), label: 'Home'),
-          BottomNavigationBarItem(
-              icon: Icon(Icons.receipt_long_rounded), label: 'Bills'),
-          BottomNavigationBarItem(
-              icon: Icon(Icons.inventory_2_rounded), label: 'Stock'),
-          BottomNavigationBarItem(
-              icon: Icon(Icons.people_rounded), label: 'Udhar'),
-          BottomNavigationBarItem(
-              icon: Icon(Icons.more_horiz_rounded), label: 'More'),
+          ),
         ],
       ),
     );

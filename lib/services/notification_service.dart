@@ -41,8 +41,9 @@ class NotificationService {
       onDidReceiveNotificationResponse: _onNotificationTap,
     );
 
-    await _localNotifications.resolvePlatformSpecificImplementation;
-    AndroidFlutterLocalNotificationsPlugin()?.createNotificationChannel(_channel);
+    await _localNotifications
+        .resolvePlatformSpecificImplementation<AndroidFlutterLocalNotificationsPlugin>()
+        ?.createNotificationChannel(_channel);
 
     FirebaseMessaging.onMessage.listen((RemoteMessage message) {
       showLocalNotification(
