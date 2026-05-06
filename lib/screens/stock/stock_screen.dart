@@ -205,7 +205,7 @@ class _StockScreenState extends ConsumerState<StockScreen> {
     try {
       final userId = AuthService.currentUserId;
       final shop = await ref.read(shopProvider.future);
-      if (userId == null || shop == null) return;
+      if (userId == null || shop == null) throw Exception('User or shop not found');
       await SupabaseService.saveStockItem(StockItemModel(
         id: '', shopId: shop.id, userId: userId, itemName: name.trim(),
         currentQuantity: double.tryParse(qty) ?? 0, unit: unit,
@@ -214,9 +214,15 @@ class _StockScreenState extends ConsumerState<StockScreen> {
       ));
       ref.invalidate(stockItemsProvider);
       ref.invalidate(dashboardStatsProvider);
-      if (ctx.mounted) Navigator.pop(ctx);
+      if (ctx.mounted) {
+        Navigator.pop(ctx);
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+          content: Text(AppLang.tr(isEn, 'Item saved successfully!', 'आइटम सफलतापूर्वक सहेजा गया!')),
+          backgroundColor: AppColors.success,
+        ));
+      }
     } catch (e) {
-      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Error: $e'), backgroundColor: AppColors.error));
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Save failed: $e'), backgroundColor: AppColors.error));
     }
   }
 }

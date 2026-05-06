@@ -126,17 +126,32 @@ class _UdharScreenState extends ConsumerState<UdharScreen> {
           SizedBox(width: double.infinity, height: 50, child: ElevatedButton(
             onPressed: () async {
               if (nameCtrl.text.trim().isEmpty || amountCtrl.text.trim().isEmpty) return;
-              final userId = AuthService.currentUserId;
-              final shop = await ref.read(shopProvider.future);
-              if (userId == null || shop == null) return;
-              await SupabaseService.saveUdharCustomer(UdharCustomerModel(
-                id: '', shopId: shop.id, userId: userId,
-                customerName: nameCtrl.text.trim(), customerPhone: phoneCtrl.text.trim(),
-                totalDue: double.tryParse(amountCtrl.text) ?? 0, createdAt: DateTime.now(),
-              ));
-              ref.invalidate(udharCustomersProvider);
-              ref.invalidate(dashboardStatsProvider);
-              if (ctx.mounted) Navigator.pop(ctx);
+              try {
+                final userId = AuthService.currentUserId;
+                final shop = await ref.read(shopProvider.future);
+                if (userId == null || shop == null) throw Exception('User or shop not found');
+                await SupabaseService.saveUdharCustomer(UdharCustomerModel(
+                  id: '', shopId: shop.id, userId: userId,
+                  customerName: nameCtrl.text.trim(), customerPhone: phoneCtrl.text.trim(),
+                  totalDue: double.tryParse(amountCtrl.text) ?? 0, createdAt: DateTime.now(),
+                ));
+                ref.invalidate(udharCustomersProvider);
+                ref.invalidate(dashboardStatsProvider);
+                if (ctx.mounted) {
+                  Navigator.pop(ctx);
+                  ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+                    content: Text(AppLang.tr(isEn, 'Customer saved successfully!', 'ग्राहक सफलतापूर्वक सहेजा गया!')),
+                    backgroundColor: AppColors.success,
+                  ));
+                }
+              } catch (e) {
+                if (ctx.mounted) {
+                  ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+                    content: Text('Save failed: $e'),
+                    backgroundColor: AppColors.error,
+                  ));
+                }
+              }
             },
             style: ElevatedButton.styleFrom(backgroundColor: AppColors.primary, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)), elevation: 0),
             child: Text(AppLang.tr(isEn, 'Save', 'सहेजें'), style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w600, color: Colors.white)),
