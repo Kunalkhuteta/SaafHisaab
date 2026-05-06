@@ -121,18 +121,33 @@ class _BillScanScreenState extends ConsumerState<BillScanScreen> {
             SizedBox(width: double.infinity, height: 50, child: ElevatedButton(
               onPressed: () async {
                 if (amountCtrl.text.trim().isEmpty) return;
-                final userId = AuthService.currentUserId;
-                final shop = await ref.read(shopProvider.future);
-                if (userId == null || shop == null) return;
-                await SupabaseService.saveBill(BillModel(
-                  id: '', shopId: shop.id, userId: userId,
-                  amount: double.tryParse(amountCtrl.text) ?? 0,
-                  billDate: DateTime.now(), vendorName: vendorCtrl.text.trim(),
-                  billType: billType, createdAt: DateTime.now(),
-                ));
-                ref.invalidate(todayBillsProvider);
-                ref.invalidate(dashboardStatsProvider);
-                if (ctx.mounted) Navigator.pop(ctx);
+                try {
+                  final userId = AuthService.currentUserId;
+                  final shop = await ref.read(shopProvider.future);
+                  if (userId == null || shop == null) throw Exception('User or shop not found');
+                  await SupabaseService.saveBill(BillModel(
+                    id: '', shopId: shop.id, userId: userId,
+                    amount: double.tryParse(amountCtrl.text) ?? 0,
+                    billDate: DateTime.now(), vendorName: vendorCtrl.text.trim(),
+                    billType: billType, createdAt: DateTime.now(),
+                  ));
+                  ref.invalidate(todayBillsProvider);
+                  ref.invalidate(dashboardStatsProvider);
+                  if (ctx.mounted) {
+                    Navigator.pop(ctx);
+                    ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+                      content: Text(AppLang.tr(isEn, 'Bill saved successfully!', 'बिल सफलतापूर्वक सहेजा गया!')),
+                      backgroundColor: AppColors.success,
+                    ));
+                  }
+                } catch (e) {
+                  if (ctx.mounted) {
+                    ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+                      content: Text('Save failed: $e'),
+                      backgroundColor: AppColors.error,
+                    ));
+                  }
+                }
               },
               style: ElevatedButton.styleFrom(backgroundColor: AppColors.primary, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)), elevation: 0),
               child: Text(AppLang.tr(isEn, 'Save Bill', 'बिल सहेजें'), style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w600, color: Colors.white)),
