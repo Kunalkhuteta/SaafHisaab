@@ -3,7 +3,10 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../constants/app_colors.dart';
 import '../../providers/app_providers.dart';
 import '../../services/auth_service.dart';
+import '../../services/session_service.dart';
 import '../auth/login_screen.dart';
+import '../auth/set_passcode_screen.dart';
+import '../settings/session_timeout_screen.dart';
 import '../../globalVar.dart';
 
 class ProfileScreen extends ConsumerWidget {
@@ -104,6 +107,44 @@ class ProfileScreen extends ConsumerWidget {
                   ),
                 ),
 
+                // Security section
+                Padding(
+                  padding: const EdgeInsets.only(bottom: 8),
+                  child: Text(AppLang.tr(isEn, 'Security', 'सुरक्षा'), style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w600, color: AppColors.textSecondary)),
+                ),
+                _menuItem(Icons.lock_outline_rounded, AppLang.tr(isEn, 'Change Passcode', 'Passcode बदलें'), () {
+                  Navigator.push(context, MaterialPageRoute(builder: (_) => const SetPasscodeScreen()));
+                }),
+                _menuItem(Icons.timer_outlined, AppLang.tr(isEn, 'Session Timeout', 'सेशन टाइमआउट'), () {
+                  Navigator.push(context, MaterialPageRoute(builder: (_) => const SessionTimeoutScreen()));
+                }),
+                _menuItem(Icons.delete_outline_rounded, AppLang.tr(isEn, 'Remove Passcode', 'Passcode हटाएं'), () async {
+                  final confirm = await showDialog<bool>(
+                    context: context,
+                    builder: (ctx) => AlertDialog(
+                      title: Text(AppLang.tr(isEn, 'Remove Passcode?', 'Passcode हटाएं?')),
+                      content: Text(AppLang.tr(isEn, 'Your app will no longer be locked.', 'आपका ऐप अब लॉक नहीं रहेगा।')),
+                      actions: [
+                        TextButton(onPressed: () => Navigator.pop(ctx, false), child: Text(AppLang.tr(isEn, 'Cancel', 'रद्द करें'))),
+                        TextButton(onPressed: () => Navigator.pop(ctx, true), child: Text(AppLang.tr(isEn, 'Remove', 'हटाएं'), style: const TextStyle(color: AppColors.error))),
+                      ],
+                    ),
+                  );
+                  if (confirm == true) {
+                    await SessionService.clearPasscode();
+                    if (context.mounted) {
+                      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+                        content: Text(AppLang.tr(isEn, 'Passcode removed', 'Passcode हटा दिया गया')),
+                        backgroundColor: AppColors.success,
+                      ));
+                    }
+                  }
+                }),
+                const SizedBox(height: 12),
+                Padding(
+                  padding: const EdgeInsets.only(bottom: 8),
+                  child: Text(AppLang.tr(isEn, 'General', 'सामान्य'), style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w600, color: AppColors.textSecondary)),
+                ),
                 _menuItem(Icons.notifications_outlined, AppLang.tr(isEn, 'Notifications', 'सूचनाएं'), () {}),
                 _menuItem(Icons.help_outline_rounded, AppLang.tr(isEn, 'Help & Support', 'मदद और सहायता'), () {}),
                 _menuItem(Icons.info_outline_rounded, AppLang.tr(isEn, 'About SaafHisaab', 'SaafHisaab के बारे में'), () {
@@ -114,6 +155,7 @@ class ProfileScreen extends ConsumerWidget {
                   width: double.infinity, height: 50,
                   child: OutlinedButton.icon(
                     onPressed: () async {
+                      await SessionService.clearPasscode();
                       await AuthService.signOut();
                       if (context.mounted) {
                         Navigator.pushAndRemoveUntil(context, MaterialPageRoute(builder: (_) => const LoginScreen()), (route) => false);
