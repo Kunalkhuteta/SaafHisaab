@@ -346,6 +346,34 @@ static Future<double> getTotalUdhar(String shopId) async {
   }
 
   // ─────────────────────────────────────────
+  // STOCK DEDUCTION
+  // ─────────────────────────────────────────
+
+  static Future<void> deductStock(
+      String shopId, String itemName, double quantity) async {
+    final data = await _client
+        .from('stock_items')
+        .select('id, current_quantity')
+        .eq('shop_id', shopId)
+        .ilike('item_name', itemName)
+        .limit(1);
+
+    if ((data as List).isEmpty) return;
+
+    final item = data.first;
+    final current = (item['current_quantity'] as num?)?.toDouble() ?? 0;
+    final newQty = (current - quantity).clamp(0.0, double.infinity);
+
+    await _client
+        .from('stock_items')
+        .update({
+          'current_quantity': newQty,
+          'updated_at': DateTime.now().toIso8601String(),
+        })
+        .eq('id', item['id']);
+  }
+
+  // ─────────────────────────────────────────
   // CONNECTION TEST
   // ─────────────────────────────────────────
 
