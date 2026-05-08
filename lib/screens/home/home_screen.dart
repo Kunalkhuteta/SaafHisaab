@@ -285,7 +285,16 @@ class _DashboardTab extends StatelessWidget {
                                 ),
                               ),
                             )
-                          : Column(children: bills.map((bill) => _billItem(bill.vendorName.isEmpty ? AppLang.tr(isEn, 'Bill', 'बिल') : bill.vendorName, '₹${bill.amount.toStringAsFixed(0)}')).toList()),
+                          : Column(children: bills.asMap().entries.map((entry) {
+                              final idx = entry.key;
+                              final bill = entry.value;
+                              return _billItem(
+                                idx + 1,
+                                bill.vendorName.isEmpty ? AppLang.tr(isEn, 'Bill', 'बिल') : bill.vendorName,
+                                '₹${bill.amount.toStringAsFixed(0)}',
+                                bill.billType,
+                              );
+                            }).toList()),
                     ),
                   ],
                 ),
@@ -306,8 +315,12 @@ class _DashboardTab extends StatelessWidget {
           Container(padding: const EdgeInsets.all(8), decoration: BoxDecoration(color: color.withOpacity(0.1), borderRadius: BorderRadius.circular(10)), child: Icon(icon, color: color, size: 18)),
           const SizedBox(width: 10),
           Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-            Text(value, style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: color)),
-            Text(label, style: const TextStyle(fontSize: 10, color: AppColors.textSecondary)),
+            FittedBox(
+              fit: BoxFit.scaleDown,
+              alignment: Alignment.centerLeft,
+              child: Text(value, style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: color), maxLines: 1),
+            ),
+            Text(label, style: const TextStyle(fontSize: 10, color: AppColors.textSecondary), maxLines: 1, overflow: TextOverflow.ellipsis),
           ])),
         ],
       ),
@@ -331,16 +344,31 @@ class _DashboardTab extends StatelessWidget {
     );
   }
 
-  Widget _billItem(String name, String amount) {
+  Widget _billItem(int entryNumber, String name, String amount, String billType) {
+    final isSale = billType == 'sale';
+    final iconColor = isSale ? AppColors.success : AppColors.primary;
+    final iconBg = isSale ? AppColors.success.withOpacity(0.1) : AppColors.primaryBg;
     return Container(
       margin: const EdgeInsets.only(bottom: 8), padding: const EdgeInsets.all(14),
       decoration: BoxDecoration(color: AppColors.surface, borderRadius: BorderRadius.circular(12), border: Border.all(color: AppColors.border)),
       child: Row(
         children: [
-          Container(width: 38, height: 38, decoration: BoxDecoration(color: AppColors.primaryBg, borderRadius: BorderRadius.circular(10)), child: const Icon(Icons.receipt_rounded, color: AppColors.primary, size: 18)),
+          Container(
+            width: 38, height: 38,
+            decoration: BoxDecoration(color: iconBg, borderRadius: BorderRadius.circular(10)),
+            child: Center(
+              child: Text('#$entryNumber', style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold, color: iconColor)),
+            ),
+          ),
           const SizedBox(width: 12),
-          Expanded(child: Text(name, style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w500, color: AppColors.textPrimary))),
-          Text(amount, style: const TextStyle(fontSize: 15, fontWeight: FontWeight.bold, color: AppColors.primary)),
+          Expanded(child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(name, style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w500, color: AppColors.textPrimary), overflow: TextOverflow.ellipsis),
+              Text(billType == 'sale' ? 'Sale' : 'Purchase', style: TextStyle(fontSize: 11, color: isSale ? AppColors.success : AppColors.textSecondary)),
+            ],
+          )),
+          Text(amount, style: TextStyle(fontSize: 15, fontWeight: FontWeight.bold, color: iconColor)),
         ],
       ),
     );

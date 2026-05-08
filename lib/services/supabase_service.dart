@@ -296,6 +296,34 @@ static Future<double> getTotalUdhar(String shopId) async {
   // DASHBOARD
   // ─────────────────────────────────────────
 
+  /// Sum of sale-type bill amounts from [bills] table for today
+  static Future<double> getTodayBillSalesTotal(String shopId) async {
+    final today = DateTime.now().toIso8601String().split('T')[0];
+    final data = await _client
+        .from('bills')
+        .select('amount')
+        .eq('shop_id', shopId)
+        .eq('bill_date', today)
+        .eq('bill_type', 'sale');
+    if ((data as List).isEmpty) return 0.0;
+    double total = 0.0;
+    for (final b in data) {
+      total += (b['amount'] as num?)?.toDouble() ?? 0.0;
+    }
+    return total;
+  }
+
+  /// Count of all bills from [bills] table for today
+  static Future<int> getTodayBillCount(String shopId) async {
+    final today = DateTime.now().toIso8601String().split('T')[0];
+    final data = await _client
+        .from('bills')
+        .select('id')
+        .eq('shop_id', shopId)
+        .eq('bill_date', today);
+    return (data as List).length;
+  }
+
   static Future<Map<String, dynamic>> getDashboardStats(
       String shopId) async {
     final results = await Future.wait([
@@ -303,10 +331,15 @@ static Future<double> getTotalUdhar(String shopId) async {
       getTodaySalesCount(shopId),
       getTotalUdhar(shopId),
       getLowStockCount(shopId),
+      getTodayBillSalesTotal(shopId),
+      getTodayBillCount(shopId),
     ]);
+    final salesTotalFromSales = (results[0] as double);
+    final billSalesTotal = (results[4] as double);
+    final billCount = (results[5] as int);
     return {
-      'today_sales': results[0],
-      'today_bills': results[1],
+      'today_sales': salesTotalFromSales + billSalesTotal,
+      'today_bills': billCount > 0 ? billCount : results[1],
       'total_udhar': results[2],
       'low_stock': results[3],
     };

@@ -96,6 +96,8 @@ class _SetPasscodeScreenState extends ConsumerState<SetPasscodeScreen>
   @override
   Widget build(BuildContext context) {
     final isEn = ref.watch(appLanguageProvider);
+    final bottomPadding = MediaQuery.of(context).padding.bottom;
+
     return Scaffold(
       backgroundColor: AppColors.background,
       body: Column(
@@ -105,24 +107,24 @@ class _SetPasscodeScreenState extends ConsumerState<SetPasscodeScreen>
             width: double.infinity,
             color: AppColors.primary,
             padding: EdgeInsets.only(
-              top: MediaQuery.of(context).padding.top + 20,
-              bottom: 28,
+              top: MediaQuery.of(context).padding.top + 16,
+              bottom: 20,
             ),
             child: Column(
               children: [
                 Container(
-                  width: 56, height: 56,
+                  width: 48, height: 48,
                   decoration: BoxDecoration(
                     color: Colors.white.withOpacity(0.15),
-                    borderRadius: BorderRadius.circular(16),
+                    borderRadius: BorderRadius.circular(14),
                   ),
-                  child: const Icon(Icons.lock_rounded, color: Colors.white, size: 28),
+                  child: const Icon(Icons.lock_rounded, color: Colors.white, size: 24),
                 ),
-                const SizedBox(height: 12),
+                const SizedBox(height: 10),
                 Text(
                   'SaafHisaab',
                   style: TextStyle(
-                    fontSize: 20, fontWeight: FontWeight.bold,
+                    fontSize: 18, fontWeight: FontWeight.bold,
                     color: Colors.white.withOpacity(0.9),
                   ),
                 ),
@@ -130,64 +132,82 @@ class _SetPasscodeScreenState extends ConsumerState<SetPasscodeScreen>
             ),
           ),
 
-          const SizedBox(height: 40),
+          // Scrollable content area
+          Expanded(
+            child: LayoutBuilder(
+              builder: (context, constraints) {
+                return SingleChildScrollView(
+                  child: ConstrainedBox(
+                    constraints: BoxConstraints(minHeight: constraints.maxHeight),
+                    child: IntrinsicHeight(
+                      child: Column(
+                        children: [
+                          const SizedBox(height: 28),
 
-          // Title
-          Text(
-            _isConfirming
-                ? AppLang.tr(isEn, 'Confirm Passcode', 'Passcode confirm करें')
-                : AppLang.tr(isEn, 'Set Passcode', 'Passcode set करें'),
-            style: const TextStyle(
-              fontSize: 22, fontWeight: FontWeight.bold, color: AppColors.textPrimary,
+                          // Title
+                          Text(
+                            _isConfirming
+                                ? AppLang.tr(isEn, 'Confirm Passcode', 'Passcode confirm करें')
+                                : AppLang.tr(isEn, 'Set Passcode', 'Passcode set करें'),
+                            style: const TextStyle(
+                              fontSize: 22, fontWeight: FontWeight.bold, color: AppColors.textPrimary,
+                            ),
+                          ),
+                          const SizedBox(height: 6),
+                          Text(
+                            _isConfirming
+                                ? AppLang.tr(isEn, 'Re-enter your 4-digit passcode', '4 अंकों का passcode दोबारा डालें')
+                                : AppLang.tr(isEn, 'Enter a 4-digit passcode', '4 अंकों का passcode डालें'),
+                            style: const TextStyle(fontSize: 13, color: AppColors.textSecondary),
+                          ),
+
+                          const SizedBox(height: 28),
+
+                          // Dots
+                          AnimatedBuilder(
+                            animation: _shakeAnimation,
+                            builder: (context, child) {
+                              return Transform.translate(
+                                offset: Offset(
+                                  _shakeController.isAnimating
+                                      ? _shakeAnimation.value * ((_shakeController.value * 10).toInt().isEven ? 1 : -1)
+                                      : 0,
+                                  0,
+                                ),
+                                child: child,
+                              );
+                            },
+                            child: Row(
+                              mainAxisAlignment: MainAxisAlignment.center,
+                              children: List.generate(4, (i) => _buildDot(i)),
+                            ),
+                          ),
+
+                          // Error text
+                          const SizedBox(height: 14),
+                          AnimatedOpacity(
+                            opacity: _showError ? 1.0 : 0.0,
+                            duration: const Duration(milliseconds: 200),
+                            child: Text(
+                              AppLang.tr(isEn, 'Passcode did not match', 'Passcode match नहीं हुआ'),
+                              style: const TextStyle(fontSize: 13, color: AppColors.error, fontWeight: FontWeight.w500),
+                            ),
+                          ),
+
+                          const Spacer(),
+
+                          // Numpad
+                          _buildNumpad(),
+
+                          SizedBox(height: bottomPadding + 16),
+                        ],
+                      ),
+                    ),
+                  ),
+                );
+              },
             ),
           ),
-          const SizedBox(height: 6),
-          Text(
-            _isConfirming
-                ? AppLang.tr(isEn, 'Re-enter your 4-digit passcode', '4 अंकों का passcode दोबारा डालें')
-                : AppLang.tr(isEn, 'Enter a 4-digit passcode', '4 अंकों का passcode डालें'),
-            style: const TextStyle(fontSize: 13, color: AppColors.textSecondary),
-          ),
-
-          const SizedBox(height: 32),
-
-          // Dots
-          AnimatedBuilder(
-            animation: _shakeAnimation,
-            builder: (context, child) {
-              return Transform.translate(
-                offset: Offset(
-                  _shakeController.isAnimating
-                      ? _shakeAnimation.value * ((_shakeController.value * 10).toInt().isEven ? 1 : -1)
-                      : 0,
-                  0,
-                ),
-                child: child,
-              );
-            },
-            child: Row(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: List.generate(4, (i) => _buildDot(i)),
-            ),
-          ),
-
-          // Error text
-          const SizedBox(height: 16),
-          AnimatedOpacity(
-            opacity: _showError ? 1.0 : 0.0,
-            duration: const Duration(milliseconds: 200),
-            child: Text(
-              AppLang.tr(isEn, 'Passcode did not match', 'Passcode match नहीं हुआ'),
-              style: const TextStyle(fontSize: 13, color: AppColors.error, fontWeight: FontWeight.w500),
-            ),
-          ),
-
-          const Spacer(),
-
-          // Numpad
-          _buildNumpad(),
-
-          SizedBox(height: MediaQuery.of(context).padding.bottom + 24),
         ],
       ),
     );
@@ -218,15 +238,15 @@ class _SetPasscodeScreenState extends ConsumerState<SetPasscodeScreen>
 
   Widget _buildNumpad() {
     return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 48),
+      padding: const EdgeInsets.symmetric(horizontal: 40),
       child: Column(
         children: [
           _numRow(['1', '2', '3']),
-          const SizedBox(height: 16),
+          const SizedBox(height: 12),
           _numRow(['4', '5', '6']),
-          const SizedBox(height: 16),
+          const SizedBox(height: 12),
           _numRow(['7', '8', '9']),
-          const SizedBox(height: 16),
+          const SizedBox(height: 12),
           _numRow(['', '0', 'del']),
         ],
       ),
@@ -237,24 +257,24 @@ class _SetPasscodeScreenState extends ConsumerState<SetPasscodeScreen>
     return Row(
       mainAxisAlignment: MainAxisAlignment.spaceEvenly,
       children: keys.map((k) {
-        if (k.isEmpty) return const SizedBox(width: 72, height: 72);
+        if (k.isEmpty) return const SizedBox(width: 64, height: 64);
         if (k == 'del') {
           return GestureDetector(
             onTap: _onDelete,
             child: Container(
-              width: 72, height: 72,
+              width: 64, height: 64,
               decoration: BoxDecoration(
                 color: AppColors.error.withOpacity(0.08),
                 shape: BoxShape.circle,
               ),
-              child: const Icon(Icons.backspace_rounded, color: AppColors.error, size: 24),
+              child: const Icon(Icons.backspace_rounded, color: AppColors.error, size: 22),
             ),
           );
         }
         return GestureDetector(
           onTap: () => _onDigit(k),
           child: Container(
-            width: 72, height: 72,
+            width: 64, height: 64,
             decoration: BoxDecoration(
               color: AppColors.primaryBg,
               shape: BoxShape.circle,
@@ -267,7 +287,7 @@ class _SetPasscodeScreenState extends ConsumerState<SetPasscodeScreen>
             ),
             child: Center(
               child: Text(k, style: const TextStyle(
-                fontSize: 28, fontWeight: FontWeight.w600, color: AppColors.primary,
+                fontSize: 26, fontWeight: FontWeight.w600, color: AppColors.primary,
               )),
             ),
           ),
@@ -276,3 +296,4 @@ class _SetPasscodeScreenState extends ConsumerState<SetPasscodeScreen>
     );
   }
 }
+
