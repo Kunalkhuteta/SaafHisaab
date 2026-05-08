@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "713260913456",
+    "project_id": "saafhisaab-dd3ca",
+    "storage_bucket": "saafhisaab-dd3ca.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:713260913456:android:5951dfa0e1dd37f710eef5",
+        "android_client_info": {
+          "package_name": "com.saafhisaab.app"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyB93o7o8ct6LEy7d5dAKSBv8mZo5f11nGI"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
