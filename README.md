@@ -1,22 +1,3 @@
-<<<<<<< HEAD
-# saafhisaab
-
-A new Flutter project.
-
-## Getting Started
-
-This project is a starting point for a Flutter application.
-
-A few resources to get you started if this is your first Flutter project:
-
-- [Learn Flutter](https://docs.flutter.dev/get-started/learn-flutter)
-- [Write your first Flutter app](https://docs.flutter.dev/get-started/codelab)
-- [Flutter learning resources](https://docs.flutter.dev/reference/learning-resources)
-
-For help getting started with Flutter development, view the
-[online documentation](https://docs.flutter.dev/), which offers tutorials,
-samples, guidance on mobile development, and a full API reference.
-=======
 # 🧾 SaafHisaab — Aapki Dukaan Ka Saaf Hisaab
 
 A complete **ERP & Shop Management** mobile app built with **Flutter + Supabase**, designed for Indian shopkeepers (Kirana, Cloth, Electronics, Medical, etc.).
@@ -284,4 +265,3 @@ Home (Dashboard)
 ---
 
 **Made with ❤️ for Indian shopkeepers**
->>>>>>> c00c9d440be47def005461b5f096b9180b2c8584
