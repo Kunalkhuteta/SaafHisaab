@@ -10,6 +10,7 @@ import '../bills/bill_scan_screen.dart';
 import '../stock/stock_screen.dart';
 import '../udhar/udhar_screen.dart';
 import '../profile/profile_screen.dart';
+import '../sales/sale_entry_screen.dart';
 import '../../globalVar.dart';
 
 class HomeScreen extends ConsumerStatefulWidget {
@@ -239,8 +240,7 @@ class _DashboardTab extends StatelessWidget {
                           homeState?.setState(() => homeState._currentIndex = 1);
                         }),
                         _quickAction(Icons.add_circle_outline_rounded, AppLang.tr(isEn, 'Add\nSale', 'बिक्री\nजोड़ें'), AppColors.success, () {
-                          final homeState = context.findAncestorStateOfType<_HomeScreenState>();
-                          homeState?.setState(() => homeState._currentIndex = 1);
+                          Navigator.push(context, MaterialPageRoute(builder: (_) => const SaleEntryScreen()));
                         }),
                         _quickAction(Icons.people_outline_rounded, AppLang.tr(isEn, 'Credit', 'उधार'), AppColors.warning, () {
                           final homeState = context.findAncestorStateOfType<_HomeScreenState>();

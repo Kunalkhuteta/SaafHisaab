@@ -14,6 +14,8 @@ class StockScreen extends ConsumerStatefulWidget {
 }
 
 class _StockScreenState extends ConsumerState<StockScreen> {
+  bool _isSaving = false;
+
   @override
   Widget build(BuildContext context) {
     final isEn = ref.watch(appLanguageProvider);
@@ -171,12 +173,20 @@ class _StockScreenState extends ConsumerState<StockScreen> {
                 ],
               ),
               const SizedBox(height: 24),
-              SizedBox(
-                width: double.infinity, height: 50,
-                child: ElevatedButton(
-                  onPressed: () => _saveItem(ctx, isEn, nameCtrl.text, qtyCtrl.text, buyCtrl.text, sellCtrl.text, unit),
-                  style: ElevatedButton.styleFrom(backgroundColor: AppColors.primary, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)), elevation: 0),
-                  child: Text(AppLang.tr(isEn, 'Save Item', 'आइटम सहेजें'), style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w600, color: Colors.white)),
+              StatefulBuilder(
+                builder: (_, setSaveBtnState) => SizedBox(
+                  width: double.infinity, height: 50,
+                  child: ElevatedButton(
+                    onPressed: _isSaving ? null : () => _saveItem(ctx, isEn, nameCtrl.text, qtyCtrl.text, buyCtrl.text, sellCtrl.text, unit, setSaveBtnState),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: _isSaving ? AppColors.textHint : AppColors.primary,
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                      elevation: 0,
+                    ),
+                    child: _isSaving
+                        ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2))
+                        : Text(AppLang.tr(isEn, 'Save Item', 'आइटम सहेजें'), style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w600, color: Colors.white)),
+                  ),
                 ),
               ),
             ],
@@ -197,11 +207,17 @@ class _StockScreenState extends ConsumerState<StockScreen> {
     );
   }
 
-  Future<void> _saveItem(BuildContext ctx, bool isEn, String name, String qty, String buy, String sell, String unit) async {
+  Future<void> _saveItem(BuildContext ctx, bool isEn, String name, String qty, String buy, String sell, String unit, void Function(void Function()) setSaveBtnState) async {
     if (name.trim().isEmpty || qty.trim().isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(AppLang.tr(isEn, 'Name and quantity are required', 'नाम और मात्रा ज़रूरी है')), backgroundColor: AppColors.error));
       return;
     }
+
+    // Prevent double-tap
+    if (_isSaving) return;
+    _isSaving = true;
+    setSaveBtnState(() {});
+
     try {
       final userId = AuthService.currentUserId;
       final shop = await ref.read(shopProvider.future);
@@ -223,6 +239,9 @@ class _StockScreenState extends ConsumerState<StockScreen> {
       }
     } catch (e) {
       if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Save failed: $e'), backgroundColor: AppColors.error));
+    } finally {
+      _isSaving = false;
+      if (mounted) setState(() {});
     }
   }
 }

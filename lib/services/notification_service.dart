@@ -30,39 +30,50 @@ class NotificationService {
     // ✅ Skip notifications on web — only works on Android
     if (kIsWeb) return;
 
-    await _messaging.requestPermission(alert: true, badge: true, sound: true);
+    try {
+      await _messaging.requestPermission(alert: true, badge: true, sound: true);
 
-    const androidSettings = AndroidInitializationSettings(
-      '@mipmap/ic_launcher',
-    );
-    const initSettings = InitializationSettings(android: androidSettings);
-    await _localNotifications.initialize(
-      initSettings,
-      onDidReceiveNotificationResponse: _onNotificationTap,
-    );
-
-    await _localNotifications
-        .resolvePlatformSpecificImplementation<AndroidFlutterLocalNotificationsPlugin>()
-        ?.createNotificationChannel(_channel);
-
-    FirebaseMessaging.onMessage.listen((RemoteMessage message) {
-      showLocalNotification(
-        title: message.notification?.title ?? 'SaafHisaab',
-        body: message.notification?.body ?? '',
+      const androidSettings = AndroidInitializationSettings(
+        '@mipmap/ic_launcher',
       );
-    });
+      const initSettings = InitializationSettings(android: androidSettings);
+      await _localNotifications.initialize(
+        initSettings,
+        onDidReceiveNotificationResponse: _onNotificationTap,
+      );
 
-    FirebaseMessaging.onBackgroundMessage(firebaseMessagingBackgroundHandler);
+      await _localNotifications
+          .resolvePlatformSpecificImplementation<
+              AndroidFlutterLocalNotificationsPlugin>()
+          ?.createNotificationChannel(_channel);
+
+      FirebaseMessaging.onMessage.listen((RemoteMessage message) {
+        showLocalNotification(
+          title: message.notification?.title ?? 'SaafHisaab',
+          body: message.notification?.body ?? '',
+        );
+      });
+
+      FirebaseMessaging.onBackgroundMessage(firebaseMessagingBackgroundHandler);
+    } catch (e) {
+      debugPrint('Notification init error: $e');
+    }
   }
 
   static Future<String?> getDeviceToken() async {
-    final token = await _messaging.getToken();
-    debugPrint('FCM Token: $token');
-    return token;
+    if (kIsWeb) return null; // No tokens on web
+    try {
+      final token = await _messaging.getToken();
+      debugPrint('FCM Token: $token');
+      return token;
+    } catch (e) {
+      debugPrint('FCM Token error: $e');
+      return null;
+    }
   }
 
-  // ✅ Fixed — using Supabase.instance.client instead of creating new SupabaseClient
   static Future<void> saveTokenToSupabase(String userId) async {
+    if (kIsWeb) return; // Skip on web
     final token = await getDeviceToken();
     if (token == null) return;
     try {
