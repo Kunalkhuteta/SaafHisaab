@@ -1,6 +1,7 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import '../models/shop_model.dart';
+import '../models/bill_model.dart';
 import '../services/auth_service.dart';
 import '../services/supabase_service.dart';
 import '../../main.dart';
@@ -34,6 +35,35 @@ final todayBillsProvider = FutureProvider((ref) async {
   final shop = await ref.watch(shopProvider.future);
   if (shop == null) return [];
   return await SupabaseService.getTodayBills(shop.id);
+});
+
+// ── Date filter for bills: 'today', 'week', 'month' ──
+final billsDateFilterProvider = StateProvider<String>((ref) => 'today');
+
+// ── Filtered bills provider (date-wise) ──
+final filteredBillsProvider = FutureProvider<List<BillModel>>((ref) async {
+  final shop = await ref.watch(shopProvider.future);
+  if (shop == null) return [];
+  final filter = ref.watch(billsDateFilterProvider);
+  final now = DateTime.now();
+  final today = DateTime(now.year, now.month, now.day);
+
+  DateTime from;
+  DateTime to = now;
+
+  switch (filter) {
+    case 'week':
+      from = today.subtract(const Duration(days: 7));
+      break;
+    case 'month':
+      from = DateTime(now.year, now.month, 1);
+      break;
+    default:
+      from = today;
+      break;
+  }
+
+  return await SupabaseService.getBills(shop.id, from, to);
 });
 
 // ── Stock items provider ──

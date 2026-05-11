@@ -7,6 +7,7 @@ import '../../services/auth_service.dart';
 import '../../services/supabase_service.dart';
 import '../../services/share_service.dart';
 import '../../models/bill_model.dart';
+import '../../models/stock_model.dart';
 import '../../globalVar.dart';
 
 class BillReviewScreen extends ConsumerStatefulWidget {
@@ -28,12 +29,12 @@ class _BillReviewScreenState extends ConsumerState<BillReviewScreen> {
   late TextEditingController _amountCtrl;
   late TextEditingController _gstAmountCtrl;
   late TextEditingController _notesCtrl;
-  late TextEditingController _itemNameCtrl;
   late TextEditingController _itemQtyCtrl;
   late DateTime _billDate;
   String _billType = 'purchase';
   bool _isGstBill = false;
   bool _isSaving = false;
+  StockItemModel? _selectedStockItem;
 
   @override
   void initState() {
@@ -50,7 +51,6 @@ class _BillReviewScreenState extends ConsumerState<BillReviewScreen> {
       text: gst is double && gst > 0 ? gst.toStringAsFixed(2) : '',
     );
     _notesCtrl = TextEditingController();
-    _itemNameCtrl = TextEditingController();
     _itemQtyCtrl = TextEditingController(text: '1');
 
     try {
@@ -67,7 +67,6 @@ class _BillReviewScreenState extends ConsumerState<BillReviewScreen> {
     _amountCtrl.dispose();
     _gstAmountCtrl.dispose();
     _notesCtrl.dispose();
-    _itemNameCtrl.dispose();
     _itemQtyCtrl.dispose();
     super.dispose();
   }
@@ -98,6 +97,21 @@ class _BillReviewScreenState extends ConsumerState<BillReviewScreen> {
       return;
     }
 
+    // Check stock availability for sale bills
+    if (_billType == 'sale' && _selectedStockItem != null) {
+      final qty = double.tryParse(_itemQtyCtrl.text.trim()) ?? 1;
+      if (_selectedStockItem!.currentQuantity < qty) {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+          content: Text(AppLang.tr(isEn,
+            'Insufficient stock! Available: ${_selectedStockItem!.currentQuantity.toStringAsFixed(0)} ${_selectedStockItem!.unit}',
+            'स्टॉक अपर्याप्त! उपलब्ध: ${_selectedStockItem!.currentQuantity.toStringAsFixed(0)} ${_selectedStockItem!.unit}',
+          )),
+          backgroundColor: AppColors.error,
+        ));
+        return;
+      }
+    }
+
     setState(() => _isSaving = true);
     try {
       final userId = AuthService.currentUserId;
@@ -125,12 +139,12 @@ class _BillReviewScreenState extends ConsumerState<BillReviewScreen> {
       ));
 
       // 2. Stock deduction for sale bills
-      if (_billType == 'sale' && _itemNameCtrl.text.trim().isNotEmpty) {
+      if (_billType == 'sale' && _selectedStockItem != null) {
         final qty = double.tryParse(_itemQtyCtrl.text.trim()) ?? 1;
         try {
           await SupabaseService.deductStock(
             shop.id,
-            _itemNameCtrl.text.trim(),
+            _selectedStockItem!.itemName,
             qty,
           );
         } catch (e) {
@@ -343,7 +357,7 @@ class _BillReviewScreenState extends ConsumerState<BillReviewScreen> {
                     ),
                   ),
 
-                  // ── Sale-specific: Stock Deduction ──
+                  // ── Sale-specific: Stock Deduction with Dropdown ──
                   if (_billType == 'sale') ...[
                     const SizedBox(height: 18),
                     Container(
@@ -358,14 +372,105 @@ class _BillReviewScreenState extends ConsumerState<BillReviewScreen> {
                           Icon(Icons.inventory_2_rounded, color: AppColors.success, size: 18),
                           const SizedBox(width: 8),
                           Expanded(child: Text(
-                            AppLang.tr(isEn, 'Deduct from Stock (optional)', 'स्टॉक से कटौती (वैकल्पिक)'),
+                            AppLang.tr(isEn, 'Deduct from Stock', 'स्टॉक से कटौती'),
                             style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: AppColors.success),
                           )),
                         ]),
                         const SizedBox(height: 10),
-                        _field(_itemNameCtrl, AppLang.tr(isEn, 'Item name (must match stock)', 'आइटम नाम (स्टॉक से मिलना चाहिए)')),
-                        const SizedBox(height: 8),
-                        _field(_itemQtyCtrl, AppLang.tr(isEn, 'Quantity to deduct', 'कटौती मात्रा'), isNumber: true),
+                        // Stock items dropdown
+                        ref.watch(stockItemsProvider).when(
+                          loading: () => const Center(child: Padding(
+                            padding: EdgeInsets.all(8.0),
+                            child: CircularProgressIndicator(color: AppColors.primary, strokeWidth: 2),
+                          )),
+                          error: (e, _) => Text('Error loading stock: $e', style: const TextStyle(color: AppColors.error, fontSize: 12)),
+                          data: (stockItems) {
+                            if (stockItems.isEmpty) {
+                              return Container(
+                                padding: const EdgeInsets.all(12),
+                                decoration: BoxDecoration(color: AppColors.warning.withOpacity(0.1), borderRadius: BorderRadius.circular(10)),
+                                child: Row(children: [
+                                  const Icon(Icons.info_outline_rounded, color: AppColors.warning, size: 18),
+                                  const SizedBox(width: 8),
+                                  Expanded(child: Text(
+                                    AppLang.tr(isEn, 'No stock items. Add items in Stock tab first.', 'कोई स्टॉक आइटम नहीं। पहले स्टॉक टैब में आइटम जोड़ें।'),
+                                    style: const TextStyle(fontSize: 12, color: AppColors.warning),
+                                  )),
+                                ]),
+                              );
+                            }
+                            return Column(children: [
+                              DropdownButtonFormField<StockItemModel>(
+                                value: _selectedStockItem,
+                                isExpanded: true,
+                                decoration: InputDecoration(
+                                  hintText: AppLang.tr(isEn, 'Choose item from stock', 'स्टॉक से आइटम चुनें'),
+                                  hintStyle: const TextStyle(fontSize: 13, color: AppColors.textHint),
+                                  filled: true, fillColor: AppColors.surface,
+                                  border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: const BorderSide(color: AppColors.borderBlue)),
+                                  contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
+                                ),
+                                items: stockItems.map((item) => DropdownMenuItem<StockItemModel>(
+                                  value: item,
+                                  child: Row(
+                                    children: [
+                                      Expanded(child: Text(item.itemName, style: const TextStyle(fontSize: 14), overflow: TextOverflow.ellipsis)),
+                                      const SizedBox(width: 6),
+                                      Text('${item.currentQuantity.toStringAsFixed(0)} ${item.unit}',
+                                        style: TextStyle(
+                                          fontSize: 11,
+                                          color: item.isLowStock ? AppColors.error : AppColors.textSecondary,
+                                          fontWeight: item.isLowStock ? FontWeight.w600 : FontWeight.normal,
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                )).toList(),
+                                onChanged: (item) {
+                                  setState(() {
+                                    _selectedStockItem = item;
+                                  });
+                                },
+                              ),
+                              // Low stock warning
+                              if (_selectedStockItem != null && _selectedStockItem!.isLowStock) ...[
+                                const SizedBox(height: 8),
+                                Container(
+                                  padding: const EdgeInsets.all(10),
+                                  decoration: BoxDecoration(color: AppColors.error.withOpacity(0.1), borderRadius: BorderRadius.circular(8)),
+                                  child: Row(children: [
+                                    const Icon(Icons.warning_rounded, color: AppColors.error, size: 16),
+                                    const SizedBox(width: 8),
+                                    Expanded(child: Text(
+                                      AppLang.tr(isEn,
+                                        'Low stock! Only ${_selectedStockItem!.currentQuantity.toStringAsFixed(0)} ${_selectedStockItem!.unit} left.',
+                                        'स्टॉक कम है! केवल ${_selectedStockItem!.currentQuantity.toStringAsFixed(0)} ${_selectedStockItem!.unit} बचे हैं।',
+                                      ),
+                                      style: const TextStyle(fontSize: 11, color: AppColors.error, fontWeight: FontWeight.w500),
+                                    )),
+                                  ]),
+                                ),
+                              ],
+                              if (_selectedStockItem != null && _selectedStockItem!.currentQuantity <= 0) ...[
+                                const SizedBox(height: 8),
+                                Container(
+                                  padding: const EdgeInsets.all(10),
+                                  decoration: BoxDecoration(color: AppColors.error.withOpacity(0.15), borderRadius: BorderRadius.circular(8)),
+                                  child: Row(children: [
+                                    const Icon(Icons.block_rounded, color: AppColors.error, size: 16),
+                                    const SizedBox(width: 8),
+                                    Expanded(child: Text(
+                                      AppLang.tr(isEn, 'Out of stock! Cannot sell this item.', 'स्टॉक खत्म! यह आइटम बेचा नहीं जा सकता।'),
+                                      style: const TextStyle(fontSize: 11, color: AppColors.error, fontWeight: FontWeight.w600),
+                                    )),
+                                  ]),
+                                ),
+                              ],
+                              const SizedBox(height: 8),
+                              _field(_itemQtyCtrl, AppLang.tr(isEn, 'Quantity to deduct', 'कटौती मात्रा'), isNumber: true),
+                            ]);
+                          },
+                        ),
                       ]),
                     ),
                   ],
@@ -429,7 +534,10 @@ class _BillReviewScreenState extends ConsumerState<BillReviewScreen> {
   Widget _typeChip(String label, String type) {
     final sel = _billType == type;
     return GestureDetector(
-      onTap: () => setState(() => _billType = type),
+      onTap: () => setState(() {
+        _billType = type;
+        if (type != 'sale') _selectedStockItem = null;
+      }),
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
         decoration: BoxDecoration(

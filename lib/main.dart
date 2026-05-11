@@ -33,10 +33,14 @@ void main() async {
   final connected = await SupabaseService.testConnection();
   print(connected ? '✅ Supabase connected' : '❌ Supabase failed');
 
-  await Firebase.initializeApp(
-    options: DefaultFirebaseOptions.currentPlatform,
-  );
-  await NotificationService.initialize();
+  try {
+    await Firebase.initializeApp(
+      options: DefaultFirebaseOptions.currentPlatform,
+    );
+    await NotificationService.initialize();
+  } catch (e) {
+    debugPrint('Firebase/Notification init error: $e');
+  }
 
   runApp(const ProviderScope(child: SaafHisaabApp()));
 }
