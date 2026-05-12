@@ -11,6 +11,7 @@ import '../../models/stock_model.dart';
 import '../../globalVar.dart';
 import 'bill_review_screen.dart';
 import '../sales/sale_entry_screen.dart';
+import '../sales/sale_detail_screen.dart';
 
 import 'dart:io';
 import '../../services/ocr_service.dart';
@@ -230,32 +231,46 @@ class _BillScanScreenState extends ConsumerState<BillScanScreen> {
 
   Widget _billCard(BillModel bill, bool isEn) {
     final isSale = bill.billType == 'sale';
-    return Container(
-      margin: const EdgeInsets.only(bottom: 10), padding: const EdgeInsets.all(14),
-      decoration: BoxDecoration(color: AppColors.surface, borderRadius: BorderRadius.circular(14), border: Border.all(color: AppColors.border)),
-      child: Row(children: [
-        Container(
-          width: 42, height: 42,
-          decoration: BoxDecoration(color: isSale ? AppColors.success.withOpacity(0.1) : AppColors.primaryBg, borderRadius: BorderRadius.circular(10)),
-          child: Icon(isSale ? Icons.trending_up_rounded : Icons.receipt_rounded, color: isSale ? AppColors.success : AppColors.primary, size: 20),
-        ),
-        const SizedBox(width: 12),
-        Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-          Text(bill.vendorName.isEmpty ? AppLang.tr(isEn, isSale ? 'Sale' : 'Bill', isSale ? 'बिक्री' : 'बिल') : bill.vendorName,
-              style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w600, color: AppColors.textPrimary)),
-          Row(children: [
-            Container(
-              padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-              decoration: BoxDecoration(color: isSale ? AppColors.success.withOpacity(0.1) : AppColors.primary.withOpacity(0.1), borderRadius: BorderRadius.circular(4)),
-              child: Text(isSale ? AppLang.tr(isEn, 'Sale', 'बिक्री') : AppLang.tr(isEn, 'Purchase', 'खरीद'),
-                  style: TextStyle(fontSize: 10, fontWeight: FontWeight.w600, color: isSale ? AppColors.success : AppColors.primary)),
-            ),
-            const SizedBox(width: 6),
-            Text('${bill.billDate.day}/${bill.billDate.month}/${bill.billDate.year}', style: const TextStyle(fontSize: 11, color: AppColors.textHint)),
-          ]),
-        ])),
-        Text('₹${bill.amount.toStringAsFixed(0)}', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: isSale ? AppColors.success : AppColors.primary)),
-      ]),
+    return GestureDetector(
+      onTap: () async {
+        final result = await Navigator.push<bool>(
+          context,
+          MaterialPageRoute(builder: (_) => SaleDetailScreen(bill: bill)),
+        );
+        if (result == true) {
+          ref.invalidate(filteredBillsProvider);
+          ref.invalidate(dashboardStatsProvider);
+        }
+      },
+      child: Container(
+        margin: const EdgeInsets.only(bottom: 10), padding: const EdgeInsets.all(14),
+        decoration: BoxDecoration(color: AppColors.surface, borderRadius: BorderRadius.circular(14), border: Border.all(color: AppColors.border)),
+        child: Row(children: [
+          Container(
+            width: 42, height: 42,
+            decoration: BoxDecoration(color: isSale ? AppColors.success.withOpacity(0.1) : AppColors.primaryBg, borderRadius: BorderRadius.circular(10)),
+            child: Icon(isSale ? Icons.trending_up_rounded : Icons.receipt_rounded, color: isSale ? AppColors.success : AppColors.primary, size: 20),
+          ),
+          const SizedBox(width: 12),
+          Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            Text(bill.vendorName.isEmpty ? AppLang.tr(isEn, isSale ? 'Sale' : 'Bill', isSale ? 'बिक्री' : 'बिल') : bill.vendorName,
+                style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w600, color: AppColors.textPrimary)),
+            Row(children: [
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                decoration: BoxDecoration(color: isSale ? AppColors.success.withOpacity(0.1) : AppColors.primary.withOpacity(0.1), borderRadius: BorderRadius.circular(4)),
+                child: Text(isSale ? AppLang.tr(isEn, 'Sale', 'बिक्री') : AppLang.tr(isEn, 'Purchase', 'खरीद'),
+                    style: TextStyle(fontSize: 10, fontWeight: FontWeight.w600, color: isSale ? AppColors.success : AppColors.primary)),
+              ),
+              const SizedBox(width: 6),
+              Text('${bill.billDate.day}/${bill.billDate.month}/${bill.billDate.year}', style: const TextStyle(fontSize: 11, color: AppColors.textHint)),
+            ]),
+          ])),
+          Text('₹${bill.amount.toStringAsFixed(0)}', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: isSale ? AppColors.success : AppColors.primary)),
+          const SizedBox(width: 6),
+          Icon(Icons.chevron_right_rounded, color: AppColors.textHint, size: 20),
+        ]),
+      ),
     );
   }
 

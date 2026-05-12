@@ -84,6 +84,33 @@ class SupabaseService {
     await _client.from('bills').insert(bill.toJson());
   }
 
+  /// Insert bill and return its generated ID
+  static Future<String> saveBillGetId(BillModel bill) async {
+    await _client.from('bills').insert(bill.toJson());
+    // Query the bill we just created (most recent for this user)
+    final data = await _client
+        .from('bills')
+        .select('id')
+        .eq('shop_id', bill.shopId)
+        .eq('user_id', bill.userId)
+        .order('created_at', ascending: false)
+        .limit(1);
+    if ((data as List).isNotEmpty) {
+      return data.first['id'] as String;
+    }
+    return '';
+  }
+
+  /// Get sales linked to a specific bill
+  static Future<List<SaleModel>> getSalesByBillId(String billId) async {
+    final data = await _client
+        .from('sales')
+        .select()
+        .eq('bill_id', billId)
+        .order('created_at');
+    return (data as List).map((s) => SaleModel.fromJson(s)).toList();
+  }
+
   static Future<List<BillModel>> getTodayBills(String shopId) async {
     final today = DateTime.now().toIso8601String().split('T')[0];
     final data = await _client

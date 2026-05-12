@@ -103,8 +103,8 @@ class _SaleEntryScreenState extends ConsumerState<SaleEntryScreen> {
       final shop = await ref.read(shopProvider.future);
       if (userId == null || shop == null) throw Exception('Not found');
 
-      // 1. Save BillModel for total (shows in bills list)
-      await SupabaseService.saveBill(BillModel(
+      // 1. Save BillModel and get its unique ID
+      final billId = await SupabaseService.saveBillGetId(BillModel(
         id: '',
         shopId: shop.id,
         userId: userId,
@@ -116,7 +116,7 @@ class _SaleEntryScreenState extends ConsumerState<SaleEntryScreen> {
         createdAt: DateTime.now(),
       ));
 
-      // 2. Save individual SaleModel records + deduct stock
+      // 2. Save individual SaleModel records linked to the bill + deduct stock
       int stockUpdated = 0;
       for (final li in _lineItems) {
         await SupabaseService.saveSale(SaleModel(
@@ -129,16 +129,18 @@ class _SaleEntryScreenState extends ConsumerState<SaleEntryScreen> {
           sellingPrice: li.unitPrice,
           totalAmount: li.lineTotal,
           paymentMode: _paymentMode,
-          billId: null,
+          billId: billId.isNotEmpty ? billId : null,
           saleDate: DateTime.now(),
           notes: _notesCtrl.text.trim(),
           createdAt: DateTime.now(),
         ));
 
-        // 3. Deduct stock by ID (most reliable — no name matching needed)
-        final deducted = await SupabaseService.deductStockById(
-            li.stockItemId!, li.quantity);
-        if (deducted) stockUpdated++;
+        // 3. Deduct stock by ID
+        if (li.stockItemId != null) {
+          final deducted = await SupabaseService.deductStockById(
+              li.stockItemId!, li.quantity);
+          if (deducted) stockUpdated++;
+        }
       }
 
       ref.invalidate(todayBillsProvider);
