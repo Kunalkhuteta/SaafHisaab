@@ -7,6 +7,7 @@ import '../../providers/app_providers.dart';
 import '../../services/auth_service.dart';
 import '../../services/supabase_service.dart';
 import '../../models/bill_model.dart';
+import '../../models/stock_model.dart';
 import '../../globalVar.dart';
 import 'bill_review_screen.dart';
 import '../sales/sale_entry_screen.dart';
@@ -262,7 +263,9 @@ class _BillScanScreenState extends ConsumerState<BillScanScreen> {
   void _showAddBillDialog(BuildContext context, bool isEn) {
     final vendorCtrl = TextEditingController();
     final amountCtrl = TextEditingController();
+    final qtyCtrl = TextEditingController(text: '1');
     String billType = 'purchase';
+    StockItemModel? selectedStockItem;
     bool isSaving = false;
 
     showModalBottomSheet(
@@ -281,44 +284,89 @@ class _BillScanScreenState extends ConsumerState<BillScanScreen> {
               const SizedBox(width: 10),
               _typeChip(AppLang.tr(isEn, 'Sale', 'बिक्री'), billType == 'sale', () => setDialogState(() => billType = 'sale')),
             ]),
-            if (billType == 'sale')
-              Padding(
-                padding: const EdgeInsets.only(top: 10),
-                child: GestureDetector(
-                  onTap: () {
-                    Navigator.pop(ctx);
-                    Navigator.push(context, MaterialPageRoute(builder: (_) => const SaleEntryScreen()));
-                  },
-                  child: Container(
-                    padding: const EdgeInsets.all(12),
-                    decoration: BoxDecoration(color: AppColors.success.withOpacity(0.1), borderRadius: BorderRadius.circular(10), border: Border.all(color: AppColors.success.withOpacity(0.3))),
-                    child: Row(children: [
-                      const Icon(Icons.shopping_cart_rounded, color: AppColors.success, size: 18),
-                      const SizedBox(width: 8),
-                      Expanded(child: Text(AppLang.tr(isEn, 'Use Sale Entry form for stock-linked sales →', 'स्टॉक-लिंक्ड बिक्री के लिए सेल एंट्री फॉर्म →'),
-                          style: const TextStyle(fontSize: 12, color: AppColors.success, fontWeight: FontWeight.w500))),
-                    ]),
-                  ),
+            
+            const SizedBox(height: 16),
+            
+            if (billType == 'sale') ...[
+              // Stock Item selection for manual bill
+              ref.watch(stockItemsProvider).when(
+                loading: () => const CircularProgressIndicator(),
+                error: (e, _) => Text('Error: $e'),
+                data: (stockItems) => Column(
+                  children: [
+                    DropdownButtonFormField<StockItemModel>(
+                      value: selectedStockItem,
+                      decoration: _inputDeco(AppLang.tr(isEn, 'Choose Stock Item', 'स्टॉक आइटम चुनें')),
+                      items: stockItems.cast<StockItemModel>().map((StockItemModel item) => DropdownMenuItem<StockItemModel>(
+                        value: item,
+                        child: Text('${item.itemName} (${item.currentQuantity.toStringAsFixed(0)} ${item.unit})'),
+                      )).toList(),
+                      onChanged: (StockItemModel? item) {
+                        setDialogState(() {
+                          selectedStockItem = item;
+                          if (item != null) {
+                            amountCtrl.text = (item.sellingPrice * (double.tryParse(qtyCtrl.text) ?? 1)).toStringAsFixed(0);
+                          }
+                        });
+                      },
+                    ),
+                    const SizedBox(height: 12),
+                    TextField(
+                      controller: qtyCtrl,
+                      keyboardType: TextInputType.number,
+                      decoration: _inputDeco(AppLang.tr(isEn, 'Quantity to deduct', 'कटौती मात्रा')),
+                      onChanged: (v) {
+                        if (selectedStockItem != null) {
+                          final q = double.tryParse(v) ?? 1;
+                          amountCtrl.text = (selectedStockItem!.sellingPrice * q).toStringAsFixed(0);
+                        }
+                      },
+                    ),
+                  ],
                 ),
               ),
-            const SizedBox(height: 16),
+              const SizedBox(height: 12),
+            ],
+
             TextField(controller: vendorCtrl, decoration: _inputDeco(AppLang.tr(isEn, 'Vendor / Party name', 'वेंडर / पार्टी का नाम'))),
             const SizedBox(height: 12),
             TextField(controller: amountCtrl, keyboardType: TextInputType.number, decoration: _inputDeco(AppLang.tr(isEn, 'Amount (₹) *', 'राशि (₹) *'))),
             const SizedBox(height: 24),
+            
             SizedBox(width: double.infinity, height: 50, child: ElevatedButton(
               onPressed: isSaving ? null : () async {
-                if (amountCtrl.text.trim().isEmpty) return;
+                final amt = double.tryParse(amountCtrl.text.trim()) ?? 0;
+                if (amt <= 0) return;
+                
                 setDialogState(() => isSaving = true);
                 try {
                   final userId = AuthService.currentUserId;
                   final shop = await ref.read(shopProvider.future);
                   if (userId == null || shop == null) throw Exception('Not found');
-                  await SupabaseService.saveBill(BillModel(id: '', shopId: shop.id, userId: userId, amount: double.tryParse(amountCtrl.text) ?? 0, billDate: DateTime.now(), vendorName: vendorCtrl.text.trim(), billType: billType, createdAt: DateTime.now()));
+
+                  // 1. Save Bill
+                  await SupabaseService.saveBill(BillModel(
+                    id: '', shopId: shop.id, userId: userId, 
+                    amount: amt, billDate: DateTime.now(), 
+                    vendorName: vendorCtrl.text.trim(), billType: billType, 
+                    createdAt: DateTime.now()
+                  ));
+
+                  // 2. Deduct Stock if selected
+                  if (billType == 'sale' && selectedStockItem != null) {
+                    final qty = double.tryParse(qtyCtrl.text) ?? 1;
+                    await SupabaseService.deductStock(shop.id, selectedStockItem!.itemName, qty);
+                  }
+
                   ref.invalidate(filteredBillsProvider);
                   ref.invalidate(todayBillsProvider);
                   ref.invalidate(dashboardStatsProvider);
-                  if (ctx.mounted) { Navigator.pop(ctx); ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(AppLang.tr(isEn, 'Bill saved!', 'बिल सहेजा गया!')), backgroundColor: AppColors.success)); }
+                  ref.invalidate(stockItemsProvider);
+                  
+                  if (ctx.mounted) { 
+                    Navigator.pop(ctx); 
+                    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(AppLang.tr(isEn, 'Bill saved and stock updated!', 'बिल सहेजा गया और स्टॉक अपडेट हुआ!')), backgroundColor: AppColors.success)); 
+                  }
                 } catch (e) {
                   setDialogState(() => isSaving = false);
                   if (ctx.mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Failed: $e'), backgroundColor: AppColors.error));
