@@ -135,9 +135,9 @@ class _SaleEntryScreenState extends ConsumerState<SaleEntryScreen> {
           createdAt: DateTime.now(),
         ));
 
-        // 3. Deduct stock (non-blocking — won't crash if it fails)
-        final deducted = await SupabaseService.deductStock(
-            shop.id, li.stockItemName, li.quantity);
+        // 3. Deduct stock by ID (most reliable — no name matching needed)
+        final deducted = await SupabaseService.deductStockById(
+            li.stockItemId!, li.quantity);
         if (deducted) stockUpdated++;
       }
 
