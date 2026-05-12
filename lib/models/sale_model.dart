@@ -51,7 +51,7 @@ class SaleModel {
   }
 
   Map<String, dynamic> toJson() {
-    return {
+    final json = <String, dynamic>{
       'shop_id': shopId,
       'user_id': userId,
       'item_name': itemName,
@@ -61,9 +61,12 @@ class SaleModel {
       'total_amount': totalAmount,
       'payment_mode': paymentMode,
       'category': category,
-      'bill_id': billId,
       'sale_date': saleDate.toIso8601String().split('T')[0],
       'notes': notes,
     };
+    if (billId != null && billId!.isNotEmpty) {
+      json['bill_id'] = billId;
+    }
+    return json;
   }
 }

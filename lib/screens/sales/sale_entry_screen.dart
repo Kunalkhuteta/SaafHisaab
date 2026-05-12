@@ -104,7 +104,7 @@ class _SaleEntryScreenState extends ConsumerState<SaleEntryScreen> {
       if (userId == null || shop == null) throw Exception('Not found');
 
       // 1. Save BillModel for total (shows in bills list)
-      final savedBill = await SupabaseService.saveBill(BillModel(
+      await SupabaseService.saveBill(BillModel(
         id: '',
         shopId: shop.id,
         userId: userId,
@@ -117,6 +117,7 @@ class _SaleEntryScreenState extends ConsumerState<SaleEntryScreen> {
       ));
 
       // 2. Save individual SaleModel records + deduct stock
+      int stockUpdated = 0;
       for (final li in _lineItems) {
         await SupabaseService.saveSale(SaleModel(
           id: '',
@@ -128,13 +129,16 @@ class _SaleEntryScreenState extends ConsumerState<SaleEntryScreen> {
           sellingPrice: li.unitPrice,
           totalAmount: li.lineTotal,
           paymentMode: _paymentMode,
-          billId: savedBill.id,
+          billId: null,
           saleDate: DateTime.now(),
           notes: _notesCtrl.text.trim(),
           createdAt: DateTime.now(),
         ));
-        await SupabaseService.deductStock(
+
+        // 3. Deduct stock (non-blocking — won't crash if it fails)
+        final deducted = await SupabaseService.deductStock(
             shop.id, li.stockItemName, li.quantity);
+        if (deducted) stockUpdated++;
       }
 
       ref.invalidate(todayBillsProvider);
@@ -143,9 +147,11 @@ class _SaleEntryScreenState extends ConsumerState<SaleEntryScreen> {
       ref.invalidate(stockItemsProvider);
 
       if (mounted) {
+        final msg = stockUpdated == _lineItems.length
+            ? AppLang.tr(isEn, 'Sale saved & stock updated!', 'बिक्री सहेजी और स्टॉक अपडेट!')
+            : AppLang.tr(isEn, 'Sale saved! (Stock update partial)', 'बिक्री सहेजी! (स्टॉक आंशिक अपडेट)');
         ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-          content: Text(AppLang.tr(
-              isEn, 'Sale saved successfully!', 'बिक्री सफलतापूर्वक सहेजी!')),
+          content: Text(msg),
           backgroundColor: AppColors.success,
         ));
         Navigator.pop(context, true);
@@ -483,15 +489,19 @@ class _SaleEntryScreenState extends ConsumerState<SaleEntryScreen> {
 
         // Qty, Price, Total row
         Row(children: [
-          // Qty
+          // Qty with unit
           Expanded(
             child: TextField(
               controller: li.qtyCtrl,
-              keyboardType: TextInputType.number,
+              keyboardType: const TextInputType.numberWithOptions(decimal: true),
               onChanged: (_) => setState(() {}),
               decoration: InputDecoration(
-                labelText: AppLang.tr(isEn, 'Qty', 'मात्रा'),
+                labelText: li.stockItemId != null
+                    ? '${AppLang.tr(isEn, 'Qty', 'मात्रा')} (${li.unit})'
+                    : AppLang.tr(isEn, 'Qty', 'मात्रा'),
                 labelStyle: const TextStyle(fontSize: 12),
+                suffixText: li.stockItemId != null ? li.unit : null,
+                suffixStyle: const TextStyle(fontSize: 11, color: AppColors.primary, fontWeight: FontWeight.w600),
                 filled: true,
                 fillColor: AppColors.background,
                 border: OutlineInputBorder(
@@ -505,14 +515,16 @@ class _SaleEntryScreenState extends ConsumerState<SaleEntryScreen> {
             ),
           ),
           const SizedBox(width: 8),
-          // Price
+          // Price per unit
           Expanded(
             child: TextField(
               controller: li.priceCtrl,
-              keyboardType: TextInputType.number,
+              keyboardType: const TextInputType.numberWithOptions(decimal: true),
               onChanged: (_) => setState(() {}),
               decoration: InputDecoration(
-                labelText: '₹ ${AppLang.tr(isEn, 'Price', 'मूल्य')}',
+                labelText: li.stockItemId != null
+                    ? '₹/${li.unit}'
+                    : '₹ ${AppLang.tr(isEn, 'Price', 'मूल्य')}',
                 labelStyle: const TextStyle(fontSize: 12),
                 filled: true,
                 fillColor: AppColors.background,
