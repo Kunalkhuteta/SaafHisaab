@@ -80,13 +80,8 @@ class SupabaseService {
   // BILLS
   // ─────────────────────────────────────────
 
-  static Future<BillModel> saveBill(BillModel bill) async {
-    final data = await _client
-        .from('bills')
-        .insert(bill.toJson())
-        .select()
-        .single();
-    return BillModel.fromJson(data);
+  static Future<void> saveBill(BillModel bill) async {
+    await _client.from('bills').insert(bill.toJson());
   }
 
   static Future<List<BillModel>> getTodayBills(String shopId) async {
@@ -116,13 +111,8 @@ class SupabaseService {
   // SALES
   // ─────────────────────────────────────────
 
-  static Future<SaleModel> saveSale(SaleModel sale) async {
-    final data = await _client
-        .from('sales')
-        .insert(sale.toJson())
-        .select()
-        .single();
-    return SaleModel.fromJson(data);
+  static Future<void> saveSale(SaleModel sale) async {
+    await _client.from('sales').insert(sale.toJson());
   }
 
 static Future<double> getTodaySalesTotal(String shopId) async {
@@ -201,21 +191,78 @@ static Future<double> getTodaySalesTotal(String shopId) async {
         .eq('id', itemId);
   }
 
-static Future<void> deductStock(
-    String shopId, String itemName, double quantity) async {
-  final data = await _client
-      .from('stock_items')
-      .select()
-      .eq('shop_id', shopId)
-      .eq('item_name', itemName)
-      .maybeSingle();
-  if (data != null) {
-    final current = (data['current_quantity'] as num?)?.toDouble() ?? 0.0;
-    // ✅ Fixed — clamp returns num, cast to double explicitly
-    final newQty = (current - quantity).clamp(0.0, double.maxFinite).toDouble();
-    await updateStockQuantity(data['id'], newQty);
+  /// Deduct stock by item ID directly (most reliable)
+  static Future<bool> deductStockById(
+      String stockItemId, double quantity) async {
+    try {
+      // 1. Get current quantity
+      final data = await _client
+          .from('stock_items')
+          .select('id, current_quantity')
+          .eq('id', stockItemId)
+          .maybeSingle();
+
+      if (data == null) {
+        print('⚠️ deductStockById: item $stockItemId not found');
+        return false;
+      }
+
+      final current = (data['current_quantity'] as num?)?.toDouble() ?? 0.0;
+      final newQty = (current - quantity).clamp(0.0, double.maxFinite).toDouble();
+      
+      print('📦 Stock deduct: $current - $quantity = $newQty (id: $stockItemId)');
+
+      // 2. Update directly
+      await _client
+          .from('stock_items')
+          .update({
+            'current_quantity': newQty,
+            'updated_at': DateTime.now().toIso8601String(),
+          })
+          .eq('id', stockItemId);
+
+      return true;
+    } catch (e) {
+      print('❌ deductStockById error: $e');
+      return false;
+    }
   }
-}
+
+  /// Deduct stock by item name (fallback)
+  static Future<bool> deductStock(
+      String shopId, String itemName, double quantity) async {
+    try {
+      final data = await _client
+          .from('stock_items')
+          .select()
+          .eq('shop_id', shopId)
+          .eq('item_name', itemName)
+          .maybeSingle();
+
+      if (data == null) {
+        print('⚠️ deductStock: "$itemName" not found in shop $shopId');
+        return false;
+      }
+
+      final current = (data['current_quantity'] as num?)?.toDouble() ?? 0.0;
+      final newQty = (current - quantity).clamp(0.0, double.maxFinite).toDouble();
+      
+      print('📦 Stock deduct by name: $current - $quantity = $newQty');
+      
+      await _client
+          .from('stock_items')
+          .update({
+            'current_quantity': newQty,
+            'updated_at': DateTime.now().toIso8601String(),
+          })
+          .eq('id', data['id']);
+
+      return true;
+    } catch (e) {
+      print('❌ deductStock error: $e');
+      return false;
+    }
+  }
   // ─────────────────────────────────────────
   // UDHAR
   // ─────────────────────────────────────────
