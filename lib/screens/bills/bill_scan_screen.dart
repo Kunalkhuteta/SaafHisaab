@@ -355,7 +355,7 @@ class _BillScanScreenState extends ConsumerState<BillScanScreen> {
                   // 2. Deduct Stock if selected
                   if (billType == 'sale' && selectedStockItem != null) {
                     final qty = double.tryParse(qtyCtrl.text) ?? 1;
-                    await SupabaseService.deductStock(shop.id, selectedStockItem!.itemName, qty);
+                    await SupabaseService.deductStockById(selectedStockItem!.id, qty);
                   }
 
                   ref.invalidate(filteredBillsProvider);

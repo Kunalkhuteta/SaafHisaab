@@ -141,15 +141,10 @@ class _BillReviewScreenState extends ConsumerState<BillReviewScreen> {
       // 2. Stock deduction for sale bills
       if (_billType == 'sale' && _selectedStockItem != null) {
         final qty = double.tryParse(_itemQtyCtrl.text.trim()) ?? 1;
-        try {
-          await SupabaseService.deductStock(
-            shop.id,
-            _selectedStockItem!.itemName,
-            qty,
-          );
-        } catch (e) {
-          debugPrint('Stock deduction failed: $e');
-        }
+        await SupabaseService.deductStockById(
+          _selectedStockItem!.id,
+          qty,
+        );
       }
 
       ref.invalidate(todayBillsProvider);
