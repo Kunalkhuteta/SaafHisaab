@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import '../models/shop_model.dart';
 import '../models/bill_model.dart';
@@ -142,6 +143,31 @@ class SupabaseService {
     await _client.from('sales').insert(sale.toJson());
   }
 
+  /// Update an existing bill's amount, vendor, notes
+  static Future<void> updateBill(String billId, {
+    double? amount,
+    String? vendorName,
+    String? notes,
+  }) async {
+    final updates = <String, dynamic>{
+      'updated_at': DateTime.now().toIso8601String(),
+    };
+    if (amount != null) updates['amount'] = amount;
+    if (vendorName != null) updates['vendor_name'] = vendorName;
+    if (notes != null) updates['notes'] = notes;
+    await _client.from('bills').update(updates).eq('id', billId);
+  }
+
+  /// Delete all sale items linked to a bill (used before re-inserting updated items)
+  static Future<void> deleteSalesByBillId(String billId) async {
+    await _client.from('sales').delete().eq('bill_id', billId);
+  }
+
+  /// Delete a bill
+  static Future<void> deleteBill(String billId) async {
+    await _client.from('bills').delete().eq('id', billId);
+  }
+
 static Future<double> getTodaySalesTotal(String shopId) async {
   final today = DateTime.now().toIso8601String().split('T')[0];
   final data = await _client
@@ -218,11 +244,63 @@ static Future<double> getTodaySalesTotal(String shopId) async {
         .eq('id', itemId);
   }
 
-  /// Deduct stock by item ID directly (most reliable)
-  static Future<bool> deductStockById(
-      String stockItemId, double quantity) async {
+  /// Update full stock item details
+  static Future<void> updateStockItem(StockItemModel item) async {
+    await _client
+        .from('stock_items')
+        .update({
+          'item_name': item.itemName,
+          'current_quantity': item.currentQuantity,
+          'unit': item.unit,
+          'buying_price': item.buyingPrice,
+          'selling_price': item.sellingPrice,
+          'updated_at': DateTime.now().toIso8601String(),
+        })
+        .eq('id', item.id);
+  }
+
+  /// Delete stock item
+  static Future<void> deleteStockItem(String itemId) async {
+    await _client.from('stock_items').delete().eq('id', itemId);
+  }
+
+  /// Update Udhar customer
+  static Future<void> updateUdharCustomer(UdharCustomerModel customer) async {
+    await _client
+        .from('udhar_customers')
+        .update({
+          'customer_name': customer.customerName,
+          'customer_phone': customer.customerPhone,
+          'total_due': customer.totalDue,
+          'updated_at': DateTime.now().toIso8601String(),
+        })
+        .eq('id', customer.id);
+  }
+
+  /// Delete Udhar record
+  static Future<void> deleteUdharCustomer(String id) async {
+    await _client.from('udhar_customers').delete().eq('id', id);
+  }
+
+  /// Add stock by item ID directly (reverses deduction)
+  static Future<bool> addStockById(String stockItemId, double quantity) async {
     try {
-      // 1. Get current quantity
+      final data = await _client
+          .from('stock_items')
+          .select('current_quantity')
+          .eq('id', stockItemId)
+          .single();
+      final current = (data['current_quantity'] as num?)?.toDouble() ?? 0.0;
+      await updateStockQuantity(stockItemId, current + quantity);
+      return true;
+    } catch (e) {
+      debugPrint('Add stock error: $e');
+      return false;
+    }
+  }
+  /// Deduct stock by item ID directly (most reliable)
+  static Future<bool> deductStockById(String stockItemId, double quantity) async {
+    try {
       final data = await _client
           .from('stock_items')
           .select('id, current_quantity')
@@ -275,7 +353,6 @@ static Future<double> getTodaySalesTotal(String shopId) async {
       final newQty = (current - quantity).clamp(0.0, double.maxFinite).toDouble();
       
       print('📦 Stock deduct by name: $current - $quantity = $newQty');
-      
       await _client
           .from('stock_items')
           .update({
