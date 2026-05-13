@@ -4,6 +4,7 @@ import '../../constants/app_colors.dart';
 import '../../providers/app_providers.dart';
 import '../../services/auth_service.dart';
 import '../../services/supabase_service.dart';
+import '../../services/share_service.dart';
 import '../../models/bill_model.dart';
 import '../../models/sale_model.dart';
 import '../../models/stock_model.dart';
@@ -33,7 +34,8 @@ class _SaleLineItem {
 }
 
 class SaleEntryScreen extends ConsumerStatefulWidget {
-  const SaleEntryScreen({super.key});
+  final BillModel? bill;
+  const SaleEntryScreen({super.key, this.bill});
   @override
   ConsumerState<SaleEntryScreen> createState() => _SaleEntryScreenState();
 }
@@ -47,6 +49,59 @@ class _SaleEntryScreenState extends ConsumerState<SaleEntryScreen> {
 
   double get _grandTotal =>
       _lineItems.fold(0.0, (sum, item) => sum + item.lineTotal);
+
+  @override
+  void initState() {
+    super.initState();
+    if (widget.bill != null) {
+      _loadExistingSale();
+    }
+  }
+
+  Future<void> _loadExistingSale() async {
+    _customerCtrl.text = widget.bill!.vendorName;
+    _notesCtrl.text = widget.bill!.notes;
+    try {
+      final sales = await SupabaseService.getSalesByBillId(widget.bill!.id);
+      if (sales.isNotEmpty) {
+        setState(() {
+          _paymentMode = sales.first.paymentMode;
+          _lineItems.clear();
+          for (var s in sales) {
+            final item = _SaleLineItem();
+            item.stockItemName = s.itemName;
+            item.stockItemId = s.stockItemId;
+            item.unit = s.unit;
+            item.qtyCtrl.text = s.quantity.toString();
+            item.priceCtrl.text = s.sellingPrice.toString();
+            _lineItems.add(item);
+          }
+        });
+        
+        // Refresh current stock for these items
+        final stockItems = await ref.read(stockItemsProvider.future);
+        setState(() {
+          for (var li in _lineItems) {
+            final si = stockItems.firstWhere(
+              (element) => element.id == li.stockItemId, 
+              orElse: () => StockItemModel(
+                id: '', 
+                shopId: '', 
+                userId: '', 
+                itemName: '', 
+                currentQuantity: 0, 
+                unit: '',
+                createdAt: DateTime.now(),
+              )
+            );
+            li.currentStock = si.currentQuantity;
+          }
+        });
+      }
+    } catch (e) {
+      debugPrint('Error loading existing sale: $e');
+    }
+  }
 
   @override
   void dispose() {
@@ -103,20 +158,45 @@ class _SaleEntryScreenState extends ConsumerState<SaleEntryScreen> {
       final shop = await ref.read(shopProvider.future);
       if (userId == null || shop == null) throw Exception('Not found');
 
-      // 1. Save BillModel and get its unique ID
-      final billId = await SupabaseService.saveBillGetId(BillModel(
-        id: '',
-        shopId: shop.id,
-        userId: userId,
-        amount: _grandTotal,
-        billDate: DateTime.now(),
-        vendorName: _customerCtrl.text.trim(),
-        billType: 'sale',
-        notes: _notesCtrl.text.trim(),
-        createdAt: DateTime.now(),
-      ));
+      String billId;
+      if (widget.bill != null) {
+        // UPDATE MODE
+        billId = widget.bill!.id;
+        
+        // 1. Reverse old stock deductions
+        final oldSales = await SupabaseService.getSalesByBillId(billId);
+        for (var os in oldSales) {
+          if (os.stockItemId != null) {
+            await SupabaseService.addStockById(os.stockItemId!, os.quantity);
+          }
+        }
 
-      // 2. Save individual SaleModel records linked to the bill + deduct stock
+        // 2. Update Bill
+        await SupabaseService.updateBill(billId, 
+          amount: _grandTotal, 
+          vendorName: _customerCtrl.text.trim(), 
+          notes: _notesCtrl.text.trim()
+        );
+
+        // 3. Delete old sale items
+        await SupabaseService.deleteSalesByBillId(billId);
+      } else {
+        // NEW MODE
+        // 1. Save BillModel and get its unique ID
+        billId = await SupabaseService.saveBillGetId(BillModel(
+          id: '',
+          shopId: shop.id,
+          userId: userId,
+          amount: _grandTotal,
+          billDate: DateTime.now(),
+          vendorName: _customerCtrl.text.trim(),
+          billType: 'sale',
+          notes: _notesCtrl.text.trim(),
+          createdAt: DateTime.now(),
+        ));
+      }
+
+      // 4. Save individual SaleModel records linked to the bill + deduct stock
       int stockUpdated = 0;
       for (final li in _lineItems) {
         await SupabaseService.saveSale(SaleModel(
@@ -133,9 +213,10 @@ class _SaleEntryScreenState extends ConsumerState<SaleEntryScreen> {
           saleDate: DateTime.now(),
           notes: _notesCtrl.text.trim(),
           createdAt: DateTime.now(),
+          stockItemId: li.stockItemId,
         ));
 
-        // 3. Deduct stock by ID
+        // 5. Deduct stock by ID
         if (li.stockItemId != null) {
           final deducted = await SupabaseService.deductStockById(
               li.stockItemId!, li.quantity);
@@ -165,6 +246,58 @@ class _SaleEntryScreenState extends ConsumerState<SaleEntryScreen> {
     }
   }
 
+  Future<void> _deleteSale(bool isEn) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: Text(AppLang.tr(isEn, 'Delete Sale?', 'बिक्री हटाएं?')),
+        content: Text(AppLang.tr(isEn, 'Are you sure? This will reverse stock deductions.', 'क्या आप वाकई चाहते हैं? इससे स्टॉक वापस जुड़ जाएगा।')),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx, false), child: Text(AppLang.tr(isEn, 'Cancel', 'रद्द करें'))),
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, true), 
+            style: TextButton.styleFrom(foregroundColor: AppColors.error),
+            child: Text(AppLang.tr(isEn, 'Delete', 'हटाएं'))
+          ),
+        ],
+      ),
+    );
+
+    if (confirmed != true) return;
+
+    setState(() => _isSaving = true);
+    try {
+      final billId = widget.bill!.id;
+      // 1. Reverse stock
+      final oldSales = await SupabaseService.getSalesByBillId(billId);
+      for (var os in oldSales) {
+        if (os.stockItemId != null) {
+          await SupabaseService.addStockById(os.stockItemId!, os.quantity);
+        }
+      }
+      // 2. Delete data
+      await SupabaseService.deleteSalesByBillId(billId);
+      await SupabaseService.deleteBill(billId);
+
+      ref.invalidate(todayBillsProvider);
+      ref.invalidate(filteredBillsProvider);
+      ref.invalidate(dashboardStatsProvider);
+      ref.invalidate(stockItemsProvider);
+
+      if (mounted) {
+        Navigator.pop(context, true);
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+          content: Text(AppLang.tr(isEn, 'Sale deleted successfully', 'बिक्री सफलतापूर्वक हटा दी गई')),
+          backgroundColor: AppColors.error,
+        ));
+      }
+    } catch (e) {
+      _showError('Delete failed: $e');
+    } finally {
+      if (mounted) setState(() => _isSaving = false);
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final isEn = ref.watch(appLanguageProvider);
@@ -189,11 +322,34 @@ class _SaleEntryScreenState extends ConsumerState<SaleEntryScreen> {
             const SizedBox(width: 14),
             Expanded(
                 child: Text(
-                    AppLang.tr(isEn, 'New Sale Entry', 'नई बिक्री एंट्री'),
+                    AppLang.tr(isEn, 
+                        widget.bill != null ? 'Edit Sale' : 'New Sale Entry', 
+                        widget.bill != null ? 'बिक्री एडिट करें' : 'नई बिक्री एंट्री'),
                     style: const TextStyle(
                         fontSize: 20,
                         fontWeight: FontWeight.bold,
                         color: Colors.white))),
+            if (widget.bill != null)
+              GestureDetector(
+                onTap: () {
+                  // Share functionality
+                  ShareService.shareBill(
+                    vendorName: widget.bill!.vendorName,
+                    amount: widget.bill!.amount,
+                    billType: widget.bill!.billType,
+                    billDate: widget.bill!.billDate,
+                    notes: widget.bill!.notes,
+                  );
+                },
+                child: Container(
+                  padding: const EdgeInsets.all(8),
+                  decoration: BoxDecoration(
+                    color: Colors.white.withOpacity(0.2),
+                    borderRadius: BorderRadius.circular(10),
+                  ),
+                  child: const Icon(Icons.share_rounded, color: Colors.white, size: 20),
+                ),
+              ),
           ]),
         ),
 
@@ -324,8 +480,9 @@ class _SaleEntryScreenState extends ConsumerState<SaleEntryScreen> {
                         color: Colors.white, strokeWidth: 2))
                 : const Icon(Icons.check_rounded, color: Colors.white),
             label: Text(
-                AppLang.tr(ref.read(appLanguageProvider), 'Save Sale',
-                    'बिक्री सहेजें'),
+                AppLang.tr(ref.read(appLanguageProvider), 
+                    widget.bill != null ? 'Update Sale' : 'Save Sale',
+                    widget.bill != null ? 'बिक्री अपडेट करें' : 'बिक्री सहेजें'),
                 style: const TextStyle(
                     fontSize: 16,
                     fontWeight: FontWeight.w600,
