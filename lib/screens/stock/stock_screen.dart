@@ -117,17 +117,57 @@ class _StockScreenState extends ConsumerState<StockScreen> {
               decoration: BoxDecoration(color: AppColors.error.withOpacity(0.1), borderRadius: BorderRadius.circular(6)),
               child: Text(AppLang.tr(isEn, 'Low', 'कम'), style: const TextStyle(fontSize: 10, fontWeight: FontWeight.w600, color: AppColors.error)),
             ),
+          
+          PopupMenuButton<String>(
+            icon: const Icon(Icons.more_vert_rounded, color: AppColors.textHint, size: 20),
+            onSelected: (val) {
+              if (val == 'edit') {
+                _showAddStockDialog(context, isEn, itemToEdit: item);
+              } else if (val == 'delete') {
+                _deleteItem(context, isEn, item);
+              }
+            },
+            itemBuilder: (_) => [
+              PopupMenuItem(value: 'edit', child: Row(children: [const Icon(Icons.edit_outlined, size: 18), const SizedBox(width: 8), Text(AppLang.tr(isEn, 'Edit', 'एडिट'))])),
+              PopupMenuItem(value: 'delete', child: Row(children: [const Icon(Icons.delete_outline_rounded, size: 18, color: AppColors.error), const SizedBox(width: 8), Text(AppLang.tr(isEn, 'Delete', 'हटाएं'), style: const TextStyle(color: AppColors.error))])),
+            ],
+          ),
         ],
       ),
     );
   }
 
-  void _showAddStockDialog(BuildContext context, bool isEn) {
-    final nameCtrl = TextEditingController();
-    final qtyCtrl = TextEditingController();
-    final buyCtrl = TextEditingController();
-    final sellCtrl = TextEditingController();
-    String unit = 'piece';
+  Future<void> _deleteItem(BuildContext context, bool isEn, StockItemModel item) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: Text(AppLang.tr(isEn, 'Delete Item?', 'आइटम हटाएं?')),
+        content: Text('${AppLang.tr(isEn, 'Are you sure you want to delete', 'क्या आप वाकई हटाना चाहते हैं')} "${item.itemName}"?'),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx, false), child: Text(AppLang.tr(isEn, 'Cancel', 'रद्द करें'))),
+          TextButton(onPressed: () => Navigator.pop(ctx, true), style: TextButton.styleFrom(foregroundColor: AppColors.error), child: Text(AppLang.tr(isEn, 'Delete', 'हटाएं'))),
+        ],
+      ),
+    );
+
+    if (confirmed == true) {
+      try {
+        await SupabaseService.deleteStockItem(item.id);
+        ref.invalidate(stockItemsProvider);
+        ref.invalidate(dashboardStatsProvider);
+        if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(AppLang.tr(isEn, 'Item deleted', 'आइटम हटा दिया गया')), backgroundColor: AppColors.error));
+      } catch (e) {
+        if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Delete failed: $e'), backgroundColor: AppColors.error));
+      }
+    }
+  }
+
+  void _showAddStockDialog(BuildContext context, bool isEn, {StockItemModel? itemToEdit}) {
+    final nameCtrl = TextEditingController(text: itemToEdit?.itemName);
+    final qtyCtrl = TextEditingController(text: itemToEdit?.currentQuantity.toStringAsFixed(0));
+    final buyCtrl = TextEditingController(text: itemToEdit?.buyingPrice.toStringAsFixed(0));
+    final sellCtrl = TextEditingController(text: itemToEdit?.sellingPrice.toStringAsFixed(0));
+    String unit = itemToEdit?.unit ?? 'piece';
 
     showModalBottomSheet(
       context: context, isScrollControlled: true, backgroundColor: Colors.transparent,
@@ -140,7 +180,12 @@ class _StockScreenState extends ConsumerState<StockScreen> {
             children: [
               Center(child: Container(width: 40, height: 4, decoration: BoxDecoration(color: AppColors.border, borderRadius: BorderRadius.circular(2)))),
               const SizedBox(height: 20),
-              Text(AppLang.tr(isEn, 'Add New Item', 'नया आइटम जोड़ें'), style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: AppColors.textPrimary)),
+              Text(
+                itemToEdit == null 
+                  ? AppLang.tr(isEn, 'Add New Item', 'नया आइटम जोड़ें')
+                  : AppLang.tr(isEn, 'Edit Item', 'आइटम एडिट करें'), 
+                style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: AppColors.textPrimary)
+              ),
               const SizedBox(height: 20),
               _dialogField(AppLang.tr(isEn, 'Item Name *', 'आइटम का नाम *'), nameCtrl),
               const SizedBox(height: 12),
@@ -177,7 +222,7 @@ class _StockScreenState extends ConsumerState<StockScreen> {
                 builder: (_, setSaveBtnState) => SizedBox(
                   width: double.infinity, height: 50,
                   child: ElevatedButton(
-                    onPressed: _isSaving ? null : () => _saveItem(ctx, isEn, nameCtrl.text, qtyCtrl.text, buyCtrl.text, sellCtrl.text, unit, setSaveBtnState),
+                    onPressed: _isSaving ? null : () => _saveItem(ctx, isEn, nameCtrl.text, qtyCtrl.text, buyCtrl.text, sellCtrl.text, unit, setSaveBtnState, itemToEdit: itemToEdit),
                     style: ElevatedButton.styleFrom(
                       backgroundColor: _isSaving ? AppColors.textHint : AppColors.primary,
                       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
@@ -185,7 +230,12 @@ class _StockScreenState extends ConsumerState<StockScreen> {
                     ),
                     child: _isSaving
                         ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2))
-                        : Text(AppLang.tr(isEn, 'Save Item', 'आइटम सहेजें'), style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w600, color: Colors.white)),
+                        : Text(
+                            itemToEdit == null
+                              ? AppLang.tr(isEn, 'Save Item', 'आइटम सहेजें')
+                              : AppLang.tr(isEn, 'Update Item', 'आइटम अपडेट करें'), 
+                            style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w600, color: Colors.white)
+                          ),
                   ),
                 ),
               ),
@@ -198,7 +248,7 @@ class _StockScreenState extends ConsumerState<StockScreen> {
 
   Widget _dialogField(String label, TextEditingController ctrl, {bool isNumber = false}) {
     return TextField(
-      controller: ctrl, keyboardType: isNumber ? TextInputType.number : TextInputType.text,
+      controller: ctrl, keyboardType: isNumber ? const TextInputType.numberWithOptions(decimal: true) : TextInputType.text,
       decoration: InputDecoration(
         labelText: label, filled: true, fillColor: AppColors.background,
         border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: const BorderSide(color: AppColors.borderBlue)),
@@ -207,7 +257,7 @@ class _StockScreenState extends ConsumerState<StockScreen> {
     );
   }
 
-  Future<void> _saveItem(BuildContext ctx, bool isEn, String name, String qty, String buy, String sell, String unit, void Function(void Function()) setSaveBtnState) async {
+  Future<void> _saveItem(BuildContext ctx, bool isEn, String name, String qty, String buy, String sell, String unit, void Function(void Function()) setSaveBtnState, {StockItemModel? itemToEdit}) async {
     if (name.trim().isEmpty || qty.trim().isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(AppLang.tr(isEn, 'Name and quantity are required', 'नाम और मात्रा ज़रूरी है')), backgroundColor: AppColors.error));
       return;
@@ -222,12 +272,25 @@ class _StockScreenState extends ConsumerState<StockScreen> {
       final userId = AuthService.currentUserId;
       final shop = await ref.read(shopProvider.future);
       if (userId == null || shop == null) throw Exception('User or shop not found');
-      await SupabaseService.saveStockItem(StockItemModel(
-        id: '', shopId: shop.id, userId: userId, itemName: name.trim(),
-        currentQuantity: double.tryParse(qty) ?? 0, unit: unit,
-        buyingPrice: double.tryParse(buy) ?? 0, sellingPrice: double.tryParse(sell) ?? 0,
-        createdAt: DateTime.now(),
-      ));
+      
+      final stockItem = StockItemModel(
+        id: itemToEdit?.id ?? '', 
+        shopId: shop.id, 
+        userId: userId, 
+        itemName: name.trim(),
+        currentQuantity: double.tryParse(qty) ?? 0, 
+        unit: unit,
+        buyingPrice: double.tryParse(buy) ?? 0, 
+        sellingPrice: double.tryParse(sell) ?? 0,
+        createdAt: itemToEdit?.createdAt ?? DateTime.now(),
+      );
+
+      if (itemToEdit == null) {
+        await SupabaseService.saveStockItem(stockItem);
+      } else {
+        await SupabaseService.updateStockItem(stockItem);
+      }
+
       ref.invalidate(stockItemsProvider);
       ref.invalidate(dashboardStatsProvider);
       if (ctx.mounted) {

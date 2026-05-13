@@ -97,25 +97,63 @@ class _UdharScreenState extends ConsumerState<UdharScreen> {
               await SupabaseService.markUdharPaid(customer.id);
               ref.invalidate(udharCustomersProvider);
               ref.invalidate(dashboardStatsProvider);
+            } else if (val == 'edit') {
+              _showAddCustomerDialog(context, isEn, customerToEdit: customer);
+            } else if (val == 'delete') {
+              _deleteCustomer(context, isEn, customer);
             }
           },
-          itemBuilder: (_) => [PopupMenuItem(value: 'paid', child: Text(AppLang.tr(isEn, '✅ Mark as Paid', '✅ पूरा चुकाया')))],
+          itemBuilder: (_) => [
+            PopupMenuItem(value: 'paid', child: Text(AppLang.tr(isEn, '✅ Mark as Paid', '✅ पूरा चुकाया'))),
+            PopupMenuItem(value: 'edit', child: Row(children: [const Icon(Icons.edit_outlined, size: 18), const SizedBox(width: 8), Text(AppLang.tr(isEn, 'Edit', 'एडिट'))])),
+            PopupMenuItem(value: 'delete', child: Row(children: [const Icon(Icons.delete_outline_rounded, size: 18, color: AppColors.error), const SizedBox(width: 8), Text(AppLang.tr(isEn, 'Delete', 'हटाएं'), style: const TextStyle(color: AppColors.error))])),
+          ],
         ),
       ]),
     );
   }
 
-  void _showAddCustomerDialog(BuildContext context, bool isEn) {
-    final nameCtrl = TextEditingController();
-    final phoneCtrl = TextEditingController();
-    final amountCtrl = TextEditingController();
+  Future<void> _deleteCustomer(BuildContext context, bool isEn, UdharCustomerModel customer) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: Text(AppLang.tr(isEn, 'Delete Record?', 'रिकॉर्ड हटाएं?')),
+        content: Text('${AppLang.tr(isEn, 'Delete credit record for', 'उधार रिकॉर्ड हटाएं')} "${customer.customerName}"?'),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx, false), child: Text(AppLang.tr(isEn, 'Cancel', 'रद्द करें'))),
+          TextButton(onPressed: () => Navigator.pop(ctx, true), style: TextButton.styleFrom(foregroundColor: AppColors.error), child: Text(AppLang.tr(isEn, 'Delete', 'हटाएं'))),
+        ],
+      ),
+    );
+
+    if (confirmed == true) {
+      try {
+        await SupabaseService.deleteUdharCustomer(customer.id);
+        ref.invalidate(udharCustomersProvider);
+        ref.invalidate(dashboardStatsProvider);
+        if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(AppLang.tr(isEn, 'Record deleted', 'रिकॉर्ड हटा दिया गया')), backgroundColor: AppColors.error));
+      } catch (e) {
+        if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Delete failed: $e'), backgroundColor: AppColors.error));
+      }
+    }
+  }
+
+  void _showAddCustomerDialog(BuildContext context, bool isEn, {UdharCustomerModel? customerToEdit}) {
+    final nameCtrl = TextEditingController(text: customerToEdit?.customerName);
+    final phoneCtrl = TextEditingController(text: customerToEdit?.customerPhone);
+    final amountCtrl = TextEditingController(text: customerToEdit?.totalDue.toStringAsFixed(0));
     showModalBottomSheet(
       context: context, isScrollControlled: true, backgroundColor: Colors.transparent,
       builder: (ctx) => Container(
         padding: EdgeInsets.only(left: 24, right: 24, top: 24, bottom: MediaQuery.of(ctx).viewInsets.bottom + 24),
         decoration: const BoxDecoration(color: AppColors.surface, borderRadius: BorderRadius.vertical(top: Radius.circular(24))),
         child: SingleChildScrollView(child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
-          Text(AppLang.tr(isEn, 'New Credit Customer', 'नया उधार ग्राहक'), style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: AppColors.textPrimary)),
+          Text(
+            customerToEdit == null
+              ? AppLang.tr(isEn, 'New Credit Customer', 'नया उधार ग्राहक')
+              : AppLang.tr(isEn, 'Edit Credit Record', 'उधार रिकॉर्ड एडिट करें'), 
+            style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: AppColors.textPrimary)
+          ),
           const SizedBox(height: 20),
           TextField(controller: nameCtrl, decoration: _inputDeco(AppLang.tr(isEn, 'Customer Name *', 'ग्राहक का नाम *'))),
           const SizedBox(height: 12),
@@ -130,31 +168,52 @@ class _UdharScreenState extends ConsumerState<UdharScreen> {
                 final userId = AuthService.currentUserId;
                 final shop = await ref.read(shopProvider.future);
                 if (userId == null || shop == null) throw Exception('User or shop not found');
-                await SupabaseService.saveUdharCustomer(UdharCustomerModel(
-                  id: '', shopId: shop.id, userId: userId,
-                  customerName: nameCtrl.text.trim(), customerPhone: phoneCtrl.text.trim(),
-                  totalDue: double.tryParse(amountCtrl.text) ?? 0, createdAt: DateTime.now(),
-                ));
+                
+                final udharData = UdharCustomerModel(
+                  id: customerToEdit?.id ?? '', 
+                  shopId: shop.id, 
+                  userId: userId,
+                  customerName: nameCtrl.text.trim(), 
+                  customerPhone: phoneCtrl.text.trim(),
+                  totalDue: double.tryParse(amountCtrl.text) ?? 0, 
+                  createdAt: customerToEdit?.createdAt ?? DateTime.now(),
+                );
+
+                if (customerToEdit == null) {
+                  await SupabaseService.saveUdharCustomer(udharData);
+                } else {
+                  await SupabaseService.updateUdharCustomer(udharData);
+                }
+
                 ref.invalidate(udharCustomersProvider);
                 ref.invalidate(dashboardStatsProvider);
                 if (ctx.mounted) {
                   Navigator.pop(ctx);
                   ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-                    content: Text(AppLang.tr(isEn, 'Customer saved successfully!', 'ग्राहक सफलतापूर्वक सहेजा गया!')),
+                    content: Text(
+                      customerToEdit == null
+                        ? AppLang.tr(isEn, 'Customer saved successfully!', 'ग्राहक सफलतापूर्वक सहेजा गया!')
+                        : AppLang.tr(isEn, 'Record updated successfully!', 'रिकॉर्ड सफलतापूर्वक अपडेट किया गया!')
+                    ),
                     backgroundColor: AppColors.success,
                   ));
                 }
               } catch (e) {
                 if (ctx.mounted) {
                   ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-                    content: Text('Save failed: $e'),
+                    content: Text('Action failed: $e'),
                     backgroundColor: AppColors.error,
                   ));
                 }
               }
             },
             style: ElevatedButton.styleFrom(backgroundColor: AppColors.primary, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)), elevation: 0),
-            child: Text(AppLang.tr(isEn, 'Save', 'सहेजें'), style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w600, color: Colors.white)),
+            child: Text(
+              customerToEdit == null
+                ? AppLang.tr(isEn, 'Save', 'सहेजें')
+                : AppLang.tr(isEn, 'Update', 'अपडेट करें'), 
+              style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w600, color: Colors.white)
+            ),
           )),
         ])),
       ),
