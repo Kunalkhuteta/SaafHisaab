@@ -10,6 +10,7 @@ class SaleModel {
   final String paymentMode;
   final String category;
   final String? billId;
+  final String? stockItemId;
   final DateTime saleDate;
   final String notes;
   final DateTime createdAt;
@@ -26,6 +27,7 @@ class SaleModel {
     this.paymentMode = 'cash',
     this.category = 'General',
     this.billId,
+    this.stockItemId,
     required this.saleDate,
     this.notes = '',
     required this.createdAt,
@@ -44,6 +46,7 @@ class SaleModel {
       paymentMode: json['payment_mode'] ?? 'cash',
       category: json['category'] ?? 'General',
       billId: json['bill_id'],
+      stockItemId: json['stock_item_id'],
       saleDate: DateTime.parse(json['sale_date']),
       notes: json['notes'] ?? '',
       createdAt: DateTime.parse(json['created_at']),
@@ -66,6 +69,9 @@ class SaleModel {
     };
     if (billId != null && billId!.isNotEmpty) {
       json['bill_id'] = billId;
+    }
+    if (stockItemId != null && stockItemId!.isNotEmpty) {
+      json['stock_item_id'] = stockItemId;
     }
     return json;
   }

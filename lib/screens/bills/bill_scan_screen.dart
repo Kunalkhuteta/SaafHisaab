@@ -235,11 +235,16 @@ class _BillScanScreenState extends ConsumerState<BillScanScreen> {
       onTap: () async {
         final result = await Navigator.push<bool>(
           context,
-          MaterialPageRoute(builder: (_) => SaleDetailScreen(bill: bill)),
+          MaterialPageRoute(
+            builder: (_) => isSale
+                ? SaleEntryScreen(bill: bill)
+                : SaleDetailScreen(bill: bill),
+          ),
         );
         if (result == true) {
           ref.invalidate(filteredBillsProvider);
           ref.invalidate(dashboardStatsProvider);
+          ref.invalidate(stockItemsProvider);
         }
       },
       child: Container(
