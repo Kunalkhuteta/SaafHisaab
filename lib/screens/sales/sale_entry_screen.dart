@@ -464,6 +464,18 @@ class _SaleEntryScreenState extends ConsumerState<SaleEntryScreen> {
 
         const SizedBox(height: 16),
 
+        if (widget.bill != null) ...[
+          Center(
+            child: TextButton.icon(
+              onPressed: _isSaving ? null : () => _deleteSale(isEn),
+              icon: const Icon(Icons.delete_outline_rounded, size: 18),
+              label: Text(AppLang.tr(isEn, 'Delete This Sale', 'यह बिक्री हटाएं')),
+              style: TextButton.styleFrom(foregroundColor: AppColors.error),
+            ),
+          ),
+          const SizedBox(height: 8),
+        ],
+
         // ── Save Button ──
         SizedBox(
           width: double.infinity,
