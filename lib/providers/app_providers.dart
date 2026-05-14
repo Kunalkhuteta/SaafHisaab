@@ -40,8 +40,8 @@ final todayBillsProvider = FutureProvider((ref) async {
 // ── Date filter for bills: 'today', 'week', 'month' ──
 final billsDateFilterProvider = StateProvider<String>((ref) => 'today');
 
-// ── Filtered bills provider (date-wise) ──
-final filteredBillsProvider = FutureProvider<List<BillModel>>((ref) async {
+// ── Filtered bills provider (date-wise and type-wise) ──
+final filteredBillsProvider = FutureProvider.family<List<BillModel>, String>((ref, billType) async {
   final shop = await ref.watch(shopProvider.future);
   if (shop == null) return [];
   final filter = ref.watch(billsDateFilterProvider);
@@ -63,7 +63,8 @@ final filteredBillsProvider = FutureProvider<List<BillModel>>((ref) async {
       break;
   }
 
-  return await SupabaseService.getBills(shop.id, from, to);
+  final bills = await SupabaseService.getBills(shop.id, from, to);
+  return bills.where((b) => b.billType == billType).toList();
 });
 
 // ── Stock items provider ──

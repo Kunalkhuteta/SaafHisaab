@@ -13,11 +13,13 @@ import '../../globalVar.dart';
 class BillReviewScreen extends ConsumerStatefulWidget {
   final Uint8List imageBytes;
   final Map<String, dynamic> ocrData;
+  final String? lockedBillType;
 
   const BillReviewScreen({
     super.key,
     required this.imageBytes,
     required this.ocrData,
+    this.lockedBillType,
   });
 
   @override
@@ -30,16 +32,22 @@ class _BillReviewScreenState extends ConsumerState<BillReviewScreen> {
   late TextEditingController _gstAmountCtrl;
   late TextEditingController _notesCtrl;
   late TextEditingController _itemQtyCtrl;
+  late TextEditingController _newItemNameCtrl;
+  late TextEditingController _newItemSellingPriceCtrl;
+
   late DateTime _billDate;
-  String _billType = 'purchase';
+  late String _billType;
   bool _isGstBill = false;
   bool _isSaving = false;
+  bool _isNewItem = false;
   StockItemModel? _selectedStockItem;
 
   @override
   void initState() {
     super.initState();
     final data = widget.ocrData;
+    _billType = widget.lockedBillType ?? 'purchase';
+    
     _vendorCtrl = TextEditingController(text: data['vendor_name'] ?? '');
     final amount = (data['amount'] ?? 0.0);
     _amountCtrl = TextEditingController(
@@ -52,6 +60,8 @@ class _BillReviewScreenState extends ConsumerState<BillReviewScreen> {
     );
     _notesCtrl = TextEditingController();
     _itemQtyCtrl = TextEditingController(text: '1');
+    _newItemNameCtrl = TextEditingController();
+    _newItemSellingPriceCtrl = TextEditingController();
 
     try {
       final dateStr = data['bill_date'] as String?;
@@ -68,6 +78,8 @@ class _BillReviewScreenState extends ConsumerState<BillReviewScreen> {
     _gstAmountCtrl.dispose();
     _notesCtrl.dispose();
     _itemQtyCtrl.dispose();
+    _newItemNameCtrl.dispose();
+    _newItemSellingPriceCtrl.dispose();
     super.dispose();
   }
 
@@ -97,9 +109,10 @@ class _BillReviewScreenState extends ConsumerState<BillReviewScreen> {
       return;
     }
 
-    // Check stock availability for sale bills
-    if (_billType == 'sale' && _selectedStockItem != null) {
-      final qty = double.tryParse(_itemQtyCtrl.text.trim()) ?? 1;
+    final qty = double.tryParse(_itemQtyCtrl.text.trim()) ?? 1;
+
+    // Check stock availability for sale/purchase_return
+    if ((_billType == 'sale' || _billType == 'purchase_return') && _selectedStockItem != null) {
       if (_selectedStockItem!.currentQuantity < qty) {
         ScaffoldMessenger.of(context).showSnackBar(SnackBar(
           content: Text(AppLang.tr(isEn,
@@ -122,7 +135,29 @@ class _BillReviewScreenState extends ConsumerState<BillReviewScreen> {
       final gstAmount = double.tryParse(_gstAmountCtrl.text.trim()) ?? 0;
       final notes = _notesCtrl.text.trim();
 
-      // 1. Save bill to Supabase
+      // Stock logic
+      if (_billType == 'sale' || _billType == 'purchase_return') {
+        if (_selectedStockItem != null) {
+          await SupabaseService.deductStockById(_selectedStockItem!.id, qty);
+        }
+      } else if (_billType == 'purchase' || _billType == 'sale_return') {
+        if (_isNewItem && _newItemNameCtrl.text.isNotEmpty) {
+          final buyingPrice = qty > 0 ? (amount / qty) : 0.0;
+          final sellingPrice = double.tryParse(_newItemSellingPriceCtrl.text) ?? buyingPrice;
+          final newItem = StockItemModel(
+            id: '', shopId: shop.id, userId: userId, 
+            itemName: _newItemNameCtrl.text.trim(),
+            currentQuantity: qty,
+            buyingPrice: buyingPrice, sellingPrice: sellingPrice,
+            createdAt: DateTime.now(),
+          );
+          await SupabaseService.saveStockItem(newItem);
+        } else if (!_isNewItem && _selectedStockItem != null) {
+          await SupabaseService.addStockById(_selectedStockItem!.id, qty);
+        }
+      }
+
+      // Save bill
       await SupabaseService.saveBill(BillModel(
         id: '',
         shopId: shop.id,
@@ -138,33 +173,17 @@ class _BillReviewScreenState extends ConsumerState<BillReviewScreen> {
         createdAt: DateTime.now(),
       ));
 
-      // 2. Stock deduction for sale bills
-      if (_billType == 'sale' && _selectedStockItem != null) {
-        final qty = double.tryParse(_itemQtyCtrl.text.trim()) ?? 1;
-        await SupabaseService.deductStockById(
-          _selectedStockItem!.id,
-          qty,
-        );
-      }
-
       ref.invalidate(todayBillsProvider);
       ref.invalidate(dashboardStatsProvider);
       ref.invalidate(stockItemsProvider);
 
       if (mounted) {
-        // 3. Show share dialog before popping
         await _showShareDialog(isEn, vendorName, amount, gstAmount, notes);
-
-        if (mounted) {
-          Navigator.pop(context, true);
-        }
+        if (mounted) Navigator.pop(context, true);
       }
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-          content: Text('Save failed: $e'),
-          backgroundColor: AppColors.error,
-        ));
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Save failed: $e'), backgroundColor: AppColors.error));
       }
     } finally {
       if (mounted) setState(() => _isSaving = false);
@@ -180,30 +199,20 @@ class _BillReviewScreenState extends ConsumerState<BillReviewScreen> {
           children: [
             const Icon(Icons.check_circle_rounded, color: AppColors.success, size: 28),
             const SizedBox(width: 10),
-            Expanded(child: Text(AppLang.tr(isEn, 'Bill Saved!', 'बिल सहेजा गया!'),
-                style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold))),
+            Expanded(child: Text(AppLang.tr(isEn, 'Saved!', 'सहेजा गया!'), style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold))),
           ],
         ),
         content: Text(
-          AppLang.tr(isEn, 'Share this bill via WhatsApp?', 'यह बिल WhatsApp पर शेयर करें?'),
+          AppLang.tr(isEn, 'Share this via WhatsApp?', 'क्या इसे WhatsApp पर शेयर करें?'),
           style: const TextStyle(fontSize: 14, color: AppColors.textSecondary),
         ),
         actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctx, false),
-            child: Text(AppLang.tr(isEn, 'Skip', 'छोड़ें'),
-                style: const TextStyle(color: AppColors.textHint)),
-          ),
+          TextButton(onPressed: () => Navigator.pop(ctx, false), child: Text(AppLang.tr(isEn, 'Skip', 'छोड़ें'), style: const TextStyle(color: AppColors.textHint))),
           ElevatedButton.icon(
             onPressed: () => Navigator.pop(ctx, true),
             icon: const Icon(Icons.share_rounded, size: 18, color: Colors.white),
-            label: Text(AppLang.tr(isEn, 'Share', 'शेयर करें'),
-                style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w600)),
-            style: ElevatedButton.styleFrom(
-              backgroundColor: const Color(0xFF25D366), // WhatsApp green
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-              elevation: 0,
-            ),
+            label: Text(AppLang.tr(isEn, 'Share', 'शेयर करें'), style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w600)),
+            style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFF25D366), shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)), elevation: 0),
           ),
         ],
       ),
@@ -211,13 +220,8 @@ class _BillReviewScreenState extends ConsumerState<BillReviewScreen> {
 
     if (shouldShare == true) {
       await ShareService.shareBill(
-        vendorName: vendorName,
-        amount: amount,
-        billType: _billType,
-        billDate: _billDate,
-        isGstBill: _isGstBill,
-        gstAmount: gstAmount,
-        notes: notes,
+        vendorName: vendorName, amount: amount, billType: _billType,
+        billDate: _billDate, isGstBill: _isGstBill, gstAmount: gstAmount, notes: notes,
       );
     }
   }
@@ -231,40 +235,24 @@ class _BillReviewScreenState extends ConsumerState<BillReviewScreen> {
       backgroundColor: AppColors.background,
       body: Column(
         children: [
-          // Header
           Container(
             color: AppColors.primary,
-            padding: EdgeInsets.only(
-              top: MediaQuery.of(context).padding.top + 12,
-              left: 20, right: 20, bottom: 16,
-            ),
+            padding: EdgeInsets.only(top: MediaQuery.of(context).padding.top + 12, left: 20, right: 20, bottom: 16),
             child: Row(
               children: [
-                GestureDetector(
-                  onTap: () => Navigator.pop(context),
-                  child: const Icon(Icons.arrow_back_rounded, color: Colors.white, size: 24),
-                ),
+                GestureDetector(onTap: () => Navigator.pop(context), child: const Icon(Icons.arrow_back_rounded, color: Colors.white, size: 24)),
                 const SizedBox(width: 14),
-                Expanded(
-                  child: Text(
-                    AppLang.tr(isEn, 'Review Bill', 'बिल समीक्षा'),
-                    style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold, color: Colors.white),
-                  ),
-                ),
+                Expanded(child: Text(AppLang.tr(isEn, 'Review Details', 'विवरण समीक्षा'), style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold, color: Colors.white))),
                 if (hasOcrData)
                   Container(
                     padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-                    decoration: BoxDecoration(
-                      color: AppColors.success.withOpacity(0.2),
-                      borderRadius: BorderRadius.circular(8),
-                    ),
+                    decoration: BoxDecoration(color: AppColors.success.withOpacity(0.2), borderRadius: BorderRadius.circular(8)),
                     child: Row(
                       mainAxisSize: MainAxisSize.min,
                       children: [
                         const Icon(Icons.auto_awesome_rounded, color: Colors.white, size: 14),
                         const SizedBox(width: 4),
-                        Text(AppLang.tr(isEn, 'OCR', 'OCR'),
-                            style: const TextStyle(fontSize: 11, color: Colors.white, fontWeight: FontWeight.w600)),
+                        Text('OCR', style: const TextStyle(fontSize: 11, color: Colors.white, fontWeight: FontWeight.w600)),
                       ],
                     ),
                   ),
@@ -272,215 +260,162 @@ class _BillReviewScreenState extends ConsumerState<BillReviewScreen> {
             ),
           ),
 
-          // Body
           Expanded(
             child: SingleChildScrollView(
               padding: const EdgeInsets.all(20),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  // Image Preview
                   ClipRRect(
                     borderRadius: BorderRadius.circular(14),
                     child: Container(
-                      width: double.infinity,
-                      constraints: const BoxConstraints(maxHeight: 200),
-                      decoration: BoxDecoration(
-                        border: Border.all(color: AppColors.border),
-                        borderRadius: BorderRadius.circular(14),
-                      ),
+                      width: double.infinity, constraints: const BoxConstraints(maxHeight: 200),
+                      decoration: BoxDecoration(border: Border.all(color: AppColors.border), borderRadius: BorderRadius.circular(14)),
                       child: Image.memory(widget.imageBytes, fit: BoxFit.cover,
-                        errorBuilder: (_, __, ___) => Container(
-                          height: 100, color: AppColors.primaryBg,
-                          child: const Center(child: Icon(Icons.broken_image_rounded, color: AppColors.textHint, size: 40)),
-                        ),
+                        errorBuilder: (_, __, ___) => Container(height: 100, color: AppColors.primaryBg, child: const Center(child: Icon(Icons.broken_image_rounded, color: AppColors.textHint, size: 40))),
                       ),
                     ),
                   ),
                   const SizedBox(height: 6),
                   Center(
                     child: Text(
-                      hasOcrData
-                          ? AppLang.tr(isEn, '✅ Data extracted — verify below', '✅ डेटा निकाला — नीचे सत्यापित करें')
-                          : AppLang.tr(isEn, '📝 Enter bill details manually', '📝 बिल विवरण मैन्युअल दर्ज करें'),
+                      hasOcrData ? AppLang.tr(isEn, '✅ Data extracted — verify below', '✅ डेटा निकाला — नीचे सत्यापित करें') : AppLang.tr(isEn, '📝 Enter details manually', '📝 विवरण मैन्युअल दर्ज करें'),
                       style: TextStyle(fontSize: 12, color: hasOcrData ? AppColors.success : AppColors.textSecondary, fontWeight: FontWeight.w500),
                     ),
                   ),
-
                   const SizedBox(height: 18),
 
-                  // Bill Type
-                  _label(AppLang.tr(isEn, 'Bill Type', 'बिल प्रकार')),
-                  const SizedBox(height: 8),
-                  Row(children: [
-                    _typeChip(AppLang.tr(isEn, 'Purchase', 'खरीद'), 'purchase'),
-                    const SizedBox(width: 10),
-                    _typeChip(AppLang.tr(isEn, 'Sale', 'बिक्री'), 'sale'),
-                  ]),
+                  if (widget.lockedBillType == null) ...[
+                    _label(AppLang.tr(isEn, 'Type', 'प्रकार')),
+                    const SizedBox(height: 8),
+                    Row(children: [
+                      _typeChip(AppLang.tr(isEn, 'Purchase', 'खरीद'), 'purchase'),
+                      const SizedBox(width: 10),
+                      _typeChip(AppLang.tr(isEn, 'Sale', 'बिक्री'), 'sale'),
+                    ]),
+                    const SizedBox(height: 14),
+                  ],
 
-                  const SizedBox(height: 14),
-
-                  // Vendor
                   _label(AppLang.tr(isEn, 'Vendor / Party Name', 'वेंडर / पार्टी नाम')),
                   const SizedBox(height: 6),
                   _field(_vendorCtrl, AppLang.tr(isEn, 'E.g. Sharma Traders', 'जैसे शर्मा ट्रेडर्स')),
-
                   const SizedBox(height: 14),
 
-                  // Amount
                   _label(AppLang.tr(isEn, 'Amount (₹) *', 'राशि (₹) *')),
                   const SizedBox(height: 6),
-                  _field(_amountCtrl, '0.00', isNumber: true),
-
+                  _field(_amountCtrl, '0.00', isNumber: true, onChanged: (v) {
+                    if (_billType == 'purchase' || _billType == 'sale_return') {
+                      if (_isNewItem) {
+                        final amt = double.tryParse(v) ?? 0;
+                        final q = double.tryParse(_itemQtyCtrl.text) ?? 1;
+                        if (q > 0) _newItemSellingPriceCtrl.text = (amt / q).toStringAsFixed(0);
+                      }
+                    }
+                  }),
                   const SizedBox(height: 14),
 
-                  // Date
-                  _label(AppLang.tr(isEn, 'Bill Date', 'बिल तारीख')),
+                  _label(AppLang.tr(isEn, 'Date', 'तारीख')),
                   const SizedBox(height: 6),
                   GestureDetector(
                     onTap: _pickDate,
                     child: Container(
-                      width: double.infinity,
-                      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
+                      width: double.infinity, padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
                       decoration: BoxDecoration(color: AppColors.surface, borderRadius: BorderRadius.circular(12), border: Border.all(color: AppColors.borderBlue)),
                       child: Row(children: [
                         const Icon(Icons.calendar_today_rounded, color: AppColors.primary, size: 18),
                         const SizedBox(width: 10),
-                        Text('${_billDate.day.toString().padLeft(2, '0')}/${_billDate.month.toString().padLeft(2, '0')}/${_billDate.year}',
-                            style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w500, color: AppColors.textPrimary)),
+                        Text('${_billDate.day.toString().padLeft(2, '0')}/${_billDate.month.toString().padLeft(2, '0')}/${_billDate.year}', style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w500, color: AppColors.textPrimary)),
                       ]),
                     ),
                   ),
+                  const SizedBox(height: 18),
 
-                  // ── Sale-specific: Stock Deduction with Dropdown ──
-                  if (_billType == 'sale') ...[
-                    const SizedBox(height: 18),
-                    Container(
-                      padding: const EdgeInsets.all(14),
-                      decoration: BoxDecoration(
-                        color: AppColors.success.withOpacity(0.05),
-                        borderRadius: BorderRadius.circular(14),
-                        border: Border.all(color: AppColors.success.withOpacity(0.2)),
-                      ),
-                      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                  // Stock logic UI
+                  Container(
+                    padding: const EdgeInsets.all(14),
+                    decoration: BoxDecoration(
+                      color: AppColors.primaryBg, borderRadius: BorderRadius.circular(14),
+                      border: Border.all(color: AppColors.primary.withOpacity(0.2)),
+                    ),
+                    child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                      Row(children: [
+                        const Icon(Icons.inventory_2_rounded, color: AppColors.primary, size: 18),
+                        const SizedBox(width: 8),
+                        Expanded(child: Text(
+                          (_billType == 'sale' || _billType == 'purchase_return') 
+                              ? AppLang.tr(isEn, 'Deduct from Stock (Optional)', 'स्टॉक से कटौती')
+                              : AppLang.tr(isEn, 'Add to Stock (Optional)', 'स्टॉक में जोड़ें'),
+                          style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: AppColors.primary),
+                        )),
+                      ]),
+                      const SizedBox(height: 10),
+                      
+                      if (_billType == 'purchase' || _billType == 'sale_return') ...[
                         Row(children: [
-                          Icon(Icons.inventory_2_rounded, color: AppColors.success, size: 18),
-                          const SizedBox(width: 8),
-                          Expanded(child: Text(
-                            AppLang.tr(isEn, 'Deduct from Stock', 'स्टॉक से कटौती'),
-                            style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: AppColors.success),
+                          Expanded(child: RadioListTile<bool>(
+                            title: Text(AppLang.tr(isEn, 'Existing Item', 'मौजूदा आइटम'), style: const TextStyle(fontSize: 13)),
+                            value: false, groupValue: _isNewItem, contentPadding: EdgeInsets.zero,
+                            onChanged: (v) => setState(() => _isNewItem = v!),
+                          )),
+                          Expanded(child: RadioListTile<bool>(
+                            title: Text(AppLang.tr(isEn, 'New Item', 'नया आइटम'), style: const TextStyle(fontSize: 13)),
+                            value: true, groupValue: _isNewItem, contentPadding: EdgeInsets.zero,
+                            onChanged: (v) => setState(() => _isNewItem = v!),
                           )),
                         ]),
-                        const SizedBox(height: 10),
-                        // Stock items dropdown
+                      ],
+
+                      if ((_billType == 'sale' || _billType == 'purchase_return') || !_isNewItem) ...[
                         ref.watch(stockItemsProvider).when(
-                          loading: () => const Center(child: Padding(
-                            padding: EdgeInsets.all(8.0),
-                            child: CircularProgressIndicator(color: AppColors.primary, strokeWidth: 2),
-                          )),
-                          error: (e, _) => Text('Error loading stock: $e', style: const TextStyle(color: AppColors.error, fontSize: 12)),
+                          loading: () => const Center(child: Padding(padding: EdgeInsets.all(8.0), child: CircularProgressIndicator(color: AppColors.primary, strokeWidth: 2))),
+                          error: (e, _) => Text('Error loading stock', style: const TextStyle(color: AppColors.error, fontSize: 12)),
                           data: (stockItems) {
-                            if (stockItems.isEmpty) {
-                              return Container(
-                                padding: const EdgeInsets.all(12),
-                                decoration: BoxDecoration(color: AppColors.warning.withOpacity(0.1), borderRadius: BorderRadius.circular(10)),
-                                child: Row(children: [
-                                  const Icon(Icons.info_outline_rounded, color: AppColors.warning, size: 18),
-                                  const SizedBox(width: 8),
-                                  Expanded(child: Text(
-                                    AppLang.tr(isEn, 'No stock items. Add items in Stock tab first.', 'कोई स्टॉक आइटम नहीं। पहले स्टॉक टैब में आइटम जोड़ें।'),
-                                    style: const TextStyle(fontSize: 12, color: AppColors.warning),
-                                  )),
-                                ]),
-                              );
-                            }
-                            return Column(children: [
-                              DropdownButtonFormField<StockItemModel>(
-                                value: _selectedStockItem,
-                                isExpanded: true,
-                                decoration: InputDecoration(
-                                  hintText: AppLang.tr(isEn, 'Choose item from stock', 'स्टॉक से आइटम चुनें'),
-                                  hintStyle: const TextStyle(fontSize: 13, color: AppColors.textHint),
-                                  filled: true, fillColor: AppColors.surface,
-                                  border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: const BorderSide(color: AppColors.borderBlue)),
-                                  contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
-                                ),
-                                items: stockItems.map((item) => DropdownMenuItem<StockItemModel>(
-                                  value: item,
-                                  child: Row(
-                                    children: [
-                                      Expanded(child: Text(item.itemName, style: const TextStyle(fontSize: 14), overflow: TextOverflow.ellipsis)),
-                                      const SizedBox(width: 6),
-                                      Text('${item.currentQuantity.toStringAsFixed(0)} ${item.unit}',
-                                        style: TextStyle(
-                                          fontSize: 11,
-                                          color: item.isLowStock ? AppColors.error : AppColors.textSecondary,
-                                          fontWeight: item.isLowStock ? FontWeight.w600 : FontWeight.normal,
-                                        ),
-                                      ),
-                                    ],
-                                  ),
-                                )).toList(),
-                                onChanged: (item) {
-                                  setState(() {
-                                    _selectedStockItem = item;
-                                  });
-                                },
+                            return DropdownButtonFormField<StockItemModel>(
+                              value: _selectedStockItem, isExpanded: true,
+                              decoration: InputDecoration(
+                                hintText: AppLang.tr(isEn, 'Choose item', 'आइटम चुनें'),
+                                filled: true, fillColor: AppColors.surface,
+                                border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: const BorderSide(color: AppColors.borderBlue)),
+                                contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
                               ),
-                              // Low stock warning
-                              if (_selectedStockItem != null && _selectedStockItem!.isLowStock) ...[
-                                const SizedBox(height: 8),
-                                Container(
-                                  padding: const EdgeInsets.all(10),
-                                  decoration: BoxDecoration(color: AppColors.error.withOpacity(0.1), borderRadius: BorderRadius.circular(8)),
-                                  child: Row(children: [
-                                    const Icon(Icons.warning_rounded, color: AppColors.error, size: 16),
-                                    const SizedBox(width: 8),
-                                    Expanded(child: Text(
-                                      AppLang.tr(isEn,
-                                        'Low stock! Only ${_selectedStockItem!.currentQuantity.toStringAsFixed(0)} ${_selectedStockItem!.unit} left.',
-                                        'स्टॉक कम है! केवल ${_selectedStockItem!.currentQuantity.toStringAsFixed(0)} ${_selectedStockItem!.unit} बचे हैं।',
-                                      ),
-                                      style: const TextStyle(fontSize: 11, color: AppColors.error, fontWeight: FontWeight.w500),
-                                    )),
-                                  ]),
+                              items: stockItems.map((item) => DropdownMenuItem<StockItemModel>(
+                                value: item,
+                                child: Row(
+                                  children: [
+                                    Expanded(child: Text(item.itemName, style: const TextStyle(fontSize: 14), overflow: TextOverflow.ellipsis)),
+                                    const SizedBox(width: 6),
+                                    Text('${item.currentQuantity.toStringAsFixed(0)} ${item.unit}', style: TextStyle(fontSize: 11, color: item.isLowStock ? AppColors.error : AppColors.textSecondary, fontWeight: item.isLowStock ? FontWeight.w600 : FontWeight.normal)),
+                                  ],
                                 ),
-                              ],
-                              if (_selectedStockItem != null && _selectedStockItem!.currentQuantity <= 0) ...[
-                                const SizedBox(height: 8),
-                                Container(
-                                  padding: const EdgeInsets.all(10),
-                                  decoration: BoxDecoration(color: AppColors.error.withOpacity(0.15), borderRadius: BorderRadius.circular(8)),
-                                  child: Row(children: [
-                                    const Icon(Icons.block_rounded, color: AppColors.error, size: 16),
-                                    const SizedBox(width: 8),
-                                    Expanded(child: Text(
-                                      AppLang.tr(isEn, 'Out of stock! Cannot sell this item.', 'स्टॉक खत्म! यह आइटम बेचा नहीं जा सकता।'),
-                                      style: const TextStyle(fontSize: 11, color: AppColors.error, fontWeight: FontWeight.w600),
-                                    )),
-                                  ]),
-                                ),
-                              ],
-                              const SizedBox(height: 8),
-                              _field(_itemQtyCtrl, AppLang.tr(isEn, 'Quantity to deduct', 'कटौती मात्रा'), isNumber: true),
-                            ]);
+                              )).toList(),
+                              onChanged: (item) => setState(() => _selectedStockItem = item),
+                            );
                           },
                         ),
-                      ]),
-                    ),
-                  ],
+                      ] else ...[
+                        _field(_newItemNameCtrl, AppLang.tr(isEn, 'New Item Name', 'आइटम का नाम')),
+                        const SizedBox(height: 8),
+                        _field(_newItemSellingPriceCtrl, AppLang.tr(isEn, 'Selling Price/unit', 'बिक्री मूल्य'), isNumber: true),
+                      ],
+                      const SizedBox(height: 8),
+                      _field(_itemQtyCtrl, AppLang.tr(isEn, 'Quantity', 'मात्रा'), isNumber: true, onChanged: (v) {
+                        if ((_billType == 'purchase' || _billType == 'sale_return') && _isNewItem) {
+                          final amt = double.tryParse(_amountCtrl.text) ?? 0;
+                          final q = double.tryParse(v) ?? 1;
+                          if (q > 0) _newItemSellingPriceCtrl.text = (amt / q).toStringAsFixed(0);
+                        }
+                      }),
+                    ]),
+                  ),
 
                   const SizedBox(height: 14),
-
-                  // GST toggle
                   Container(
                     padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 4),
                     decoration: BoxDecoration(color: AppColors.surface, borderRadius: BorderRadius.circular(12), border: Border.all(color: AppColors.border)),
                     child: Row(children: [
                       const Icon(Icons.receipt_long_rounded, color: AppColors.primary, size: 20),
                       const SizedBox(width: 10),
-                      Expanded(child: Text(AppLang.tr(isEn, 'GST Bill', 'GST बिल'),
-                          style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w500, color: AppColors.textPrimary))),
+                      Expanded(child: Text(AppLang.tr(isEn, 'GST Bill', 'GST बिल'), style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w500, color: AppColors.textPrimary))),
                       Switch(value: _isGstBill, activeColor: AppColors.primary, onChanged: (v) => setState(() => _isGstBill = v)),
                     ]),
                   ),
@@ -498,22 +433,13 @@ class _BillReviewScreenState extends ConsumerState<BillReviewScreen> {
                   _field(_notesCtrl, AppLang.tr(isEn, 'Any notes...', 'कोई नोट...'), maxLines: 2),
 
                   const SizedBox(height: 22),
-
-                  // Save Button
                   SizedBox(
                     width: double.infinity, height: 52,
                     child: ElevatedButton.icon(
                       onPressed: _isSaving ? null : () => _saveBill(isEn),
-                      icon: _isSaving
-                          ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2))
-                          : const Icon(Icons.check_rounded, color: Colors.white),
-                      label: Text(AppLang.tr(isEn, 'Save & Share', 'सहेजें और शेयर'),
-                          style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w600, color: Colors.white)),
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: AppColors.primary,
-                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
-                        elevation: 0,
-                      ),
+                      icon: _isSaving ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2)) : const Icon(Icons.check_rounded, color: Colors.white),
+                      label: Text(AppLang.tr(isEn, 'Save & Share', 'सहेजें और शेयर'), style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w600, color: Colors.white)),
+                      style: ElevatedButton.styleFrom(backgroundColor: AppColors.primary, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)), elevation: 0),
                     ),
                   ),
                   const SizedBox(height: 20),
@@ -531,7 +457,7 @@ class _BillReviewScreenState extends ConsumerState<BillReviewScreen> {
     return GestureDetector(
       onTap: () => setState(() {
         _billType = type;
-        if (type != 'sale') _selectedStockItem = null;
+        _selectedStockItem = null;
       }),
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
@@ -547,9 +473,10 @@ class _BillReviewScreenState extends ConsumerState<BillReviewScreen> {
 
   Widget _label(String t) => Text(t, style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: AppColors.textPrimary));
 
-  Widget _field(TextEditingController c, String hint, {bool isNumber = false, int maxLines = 1}) {
+  Widget _field(TextEditingController c, String hint, {bool isNumber = false, int maxLines = 1, void Function(String)? onChanged}) {
     return TextField(
       controller: c, keyboardType: isNumber ? TextInputType.number : TextInputType.text, maxLines: maxLines,
+      onChanged: onChanged,
       style: const TextStyle(fontSize: 15, color: AppColors.textPrimary),
       decoration: InputDecoration(
         hintText: hint, hintStyle: const TextStyle(color: AppColors.textHint, fontSize: 13),
