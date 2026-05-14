@@ -14,7 +14,7 @@ import '../sales/sale_entry_screen.dart';
 import '../sales/sale_detail_screen.dart';
 
 import 'dart:io';
-import '../../services/ocr_service.dart';
+import '../../services/ai_ocr_service.dart';
 
 class BillScanScreen extends ConsumerStatefulWidget {
   const BillScanScreen({super.key});
@@ -217,8 +217,19 @@ class _BillScanScreenState extends ConsumerState<BillScanScreen> {
       setState(() => _isProcessing = true);
       final bytes = await xfile.readAsBytes();
       Map<String, dynamic> ocrData = { 'raw_text': '', 'amount': 0.0, 'vendor_name': '', 'bill_date': DateTime.now().toIso8601String().split('T')[0], 'is_gst_bill': false, 'gst_amount': 0.0 };
-      if (!kIsWeb) { try { ocrData = await OcrService.extractBillData(File(xfile.path)); } catch (e) { debugPrint('OCR failed: $e'); } }
+      try { ocrData = await AiOcrService.extractBillData(bytes); } catch (e) { debugPrint('OCR failed: $e'); }
       setState(() => _isProcessing = false);
+
+      if (ocrData.containsKey('error') && (ocrData['error'] as String).isNotEmpty) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+            content: Text('AI OCR Error: ${ocrData['error']}\nPlease ensure your API Key is correct and app is fully restarted.', maxLines: 3),
+            backgroundColor: AppColors.error,
+            duration: const Duration(seconds: 4),
+          ));
+        }
+      }
+
       if (mounted) {
         final saved = await Navigator.push<bool>(context, MaterialPageRoute(builder: (_) => BillReviewScreen(imageBytes: bytes, ocrData: ocrData)));
         if (saved == true) { ref.invalidate(filteredBillsProvider); ref.invalidate(todayBillsProvider); ref.invalidate(dashboardStatsProvider); }
