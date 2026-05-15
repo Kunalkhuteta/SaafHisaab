@@ -110,6 +110,13 @@ class _BillReviewScreenState extends ConsumerState<BillReviewScreen> {
     }
 
     final qty = double.tryParse(_itemQtyCtrl.text.trim()) ?? 1;
+    if (qty <= 0) {
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+        content: Text(AppLang.tr(isEn, 'Enter a valid quantity', 'Sahi quantity dalein')),
+        backgroundColor: AppColors.error,
+      ));
+      return;
+    }
 
     // Check stock availability for sale/purchase_return
     if ((_billType == 'sale' || _billType == 'purchase_return') && _selectedStockItem != null) {
@@ -126,6 +133,7 @@ class _BillReviewScreenState extends ConsumerState<BillReviewScreen> {
     }
 
     setState(() => _isSaving = true);
+    var stockDeducted = false;
     try {
       final userId = AuthService.currentUserId;
       final shop = await ref.read(shopProvider.future);
@@ -138,7 +146,15 @@ class _BillReviewScreenState extends ConsumerState<BillReviewScreen> {
       // Stock logic
       if (_billType == 'sale' || _billType == 'purchase_return') {
         if (_selectedStockItem != null) {
-          await SupabaseService.deductStockById(_selectedStockItem!.id, qty);
+          final deducted = await SupabaseService.deductStockById(_selectedStockItem!.id, qty);
+          if (!deducted) {
+            throw StockUnavailableException(AppLang.tr(
+              isEn,
+              'Insufficient stock for ${_selectedStockItem!.itemName}',
+              '${_selectedStockItem!.itemName} ka stock kam',
+            ));
+          }
+          stockDeducted = true;
         }
       } else if (_billType == 'purchase' || _billType == 'sale_return') {
         if (_isNewItem && _newItemNameCtrl.text.isNotEmpty) {
@@ -182,6 +198,9 @@ class _BillReviewScreenState extends ConsumerState<BillReviewScreen> {
         if (mounted) Navigator.pop(context, true);
       }
     } catch (e) {
+      if (stockDeducted && _selectedStockItem != null) {
+        await SupabaseService.addStockById(_selectedStockItem!.id, qty);
+      }
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Save failed: $e'), backgroundColor: AppColors.error));
       }

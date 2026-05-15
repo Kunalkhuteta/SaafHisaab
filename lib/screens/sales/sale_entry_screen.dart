@@ -153,6 +153,10 @@ class _SaleEntryScreenState extends ConsumerState<SaleEntryScreen> {
     if (_isSaving) return;
     setState(() => _isSaving = true);
 
+    final deductedItems = <_SaleLineItem>[];
+    var oldSales = <SaleModel>[];
+    String? createdBillId;
+
     try {
       final userId = AuthService.currentUserId;
       final shop = await ref.read(shopProvider.future);
@@ -164,11 +168,28 @@ class _SaleEntryScreenState extends ConsumerState<SaleEntryScreen> {
         billId = widget.bill!.id;
         
         // 1. Reverse old stock deductions
-        final oldSales = await SupabaseService.getSalesByBillId(billId);
+        oldSales = await SupabaseService.getSalesByBillId(billId);
         for (var os in oldSales) {
           if (os.stockItemId != null) {
             await SupabaseService.addStockById(os.stockItemId!, os.quantity);
           }
+        }
+
+        for (final li in _lineItems) {
+          final deducted = await SupabaseService.deductStockById(
+            li.stockItemId!,
+            li.quantity,
+          );
+          if (!deducted) {
+            throw StockUnavailableException(
+              AppLang.tr(
+                isEn,
+                'Insufficient stock for ${li.stockItemName}',
+                '${li.stockItemName} ka stock kam',
+              ),
+            );
+          }
+          deductedItems.add(li);
         }
 
         // 2. Update Bill
@@ -182,6 +203,23 @@ class _SaleEntryScreenState extends ConsumerState<SaleEntryScreen> {
         await SupabaseService.deleteSalesByBillId(billId);
       } else {
         // NEW MODE
+        for (final li in _lineItems) {
+          final deducted = await SupabaseService.deductStockById(
+            li.stockItemId!,
+            li.quantity,
+          );
+          if (!deducted) {
+            throw StockUnavailableException(
+              AppLang.tr(
+                isEn,
+                'Insufficient stock for ${li.stockItemName}',
+                '${li.stockItemName} ka stock kam',
+              ),
+            );
+          }
+          deductedItems.add(li);
+        }
+
         // 1. Save BillModel and get its unique ID
         billId = await SupabaseService.saveBillGetId(BillModel(
           id: '',
@@ -194,6 +232,7 @@ class _SaleEntryScreenState extends ConsumerState<SaleEntryScreen> {
           notes: _notesCtrl.text.trim(),
           createdAt: DateTime.now(),
         ));
+        createdBillId = billId;
       }
 
       // 4. Save individual SaleModel records linked to the bill + deduct stock
@@ -216,12 +255,7 @@ class _SaleEntryScreenState extends ConsumerState<SaleEntryScreen> {
           stockItemId: li.stockItemId,
         ));
 
-        // 5. Deduct stock by ID
-        if (li.stockItemId != null) {
-          final deducted = await SupabaseService.deductStockById(
-              li.stockItemId!, li.quantity);
-          if (deducted) stockUpdated++;
-        }
+        stockUpdated++;
       }
 
       ref.invalidate(todayBillsProvider);
@@ -240,7 +274,20 @@ class _SaleEntryScreenState extends ConsumerState<SaleEntryScreen> {
         Navigator.pop(context, true);
       }
     } catch (e) {
-      _showError('Save failed: $e');
+      for (final li in deductedItems.reversed) {
+        await SupabaseService.addStockById(li.stockItemId!, li.quantity);
+      }
+      if (widget.bill != null) {
+        for (final os in oldSales) {
+          if (os.stockItemId != null) {
+            await SupabaseService.deductStockById(os.stockItemId!, os.quantity);
+          }
+        }
+      } else if (createdBillId != null && createdBillId!.isNotEmpty) {
+        await SupabaseService.deleteSalesByBillId(createdBillId!);
+        await SupabaseService.deleteBill(createdBillId!);
+      }
+      _showError(e is StockUnavailableException ? e.message : 'Save failed: $e');
     } finally {
       if (mounted) setState(() => _isSaving = false);
     }
