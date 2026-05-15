@@ -390,6 +390,7 @@ class _InvoiceListScreenState extends ConsumerState<InvoiceListScreen> {
                 if (amt <= 0) return;
                 
                 setDialogState(() => isSaving = true);
+                var stockDeducted = false;
                 try {
                   final userId = AuthService.currentUserId;
                   final shop = await ref.read(shopProvider.future);
@@ -397,10 +398,25 @@ class _InvoiceListScreenState extends ConsumerState<InvoiceListScreen> {
 
                   // Stock logic
                   final qty = double.tryParse(qtyCtrl.text) ?? 1;
+                  if (qty <= 0) {
+                    throw Exception(AppLang.tr(
+                      isEn,
+                      'Enter a valid quantity',
+                      'Sahi quantity dalein',
+                    ));
+                  }
 
                   if (widget.billType == 'sale' || widget.billType == 'purchase_return') {
                     if (selectedStockItem != null) {
-                      await SupabaseService.deductStockById(selectedStockItem!.id, qty);
+                      final deducted = await SupabaseService.deductStockById(selectedStockItem!.id, qty);
+                      if (!deducted) {
+                        throw StockUnavailableException(AppLang.tr(
+                          isEn,
+                          'Insufficient stock for ${selectedStockItem!.itemName}',
+                          '${selectedStockItem!.itemName} ka stock kam',
+                        ));
+                      }
+                      stockDeducted = true;
                     }
                   } else if (widget.billType == 'purchase' || widget.billType == 'sale_return') {
                     if (isNewItem && newItemNameCtrl.text.isNotEmpty) {
@@ -440,6 +456,9 @@ class _InvoiceListScreenState extends ConsumerState<InvoiceListScreen> {
                     ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(AppLang.tr(isEn, 'Saved successfully!', 'सफलतापूर्वक सहेजा गया!')), backgroundColor: AppColors.success)); 
                   }
                 } catch (e) {
+                  if (stockDeducted && selectedStockItem != null) {
+                    await SupabaseService.addStockById(selectedStockItem!.id, double.tryParse(qtyCtrl.text) ?? 1);
+                  }
                   setDialogState(() => isSaving = false);
                   if (ctx.mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Failed: $e'), backgroundColor: AppColors.error));
                 }
