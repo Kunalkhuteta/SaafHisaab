@@ -6,6 +6,15 @@ import '../models/sale_model.dart';
 import '../models/stock_model.dart';
 import '../models/udhar_model.dart';
 
+class StockUnavailableException implements Exception {
+  final String message;
+
+  const StockUnavailableException(this.message);
+
+  @override
+  String toString() => message;
+}
+
 class SupabaseService {
 
   // Use getter so it's always fresh
@@ -300,6 +309,8 @@ static Future<double> getTodaySalesTotal(String shopId) async {
   }
   /// Deduct stock by item ID directly (most reliable)
   static Future<bool> deductStockById(String stockItemId, double quantity) async {
+    if (quantity <= 0) return false;
+
     try {
       final data = await _client
           .from('stock_items')
@@ -313,20 +324,28 @@ static Future<double> getTodaySalesTotal(String shopId) async {
       }
 
       final current = (data['current_quantity'] as num?)?.toDouble() ?? 0.0;
-      final newQty = (current - quantity).clamp(0.0, double.maxFinite).toDouble();
+      if (current < quantity) {
+        debugPrint(
+          'deductStockById blocked: requested $quantity, available $current',
+        );
+        return false;
+      }
+      final newQty = current - quantity;
       
       print('📦 Stock deduct: $current - $quantity = $newQty (id: $stockItemId)');
 
       // 2. Update directly
-      await _client
+      final updated = await _client
           .from('stock_items')
           .update({
             'current_quantity': newQty,
             'updated_at': DateTime.now().toIso8601String(),
           })
-          .eq('id', stockItemId);
+          .eq('id', stockItemId)
+          .eq('current_quantity', current)
+          .select('id');
 
-      return true;
+      return (updated as List).isNotEmpty;
     } catch (e) {
       print('❌ deductStockById error: $e');
       return false;
@@ -336,6 +355,8 @@ static Future<double> getTodaySalesTotal(String shopId) async {
   /// Deduct stock by item name (fallback)
   static Future<bool> deductStock(
       String shopId, String itemName, double quantity) async {
+    if (quantity <= 0) return false;
+
     try {
       final data = await _client
           .from('stock_items')
@@ -350,18 +371,27 @@ static Future<double> getTodaySalesTotal(String shopId) async {
       }
 
       final current = (data['current_quantity'] as num?)?.toDouble() ?? 0.0;
-      final newQty = (current - quantity).clamp(0.0, double.maxFinite).toDouble();
+      if (current < quantity) {
+        debugPrint(
+          'deductStock blocked for "$itemName": requested $quantity, '
+          'available $current',
+        );
+        return false;
+      }
+      final newQty = current - quantity;
       
       print('📦 Stock deduct by name: $current - $quantity = $newQty');
-      await _client
+      final updated = await _client
           .from('stock_items')
           .update({
             'current_quantity': newQty,
             'updated_at': DateTime.now().toIso8601String(),
           })
-          .eq('id', data['id']);
+          .eq('id', data['id'])
+          .eq('current_quantity', current)
+          .select('id');
 
-      return true;
+      return (updated as List).isNotEmpty;
     } catch (e) {
       print('❌ deductStock error: $e');
       return false;
