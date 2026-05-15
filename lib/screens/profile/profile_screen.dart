@@ -17,9 +17,11 @@ class ProfileScreen extends ConsumerWidget {
     final isEn = ref.watch(appLanguageProvider);
     final shopAsync = ref.watch(shopProvider);
 
-    return Column(
-      children: [
-        Container(
+    return Scaffold(
+      backgroundColor: AppColors.background,
+      body: Column(
+        children: [
+          Container(
           color: AppColors.primary,
           padding: EdgeInsets.only(top: MediaQuery.of(context).padding.top + 12, left: 20, right: 20, bottom: 20),
           child: shopAsync.when(
@@ -43,8 +45,8 @@ class ProfileScreen extends ConsumerWidget {
               ],
             ),
           ),
-        ),
-        Expanded(
+          ),
+          Expanded(
           child: SingleChildScrollView(
             padding: const EdgeInsets.all(20),
             child: Column(
@@ -171,8 +173,9 @@ class ProfileScreen extends ConsumerWidget {
               ],
             ),
           ),
-        ),
-      ],
+          ),
+        ],
+      ),
     );
   }
 
