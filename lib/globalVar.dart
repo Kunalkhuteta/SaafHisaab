@@ -22,3 +22,17 @@ class AppLang {
     return isEn ? en : hi;
   }
 }
+
+class ChartTypeNotifier extends Notifier<String> {
+  @override
+  String build() {
+    return prefs.getString('defaultChartType') ?? 'bar';
+  }
+
+  void setChartType(String type) {
+    state = type;
+    prefs.setString('defaultChartType', type);
+  }
+}
+
+final chartTypeProvider = NotifierProvider<ChartTypeNotifier, String>(ChartTypeNotifier.new);

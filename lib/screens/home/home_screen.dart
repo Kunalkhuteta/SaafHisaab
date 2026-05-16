@@ -11,7 +11,7 @@ import '../bills/bill_scan_screen.dart';
 import '../profile/profile_screen.dart';
 import '../stock/stock_screen.dart';
 import '../udhar/udhar_screen.dart';
-import 'charts_screen.dart';
+import 'reports_tab.dart';
 import 'dashboard_tab.dart';
 
 class HomeScreen extends ConsumerStatefulWidget {
@@ -42,7 +42,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
       const BillScanScreen(),
       const StockScreen(),
       const UdharScreen(),
-      const ChartsScreen(),
+      const ReportsTab(),
     ];
 
     return Scaffold(
@@ -80,8 +80,8 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
             label: AppLang.tr(isEn, 'Credit', 'Credit'),
           ),
           BottomNavigationBarItem(
-            icon: const Icon(Icons.bar_chart_rounded),
-            label: AppLang.tr(isEn, 'Charts', 'Charts'),
+            icon: const Icon(Icons.insert_chart_rounded),
+            label: AppLang.tr(isEn, 'Reports', 'रिपोर्ट्स'),
           ),
         ],
       ),

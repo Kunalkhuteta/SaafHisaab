@@ -1,5 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:fl_chart/fl_chart.dart';
+import 'dart:math' as math;
+import 'dart:async';
 
 import '../../constants/app_colors.dart';
 import '../../globalVar.dart';
@@ -10,26 +13,9 @@ import '../../providers/app_providers.dart';
 import '../../services/supabase_service.dart';
 import '../bills/invoice_list_screen.dart';
 import '../udhar/udhar_screen.dart';
-import 'dashboard_item_detail.dart';
-
-enum _DashboardType {
-  sale,
-  purchase,
-  saleReturn,
-  purchaseReturn,
-  receivable,
-}
-
-enum _DateFilter {
-  today,
-  yesterday,
-  lastWeek,
-  previousMonth,
-  thisMonth,
-  currentYear,
-  previousYear,
-  custom,
-}
+import '../stock/stock_screen.dart';
+import '../profile/profile_screen.dart';
+import 'chart_data_helper.dart';
 
 class DashboardTab extends ConsumerStatefulWidget {
   const DashboardTab({super.key});
@@ -38,23 +24,167 @@ class DashboardTab extends ConsumerStatefulWidget {
   ConsumerState<DashboardTab> createState() => _DashboardTabState();
 }
 
-class _DashboardTabState extends ConsumerState<DashboardTab>
-    with SingleTickerProviderStateMixin {
-  _DashboardType _selectedType = _DashboardType.sale;
-  _DateFilter _filter = _DateFilter.thisMonth;
-  DateTimeRange? _customRange;
-  late final TabController _tabController;
+class _DashboardTabState extends ConsumerState<DashboardTab> {
+  final PageController _chartsPageCtrl = PageController(viewportFraction: 0.92);
+  Timer? _timer;
+  String _chartFilter = 'month'; // week, month, year
 
   @override
   void initState() {
     super.initState();
-    _tabController = TabController(length: 3, vsync: this);
+    _timer = Timer.periodic(const Duration(seconds: 4), (Timer timer) {
+      if (_chartsPageCtrl.hasClients) {
+        int nextPage = _chartsPageCtrl.page!.round() + 1;
+        if (nextPage > 3) nextPage = 0;
+        _chartsPageCtrl.animateToPage(
+          nextPage,
+          duration: const Duration(milliseconds: 600),
+          curve: Curves.easeInOutCubic,
+        );
+      }
+    });
   }
 
   @override
   void dispose() {
-    _tabController.dispose();
+    _timer?.cancel();
+    _chartsPageCtrl.dispose();
     super.dispose();
+  }
+
+  void _gotoInvoice(String type, bool isEn) {
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => InvoiceListScreen(
+          billType: type,
+          title: type == 'sale' ? AppLang.tr(isEn, 'Sales', 'बिक्री') 
+                 : type == 'purchase' ? AppLang.tr(isEn, 'Purchase', 'खरीद')
+                 : type == 'sale_return' ? AppLang.tr(isEn, 'Sale Return', 'बिक्री वापसी')
+                 : AppLang.tr(isEn, 'Purchase Return', 'खरीद वापसी'),
+          titleHi: type == 'sale' ? 'बिक्री' 
+                 : type == 'purchase' ? 'खरीद'
+                 : type == 'sale_return' ? 'बिक्री वापसी'
+                 : 'खरीद वापसी',
+        ),
+      ),
+    ).then((_) => setState(() {}));
+  }
+
+  Future<_DashboardData> _loadData(String shopId) async {
+    final now = DateTime.now();
+    
+    // Default range for bills/cards (this month)
+    final gridStart = DateTime(now.year, now.month, 1);
+    final gridEnd = DateTime(now.year, now.month, now.day, 23, 59, 59);
+
+    // Range for charts based on filter
+    DateTime chartStart;
+    DateTime chartEnd = gridEnd;
+    ChartRange rangeType;
+
+    if (_chartFilter == 'week') {
+      chartStart = now.subtract(Duration(days: now.weekday - 1));
+      chartStart = DateTime(chartStart.year, chartStart.month, chartStart.day);
+      rangeType = ChartRange.week;
+    } else if (_chartFilter == 'year') {
+      chartStart = DateTime(now.year, 4, 1);
+      if (now.month < 4) chartStart = DateTime(now.year - 1, 4, 1);
+      rangeType = ChartRange.year;
+    } else {
+      chartStart = gridStart;
+      rangeType = ChartRange.month;
+    }
+    final chartRange = DateTimeRange(start: chartStart, end: chartEnd);
+
+    // Fetch data using the wider of the two ranges (usually year is widest, but just in case, fetch both and filter)
+    final fetchStart = chartStart.isBefore(gridStart) ? chartStart : gridStart;
+
+    final results = await Future.wait<dynamic>([
+      SupabaseService.getBills(shopId, fetchStart, gridEnd),
+      SupabaseService.getUdharCustomers(shopId),
+      SupabaseService.getLowStockCount(shopId),
+    ]);
+
+    final allBills = results[0] as List<BillModel>;
+    final receivables = results[1] as List<UdharCustomerModel>;
+    final lowStock = results[2] as int;
+
+    // Filter bills for grid cards (Month)
+    final gridBills = allBills.where((b) => !b.billDate.isBefore(gridStart) && !b.billDate.isAfter(gridEnd)).toList();
+    
+    double totalSales = 0;
+    double totalPurchase = 0;
+    for (final b in gridBills) {
+      if (b.billType == 'sale') totalSales += b.amount;
+      if (b.billType == 'purchase') totalPurchase += b.amount;
+    }
+    double totalCredit = receivables.fold(0.0, (s, r) => s + r.totalDue);
+
+    // Filter bills for charts
+    final chartBills = allBills.where((b) => !b.billDate.isBefore(chartStart) && !b.billDate.isAfter(chartEnd)).toList();
+
+    // Create custom buckets for charts
+    final charts = ChartsData.from(
+      bills: chartBills,
+      sales: [],
+      receivables: receivables,
+      range: chartRange,
+      rangeType: rangeType,
+    );
+
+    // Filter return points manually to split them
+    final saleReturnPoints = _buildReturnPoints(chartBills, 'sale_return', chartRange, rangeType);
+    final purchaseReturnPoints = _buildReturnPoints(chartBills, 'purchase_return', chartRange, rangeType);
+
+    return _DashboardData(
+      totalSales: totalSales,
+      totalPurchase: totalPurchase,
+      totalCredit: totalCredit,
+      lowStockCount: lowStock,
+      charts: charts,
+      saleReturnsPoints: saleReturnPoints,
+      purchaseReturnsPoints: purchaseReturnPoints,
+    );
+  }
+
+  List<ChartPoint> _buildReturnPoints(List<BillModel> bills, String type, DateTimeRange range, ChartRange rangeType) {
+    List<ChartBucket> buckets;
+    
+    if (rangeType == ChartRange.year) {
+      final months = range.end.difference(range.start).inDays ~/ 30 + 1;
+      buckets = List.generate(months > 12 ? 12 : months, (i) {
+        final start = DateTime(range.start.year, range.start.month + i, 1);
+        final end = DateTime(start.year, start.month + 1, 0, 23, 59, 59);
+        return ChartBucket(start, end, _monthAbbr(start.month), subLabel: '${start.year}');
+      });
+    } else {
+      final days = range.end.difference(range.start).inDays + 1;
+      buckets = List.generate(days, (i) {
+        final d = range.start.add(Duration(days: i));
+        return ChartBucket(d, d, '${d.day}', subLabel: 'Days');
+      });
+    }
+
+    final points = buckets.map((b) => ChartPoint(b.label, 0, subLabel: b.subLabel)).toList();
+    
+    for (final bill in bills.where((b) => b.billType == type)) {
+      final day = DateTime(bill.billDate.year, bill.billDate.month, bill.billDate.day);
+      for (var i = 0; i < buckets.length; i++) {
+        final b = buckets[i];
+        final s = DateTime(b.start.year, b.start.month, b.start.day);
+        if (!day.isBefore(s) && !day.isAfter(s)) {
+          points[i] = ChartPoint(points[i].label, points[i].amount + bill.amount, subLabel: points[i].subLabel);
+          break;
+        }
+      }
+    }
+    return points;
+  }
+
+  String _monthAbbr(int month) {
+    const abbrs = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+    return abbrs[month - 1];
   }
 
   @override
@@ -63,8 +193,7 @@ class _DashboardTabState extends ConsumerState<DashboardTab>
     final shopAsync = ref.watch(shopProvider);
 
     return shopAsync.when(
-      loading: () =>
-          const Center(child: CircularProgressIndicator(color: AppColors.primary)),
+      loading: () => const Center(child: CircularProgressIndicator(color: AppColors.primary)),
       error: (e, _) => Center(child: Text('Error: $e')),
       data: (shop) {
         if (shop == null) return const SizedBox();
@@ -81,38 +210,128 @@ class _DashboardTabState extends ConsumerState<DashboardTab>
                 future: _loadData(shop.id),
                 builder: (context, snapshot) {
                   if (snapshot.connectionState == ConnectionState.waiting) {
-                    return const Center(
-                      child: CircularProgressIndicator(color: AppColors.primary),
-                    );
+                    return const Center(child: CircularProgressIndicator(color: AppColors.primary));
                   }
                   if (snapshot.hasError) {
                     return Center(child: Text('Error: ${snapshot.error}'));
                   }
 
                   final data = snapshot.data ?? _DashboardData.empty();
+                  final cTypeStr = ref.watch(chartTypeProvider);
+                  final ChartType cType = cTypeStr == 'line' ? ChartType.line : cTypeStr == 'pie' ? ChartType.pie : ChartType.bar;
+
                   return RefreshIndicator(
                     color: AppColors.primary,
                     onRefresh: () async {
                       ref.invalidate(shopProvider);
                       setState(() {});
                     },
-                    child: CustomScrollView(
+                    child: SingleChildScrollView(
                       physics: const AlwaysScrollableScrollPhysics(),
-                      slivers: [
-                        SliverPadding(
-                          padding: const EdgeInsets.fromLTRB(16, 16, 16, 24),
-                          sliver: SliverList.separated(
-                            itemCount: _DashboardType.values.length,
-                            separatorBuilder: (_, __) =>
-                                const SizedBox(height: 10),
-                            itemBuilder: (context, index) => _summaryCard(
-                              _DashboardType.values[index],
-                              data,
-                              isEn,
+                      child: Padding(
+                        padding: const EdgeInsets.all(16.0),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            // 1/3 Space: 2x2 Grid
+                            GridView.count(
+                              crossAxisCount: 2,
+                              shrinkWrap: true,
+                              physics: const NeverScrollableScrollPhysics(),
+                              mainAxisSpacing: 10,
+                              crossAxisSpacing: 10,
+                              childAspectRatio: 2.3,
+                              children: [
+                                _gridCard(
+                                  title: AppLang.tr(isEn, 'Sales', 'बिक्री'),
+                                  amount: data.totalSales,
+                                  color: AppColors.success,
+                                  icon: Icons.trending_up_rounded,
+                                  onTap: () => _gotoInvoice('sale', isEn),
+                                ),
+                                _gridCard(
+                                  title: AppLang.tr(isEn, 'Purchase', 'खरीद'),
+                                  amount: data.totalPurchase,
+                                  color: AppColors.primary,
+                                  icon: Icons.shopping_bag_rounded,
+                                  onTap: () => _gotoInvoice('purchase', isEn),
+                                ),
+                                _gridCard(
+                                  title: AppLang.tr(isEn, 'Credit', 'उधार'),
+                                  amount: data.totalCredit,
+                                  color: AppColors.purple,
+                                  icon: Icons.account_balance_wallet_rounded,
+                                  onTap: () {
+                                    Navigator.push(context, MaterialPageRoute(builder: (_) => const UdharScreen())).then((_) => setState(() {}));
+                                  },
+                                ),
+                                _gridCard(
+                                  title: AppLang.tr(isEn, 'Low Stock', 'कम स्टॉक'),
+                                  amount: data.lowStockCount.toDouble(),
+                                  isCount: true,
+                                  color: AppColors.error,
+                                  icon: Icons.warning_rounded,
+                                  onTap: () {
+                                    Navigator.push(context, MaterialPageRoute(builder: (_) => const StockScreen())).then((_) => setState(() {}));
+                                  },
+                                ),
+                              ],
                             ),
-                          ),
+                            const SizedBox(height: 16),
+                            
+                            // 1/3 Space: Charts
+                            Row(
+                              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                              children: [
+                                Text(
+                                  AppLang.tr(isEn, 'Analytics Overview', 'एनालिटिक्स अवलोकन'),
+                                  style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w800, color: AppColors.textPrimary),
+                                ),
+                                Container(
+                                  height: 32,
+                                  padding: const EdgeInsets.symmetric(horizontal: 8),
+                                  decoration: BoxDecoration(
+                                    color: AppColors.primary.withOpacity(0.08),
+                                    borderRadius: BorderRadius.circular(8),
+                                  ),
+                                  child: DropdownButton<String>(
+                                    value: _chartFilter,
+                                    underline: const SizedBox(),
+                                    icon: const Icon(Icons.arrow_drop_down_rounded, size: 20, color: AppColors.primary),
+                                    style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: AppColors.primary),
+                                    items: [
+                                      DropdownMenuItem(value: 'week', child: Text(AppLang.tr(isEn, 'This Week', 'इस हफ़्ते'))),
+                                      DropdownMenuItem(value: 'month', child: Text(AppLang.tr(isEn, 'This Month', 'इस महीने'))),
+                                      DropdownMenuItem(value: 'year', child: Text(AppLang.tr(isEn, 'This Year', 'इस साल'))),
+                                    ],
+                                    onChanged: (val) {
+                                      if (val != null) {
+                                        setState(() => _chartFilter = val);
+                                      }
+                                    },
+                                  ),
+                                ),
+                              ],
+                            ),
+                            const SizedBox(height: 10),
+                            SizedBox(
+                              height: 220,
+                              child: PageView(
+                                controller: _chartsPageCtrl,
+                                padEnds: false,
+                                children: [
+                                  _chartCard('Sales Trend', data.charts.sales, AppColors.success, cType),
+                                  _chartCard('Purchase Trend', data.charts.purchases, AppColors.primary, cType),
+                                  _chartCard('Sale Returns', data.saleReturnsPoints, AppColors.warning, cType),
+                                  _chartCard('Purchase Returns', data.purchaseReturnsPoints, AppColors.purple, cType),
+                                ],
+                              ),
+                            ),
+                            // Small bottom padding
+                            const SizedBox(height: 10),
+                          ],
                         ),
-                      ],
+                      ),
                     ),
                   );
                 },
@@ -124,781 +343,42 @@ class _DashboardTabState extends ConsumerState<DashboardTab>
     );
   }
 
-  Future<_DashboardData> _loadData(String shopId) async {
-    final fy = _financialYearRange(DateTime.now());
-    final results = await Future.wait<dynamic>([
-      SupabaseService.getBills(shopId, fy.start, fy.end),
-      SupabaseService.getSales(shopId, fy.start, fy.end),
-      SupabaseService.getUdharCustomers(shopId),
-    ]);
-
-    return _DashboardData(
-      bills: (results[0] as List<BillModel>),
-      sales: (results[1] as List<SaleModel>),
-      receivables: (results[2] as List<UdharCustomerModel>),
-    );
-  }
-
-  Widget _summaryCard(_DashboardType type, _DashboardData data, bool isEn) {
-    final total = data.financialYearTotal(type);
-    final color = _typeColor(type);
-
+  Widget _gridCard({required String title, required double amount, required Color color, required IconData icon, required VoidCallback onTap, bool isCount = false}) {
     return InkWell(
-      onTap: () {
-        Navigator.push(
-          context,
-          MaterialPageRoute(
-            builder: (_) => _DashboardDetailScreen(
-              type: type,
-              data: data,
-              isEn: isEn,
-            ),
-          ),
-        ).then((_) => setState(() {}));
-      },
+      onTap: onTap,
       borderRadius: BorderRadius.circular(12),
       child: Container(
-        constraints: const BoxConstraints(minHeight: 64),
-        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 9),
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
         decoration: BoxDecoration(
           color: AppColors.surface,
           borderRadius: BorderRadius.circular(12),
           border: Border.all(color: AppColors.border),
-        ),
-        child: Row(
-          children: [
-            Container(
-              width: 36,
-              height: 36,
-              decoration: BoxDecoration(
-                color: color.withOpacity(0.14),
-                borderRadius: BorderRadius.circular(10),
-              ),
-              child: Icon(_typeIcon(type), color: color, size: 19),
-            ),
-            const SizedBox(width: 10),
-            Expanded(
-              child: Text(
-                _typeLabel(type, isEn),
-                maxLines: 2,
-                overflow: TextOverflow.ellipsis,
-                style: const TextStyle(
-                  fontSize: 12,
-                  height: 1.1,
-                  fontWeight: FontWeight.w800,
-                  color: AppColors.textPrimary,
-                ),
-              ),
-            ),
-            const SizedBox(width: 8),
-            FittedBox(
-              alignment: Alignment.centerRight,
-              fit: BoxFit.scaleDown,
-              child: Text(
-                '₹${total.toStringAsFixed(0)}',
-                style: TextStyle(
-                  fontSize: 17,
-                  fontWeight: FontWeight.w900,
-                  color: color,
-                ),
-              ),
-            ),
-            const SizedBox(width: 2),
-            const Icon(Icons.chevron_right_rounded,
-                color: AppColors.textHint, size: 19),
+          boxShadow: [
+            BoxShadow(color: color.withOpacity(0.05), blurRadius: 10, offset: const Offset(0, 4)),
           ],
-        ),
-      ),
-    );
-  }
-
-  Widget _entryPanel(_DashboardData data, bool isEn) {
-    final range = _selectedRange();
-    final entries = data.entriesFor(_selectedType, range);
-    final currentMode = _modeForIndex(_tabController.index);
-    final filteredEntries =
-        entries.where((entry) => entry.paymentMode == currentMode).toList();
-    final total =
-        filteredEntries.fold(0.0, (sum, entry) => sum + entry.amount);
-
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(16, 8, 16, 20),
-      child: Container(
-        decoration: BoxDecoration(
-          color: AppColors.surface,
-          borderRadius: BorderRadius.circular(12),
-          border: Border.all(color: AppColors.border),
         ),
         child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            Padding(
-              padding: const EdgeInsets.fromLTRB(14, 14, 14, 8),
-              child: Row(
-                children: [
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          _typeLabel(_selectedType, isEn),
-                          style: const TextStyle(
-                            fontSize: 16,
-                            fontWeight: FontWeight.w800,
-                            color: AppColors.textPrimary,
-                          ),
-                        ),
-                        const SizedBox(height: 3),
-                        Text(
-                          '₹${total.toStringAsFixed(0)} • ${filteredEntries.length} entries',
-                          style: TextStyle(
-                            fontSize: 12,
-                            color: _typeColor(_selectedType),
-                            fontWeight: FontWeight.w700,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                  const SizedBox(width: 10),
-                  DropdownButtonHideUnderline(
-                    child: DropdownButton<_DateFilter>(
-                      value: _filter,
-                      borderRadius: BorderRadius.circular(12),
-                      items: _DateFilter.values
-                          .map(
-                            (filter) => DropdownMenuItem(
-                              value: filter,
-                              child: Text(_filterLabel(filter, isEn)),
-                            ),
-                          )
-                          .toList(),
-                      onChanged: (value) async {
-                        if (value == null) return;
-                        if (value == _DateFilter.custom) {
-                          final picked = await showDateRangePicker(
-                            context: context,
-                            firstDate: DateTime(2020),
-                            lastDate: DateTime.now(),
-                            initialDateRange: _customRange ?? range,
-                            builder: (ctx, child) => Theme(
-                              data: Theme.of(ctx).copyWith(
-                                colorScheme: const ColorScheme.light(
-                                  primary: AppColors.primary,
-                                ),
-                              ),
-                              child: child!,
-                            ),
-                          );
-                          if (picked == null) return;
-                          setState(() {
-                            _customRange = picked;
-                            _filter = value;
-                          });
-                          return;
-                        }
-                        setState(() => _filter = value);
-                      },
-                    ),
-                  ),
-                ],
-              ),
-            ),
-            TabBar(
-              controller: _tabController,
-              labelColor: AppColors.primary,
-              unselectedLabelColor: AppColors.textSecondary,
-              indicatorColor: AppColors.primary,
-              onTap: (_) => setState(() {}),
-              tabs: const [
-                Tab(text: 'Cash'),
-                Tab(text: 'Credit'),
-                Tab(text: 'UPI'),
-              ],
-            ),
-            if (filteredEntries.isEmpty)
-              Padding(
-                padding: const EdgeInsets.all(28),
-                child: Column(
-                  children: const [
-                    Icon(Icons.receipt_long_outlined,
-                        color: AppColors.textHint, size: 34),
-                    SizedBox(height: 8),
-                    Text(
-                      'No entries found',
-                      style: TextStyle(
-                        color: AppColors.textSecondary,
-                        fontWeight: FontWeight.w600,
-                      ),
-                    ),
-                  ],
-                ),
-              )
-            else
-              ListView.separated(
-                shrinkWrap: true,
-                physics: const NeverScrollableScrollPhysics(),
-                padding: const EdgeInsets.fromLTRB(12, 12, 12, 14),
-                itemCount: filteredEntries.length,
-                separatorBuilder: (_, __) => const SizedBox(height: 8),
-                itemBuilder: (context, index) =>
-                    _entryTile(filteredEntries[index], index),
-              ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  Widget _entryTile(_DashboardEntry entry, int index) {
-    final color = _typeColor(_selectedType);
-    return GestureDetector(
-      onTap: () {
-        if (entry.model != null) {
-          Navigator.push(context, MaterialPageRoute(builder: (_) => DashboardItemDetailScreen(item: entry.model)))
-            .then((_) => setState(() {}));
-        }
-      },
-      child: Container(
-        padding: const EdgeInsets.all(12),
-        decoration: BoxDecoration(
-          color: AppColors.background,
-          borderRadius: BorderRadius.circular(10),
-          border: Border.all(color: AppColors.border),
-        ),
-        child: Row(
-          children: [
-            Container(
-              width: 38,
-              height: 38,
-              decoration: BoxDecoration(
-                color: color.withOpacity(0.12),
-                borderRadius: BorderRadius.circular(10),
-              ),
-              child: Center(
-                child: Text(
-                  '#${index + 1}',
-                  style: TextStyle(fontWeight: FontWeight.w800, color: color),
-                ),
-              ),
-            ),
-            const SizedBox(width: 10),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    entry.title.isEmpty ? 'Entry' : entry.title,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: const TextStyle(
-                      fontSize: 14,
-                      fontWeight: FontWeight.w700,
-                      color: AppColors.textPrimary,
-                    ),
-                  ),
-                  const SizedBox(height: 3),
-                  Text(
-                    '${_formatDate(entry.date)} • ${entry.paymentMode.toUpperCase()}',
-                    style: const TextStyle(
-                      fontSize: 11,
-                      color: AppColors.textSecondary,
-                    ),
-                  ),
-                ],
-              ),
-            ),
-            const SizedBox(width: 8),
-            Text(
-              '₹${entry.amount.toStringAsFixed(0)}',
-              style: TextStyle(
-                fontSize: 15,
-                fontWeight: FontWeight.w800,
-                color: color,
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  DateTimeRange _selectedRange() {
-    final now = DateTime.now();
-    final today = DateTime(now.year, now.month, now.day);
-
-    switch (_filter) {
-      case _DateFilter.today:
-        return DateTimeRange(start: today, end: _endOfDay(today));
-      case _DateFilter.yesterday:
-        final yesterday = today.subtract(const Duration(days: 1));
-        return DateTimeRange(start: yesterday, end: _endOfDay(yesterday));
-      case _DateFilter.lastWeek:
-        final start = today.subtract(const Duration(days: 6));
-        return DateTimeRange(start: start, end: _endOfDay(today));
-      case _DateFilter.previousMonth:
-        final start = DateTime(now.year, now.month - 1, 1);
-        final end = DateTime(now.year, now.month, 0, 23, 59, 59);
-        return DateTimeRange(start: start, end: end);
-      case _DateFilter.thisMonth:
-        return DateTimeRange(
-          start: DateTime(now.year, now.month, 1),
-          end: _endOfDay(today),
-        );
-      case _DateFilter.currentYear:
-        return DateTimeRange(
-          start: DateTime(now.year, 1, 1),
-          end: _endOfDay(today),
-        );
-      case _DateFilter.previousYear:
-        return DateTimeRange(
-          start: DateTime(now.year - 1, 1, 1),
-          end: DateTime(now.year - 1, 12, 31, 23, 59, 59),
-        );
-      case _DateFilter.custom:
-        return _customRange ?? DateTimeRange(start: today, end: _endOfDay(today));
-    }
-  }
-
-  DateTimeRange _financialYearRange(DateTime now) {
-    final startYear = now.month >= 4 ? now.year : now.year - 1;
-    return DateTimeRange(
-      start: DateTime(startYear, 4, 1),
-      end: DateTime(startYear + 1, 3, 31, 23, 59, 59),
-    );
-  }
-
-  DateTime _endOfDay(DateTime date) =>
-      DateTime(date.year, date.month, date.day, 23, 59, 59);
-
-  String _modeForIndex(int index) {
-    switch (index) {
-      case 1:
-        return 'credit';
-      case 2:
-        return 'upi';
-      default:
-        return 'cash';
-    }
-  }
-
-  void _showAddMenu(BuildContext context, bool isEn) {
-    showModalBottomSheet(
-      context: context,
-      backgroundColor: Colors.transparent,
-      builder: (ctx) => Container(
-        padding: EdgeInsets.fromLTRB(
-          20,
-          18,
-          20,
-          MediaQuery.of(ctx).padding.bottom + 18,
-        ),
-        decoration: const BoxDecoration(
-          color: AppColors.surface,
-          borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
-        ),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            _addMenuTile(ctx, isEn, _DashboardType.sale),
-            _addMenuTile(ctx, isEn, _DashboardType.purchase),
-            _addMenuTile(ctx, isEn, _DashboardType.saleReturn),
-            _addMenuTile(ctx, isEn, _DashboardType.purchaseReturn),
-            _addMenuTile(ctx, isEn, _DashboardType.receivable),
-          ],
-        ),
-      ),
-    );
-  }
-
-  Widget _addMenuTile(BuildContext sheetContext, bool isEn, _DashboardType type) {
-    return ListTile(
-      leading: Icon(_typeIcon(type), color: _typeColor(type)),
-      title: Text(
-        _typeLabel(type, isEn),
-        style: const TextStyle(fontWeight: FontWeight.w700),
-      ),
-      trailing: const Icon(Icons.chevron_right_rounded),
-      onTap: () {
-        Navigator.pop(sheetContext);
-        if (type == _DashboardType.receivable) {
-          Navigator.push(
-            context,
-            MaterialPageRoute(builder: (_) => const UdharScreen()),
-          );
-          return;
-        }
-        Navigator.push(
-          context,
-          MaterialPageRoute(
-            builder: (_) => InvoiceListScreen(
-              billType: _billTypeValue(type),
-              title: _typeLabel(type, true),
-              titleHi: _typeLabel(type, false),
-            ),
-          ),
-        ).then((_) => setState(() {}));
-      },
-    );
-  }
-
-  String _billTypeValue(_DashboardType type) {
-    switch (type) {
-      case _DashboardType.sale:
-        return 'sale';
-      case _DashboardType.purchase:
-        return 'purchase';
-      case _DashboardType.saleReturn:
-        return 'sale_return';
-      case _DashboardType.purchaseReturn:
-        return 'purchase_return';
-      case _DashboardType.receivable:
-        return '';
-    }
-  }
-
-  String _typeLabel(_DashboardType type, bool isEn) {
-    switch (type) {
-      case _DashboardType.sale:
-        return AppLang.tr(isEn, 'Sale', 'Sale');
-      case _DashboardType.purchase:
-        return AppLang.tr(isEn, 'Purchase', 'Purchase');
-      case _DashboardType.saleReturn:
-        return AppLang.tr(isEn, 'Sale Return', 'Sale Return');
-      case _DashboardType.purchaseReturn:
-        return AppLang.tr(isEn, 'Purchase Return', 'Purchase Return');
-      case _DashboardType.receivable:
-        return AppLang.tr(isEn, 'Outstanding Receivable', 'Outstanding Receivable');
-    }
-  }
-
-  String _filterLabel(_DateFilter filter, bool isEn) {
-    switch (filter) {
-      case _DateFilter.today:
-        return AppLang.tr(isEn, 'Today', 'Today');
-      case _DateFilter.yesterday:
-        return AppLang.tr(isEn, 'Yesterday', 'Yesterday');
-      case _DateFilter.lastWeek:
-        return AppLang.tr(isEn, 'Last Week', 'Last Week');
-      case _DateFilter.previousMonth:
-        return AppLang.tr(isEn, 'Previous Month', 'Previous Month');
-      case _DateFilter.thisMonth:
-        return AppLang.tr(isEn, 'This Month', 'This Month');
-      case _DateFilter.currentYear:
-        return AppLang.tr(isEn, 'Current Year', 'Current Year');
-      case _DateFilter.previousYear:
-        return AppLang.tr(isEn, 'Previous Year', 'Previous Year');
-      case _DateFilter.custom:
-        return AppLang.tr(isEn, 'Custom Date', 'Custom Date');
-    }
-  }
-
-  IconData _typeIcon(_DashboardType type) {
-    switch (type) {
-      case _DashboardType.sale:
-        return Icons.trending_up_rounded;
-      case _DashboardType.purchase:
-        return Icons.shopping_bag_rounded;
-      case _DashboardType.saleReturn:
-        return Icons.assignment_return_rounded;
-      case _DashboardType.purchaseReturn:
-        return Icons.keyboard_return_rounded;
-      case _DashboardType.receivable:
-        return Icons.account_balance_wallet_rounded;
-    }
-  }
-
-  Color _typeColor(_DashboardType type) {
-    switch (type) {
-      case _DashboardType.sale:
-        return AppColors.success;
-      case _DashboardType.purchase:
-        return AppColors.primary;
-      case _DashboardType.saleReturn:
-        return AppColors.warning;
-      case _DashboardType.purchaseReturn:
-        return AppColors.purple;
-      case _DashboardType.receivable:
-        return AppColors.error;
-    }
-  }
-
-  String _formatDate(DateTime date) =>
-      '${date.day.toString().padLeft(2, '0')}/${date.month.toString().padLeft(2, '0')}/${date.year}';
-}
-
-class _DashboardDetailScreen extends StatefulWidget {
-  final _DashboardType type;
-  final _DashboardData data;
-  final bool isEn;
-
-  const _DashboardDetailScreen({
-    required this.type,
-    required this.data,
-    required this.isEn,
-  });
-
-  @override
-  State<_DashboardDetailScreen> createState() => _DashboardDetailScreenState();
-}
-
-class _DashboardDetailScreenState extends State<_DashboardDetailScreen>
-    with SingleTickerProviderStateMixin {
-  _DateFilter _filter = _DateFilter.thisMonth;
-  DateTimeRange? _customRange;
-  late final TabController _tabController;
-
-  @override
-  void initState() {
-    super.initState();
-    _tabController = TabController(length: 3, vsync: this);
-  }
-
-  @override
-  void dispose() {
-    _tabController.dispose();
-    super.dispose();
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final color = _typeColor(widget.type);
-    final range = _selectedRange();
-    final entries = widget.data.entriesFor(widget.type, range);
-    final mode = _modeForIndex(_tabController.index);
-    final filteredEntries =
-        entries.where((entry) => entry.paymentMode == mode).toList();
-    final total =
-        filteredEntries.fold(0.0, (sum, entry) => sum + entry.amount);
-
-    return Scaffold(
-      backgroundColor: AppColors.background,
-      appBar: AppBar(
-        title: Text(_typeLabel(widget.type, widget.isEn)),
-        backgroundColor: AppColors.primary,
-        foregroundColor: Colors.white,
-        actions: [
-          Padding(
-            padding: const EdgeInsets.only(right: 12),
-            child: DropdownButtonHideUnderline(
-              child: DropdownButton<_DateFilter>(
-                value: _filter,
-                dropdownColor: AppColors.surface,
-                iconEnabledColor: Colors.white,
-                style: const TextStyle(
-                  color: AppColors.textPrimary,
-                  fontSize: 13,
-                  fontWeight: FontWeight.w600,
-                ),
-                selectedItemBuilder: (_) => _DateFilter.values
-                    .map(
-                      (filter) => Align(
-                        alignment: Alignment.center,
-                        child: Text(
-                          _filterLabel(filter, widget.isEn),
-                          style: const TextStyle(
-                            color: Colors.white,
-                            fontSize: 13,
-                            fontWeight: FontWeight.w700,
-                          ),
-                        ),
-                      ),
-                    )
-                    .toList(),
-                items: _DateFilter.values
-                    .map(
-                      (filter) => DropdownMenuItem(
-                        value: filter,
-                        child: Text(_filterLabel(filter, widget.isEn)),
-                      ),
-                    )
-                    .toList(),
-                onChanged: (value) async {
-                  if (value == null) return;
-                  if (value == _DateFilter.custom) {
-                    final picked = await showDateRangePicker(
-                      context: context,
-                      firstDate: DateTime(2020),
-                      lastDate: DateTime.now(),
-                      initialDateRange: _customRange ?? range,
-                      builder: (ctx, child) => Theme(
-                        data: Theme.of(ctx).copyWith(
-                          colorScheme: const ColorScheme.light(
-                            primary: AppColors.primary,
-                          ),
-                        ),
-                        child: child!,
-                      ),
-                    );
-                    if (picked == null) return;
-                    setState(() {
-                      _customRange = picked;
-                      _filter = value;
-                    });
-                    return;
-                  }
-                  setState(() => _filter = value);
-                },
-              ),
-            ),
-          ),
-        ],
-      ),
-      floatingActionButton: FloatingActionButton(
-        onPressed: _openAddTarget,
-        backgroundColor: AppColors.primary,
-        foregroundColor: Colors.white,
-        child: const Icon(Icons.add_rounded),
-      ),
-      body: Column(
-        children: [
-          Container(
-            width: double.infinity,
-            padding: const EdgeInsets.fromLTRB(16, 16, 16, 12),
-            color: AppColors.surface,
-            child: Row(
+            Row(
               children: [
                 Container(
-                  width: 44,
-                  height: 44,
-                  decoration: BoxDecoration(
-                    color: color.withOpacity(0.14),
-                    borderRadius: BorderRadius.circular(12),
-                  ),
-                  child: Icon(_typeIcon(widget.type), color: color, size: 22),
+                  padding: const EdgeInsets.all(6),
+                  decoration: BoxDecoration(color: color.withOpacity(0.15), borderRadius: BorderRadius.circular(8)),
+                  child: Icon(icon, color: color, size: 16),
                 ),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        '₹${total.toStringAsFixed(0)}',
-                        style: TextStyle(
-                          fontSize: 22,
-                          fontWeight: FontWeight.w900,
-                          color: color,
-                        ),
-                      ),
-                      const SizedBox(height: 2),
-                      Text(
-                        '${filteredEntries.length} entries • ${_filterLabel(_filter, widget.isEn)}',
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: const TextStyle(
-                          fontSize: 12,
-                          color: AppColors.textSecondary,
-                          fontWeight: FontWeight.w600,
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
+                const SizedBox(width: 8),
+                Expanded(child: Text(title, style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: AppColors.textSecondary))),
               ],
             ),
-          ),
-          Container(
-            color: AppColors.surface,
-            child: TabBar(
-              controller: _tabController,
-              labelColor: AppColors.primary,
-              unselectedLabelColor: AppColors.textSecondary,
-              indicatorColor: AppColors.primary,
-              onTap: (_) => setState(() {}),
-              tabs: const [
-                Tab(text: 'Cash'),
-                Tab(text: 'Credit'),
-                Tab(text: 'UPI'),
-              ],
-            ),
-          ),
-          Expanded(
-            child: filteredEntries.isEmpty
-                ? const Center(
-                    child: Text(
-                      'No entries found',
-                      style: TextStyle(
-                        color: AppColors.textSecondary,
-                        fontWeight: FontWeight.w600,
-                      ),
-                    ),
-                  )
-                : ListView.separated(
-                    padding: const EdgeInsets.all(16),
-                    itemCount: filteredEntries.length,
-                    separatorBuilder: (_, __) => const SizedBox(height: 10),
-                    itemBuilder: (context, index) =>
-                        _entryTile(filteredEntries[index], index, color),
-                  ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _entryTile(_DashboardEntry entry, int index, Color color) {
-    return GestureDetector(
-      onTap: () {
-        if (entry.model != null) {
-          Navigator.push(context, MaterialPageRoute(builder: (_) => DashboardItemDetailScreen(item: entry.model)))
-            .then((_) => setState(() {}));
-        }
-      },
-      child: Container(
-        padding: const EdgeInsets.all(12),
-        decoration: BoxDecoration(
-          color: AppColors.surface,
-          borderRadius: BorderRadius.circular(12),
-          border: Border.all(color: AppColors.border),
-        ),
-        child: Row(
-          children: [
-            Container(
-              width: 38,
-              height: 38,
-              decoration: BoxDecoration(
-                color: color.withOpacity(0.12),
-                borderRadius: BorderRadius.circular(10),
-              ),
-              child: Center(
-                child: Text(
-                  '#${index + 1}',
-                  style: TextStyle(fontWeight: FontWeight.w800, color: color),
-                ),
-              ),
-            ),
-            const SizedBox(width: 10),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    entry.title.isEmpty ? 'Entry' : entry.title,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: const TextStyle(
-                      fontSize: 14,
-                      fontWeight: FontWeight.w700,
-                      color: AppColors.textPrimary,
-                    ),
-                  ),
-                  const SizedBox(height: 3),
-                  Text(
-                    '${_formatDate(entry.date)} • ${entry.paymentMode.toUpperCase()}',
-                    style: const TextStyle(
-                      fontSize: 11,
-                      color: AppColors.textSecondary,
-                    ),
-                  ),
-                ],
-              ),
-            ),
-            const SizedBox(width: 8),
-            Text(
-              '₹${entry.amount.toStringAsFixed(0)}',
-              style: TextStyle(
-                fontSize: 15,
-                fontWeight: FontWeight.w800,
-                color: color,
+            const Spacer(),
+            FittedBox(
+              fit: BoxFit.scaleDown,
+              alignment: Alignment.centerLeft,
+              child: Text(
+                isCount ? amount.toInt().toString() : '₹${_compactMoney(amount)}',
+                style: TextStyle(fontSize: 18, fontWeight: FontWeight.w900, color: color),
               ),
             ),
           ],
@@ -907,162 +387,183 @@ class _DashboardDetailScreenState extends State<_DashboardDetailScreen>
     );
   }
 
-  void _openAddTarget() {
-    if (widget.type == _DashboardType.receivable) {
-      Navigator.push(
-        context,
-        MaterialPageRoute(builder: (_) => const UdharScreen()),
-      );
-      return;
-    }
+  Widget _chartCard(String title, List<ChartPoint> series, Color color, ChartType cType) {
+    final hasData = series.any((p) => p.amount > 0);
+    final peak = series.fold(0.0, (m, p) => p.amount > m ? p.amount : m);
 
-    Navigator.push(
-      context,
-      MaterialPageRoute(
-        builder: (_) => InvoiceListScreen(
-          billType: _billTypeValue(widget.type),
-          title: _typeLabel(widget.type, true),
-          titleHi: _typeLabel(widget.type, false),
-        ),
+    return Container(
+      margin: const EdgeInsets.only(right: 10),
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: AppColors.surface,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: AppColors.border),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(title, style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: AppColors.textSecondary)),
+          const SizedBox(height: 10),
+          Expanded(
+            child: hasData ? _buildChart(series, color, peak, cType) : Center(child: Text('No Data', style: TextStyle(color: AppColors.textHint.withOpacity(0.5), fontSize: 12))),
+          ),
+        ],
       ),
     );
   }
 
-  String _billTypeValue(_DashboardType type) {
-    switch (type) {
-      case _DashboardType.sale:
-        return 'sale';
-      case _DashboardType.purchase:
-        return 'purchase';
-      case _DashboardType.saleReturn:
-        return 'sale_return';
-      case _DashboardType.purchaseReturn:
-        return 'purchase_return';
-      case _DashboardType.receivable:
-        return '';
+  // --- CHART BUILDERS (Copied & simplified from charts_screen for Dashboard View) ---
+  Widget _buildChart(List<ChartPoint> series, Color color, double peak, ChartType cType) {
+    switch (cType) {
+      case ChartType.line: return _lineChart(series, color, peak);
+      case ChartType.bar: return _barChart(series, color, peak);
+      case ChartType.pie: return _pieChart(series, color);
     }
   }
 
-  DateTimeRange _selectedRange() {
-    final now = DateTime.now();
-    final today = DateTime(now.year, now.month, now.day);
-
-    switch (_filter) {
-      case _DateFilter.today:
-        return DateTimeRange(start: today, end: _endOfDay(today));
-      case _DateFilter.yesterday:
-        final yesterday = today.subtract(const Duration(days: 1));
-        return DateTimeRange(start: yesterday, end: _endOfDay(yesterday));
-      case _DateFilter.lastWeek:
-        final start = today.subtract(const Duration(days: 6));
-        return DateTimeRange(start: start, end: _endOfDay(today));
-      case _DateFilter.previousMonth:
-        final start = DateTime(now.year, now.month - 1, 1);
-        final end = DateTime(now.year, now.month, 0, 23, 59, 59);
-        return DateTimeRange(start: start, end: end);
-      case _DateFilter.thisMonth:
-        return DateTimeRange(
-          start: DateTime(now.year, now.month, 1),
-          end: _endOfDay(today),
-        );
-      case _DateFilter.currentYear:
-        return DateTimeRange(
-          start: DateTime(now.year, 1, 1),
-          end: _endOfDay(today),
-        );
-      case _DateFilter.previousYear:
-        return DateTimeRange(
-          start: DateTime(now.year - 1, 1, 1),
-          end: DateTime(now.year - 1, 12, 31, 23, 59, 59),
-        );
-      case _DateFilter.custom:
-        return _customRange ??
-            DateTimeRange(start: today, end: _endOfDay(today));
-    }
+  Widget _lineChart(List<ChartPoint> series, Color color, double peak) {
+    final maxY = peak <= 0 ? 1.0 : peak * 1.2;
+    return LineChart(
+      LineChartData(
+        minY: 0, maxY: maxY,
+        borderData: FlBorderData(show: false),
+        gridData: FlGridData(show: false),
+        titlesData: FlTitlesData(
+          topTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)),
+          rightTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)),
+          leftTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)),
+          bottomTitles: AxisTitles(
+            sideTitles: SideTitles(
+              showTitles: true, reservedSize: 32, interval: 1,
+              getTitlesWidget: (v, m) {
+                final idx = v.toInt();
+                if (idx < 0 || idx >= series.length) return const SizedBox();
+                return Transform.rotate(
+                  angle: -math.pi / 2.5,
+                  child: Text(series[idx].label, style: const TextStyle(fontSize: 8, color: AppColors.textHint)),
+                );
+              },
+            ),
+          ),
+        ),
+        lineTouchData: LineTouchData(
+          enabled: true,
+          touchTooltipData: LineTouchTooltipData(
+            getTooltipItems: (spots) => spots.map((s) => LineTooltipItem('₹${_compactMoney(s.y)}', const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 10))).toList(),
+          ),
+        ),
+        lineBarsData: [
+          LineChartBarData(
+            spots: [for (var i = 0; i < series.length; i++) FlSpot(i.toDouble(), series[i].amount)],
+            isCurved: true, color: color, barWidth: 2.5, dotData: const FlDotData(show: false),
+            belowBarData: BarAreaData(show: true, color: color.withOpacity(0.1)),
+          ),
+        ],
+      ),
+    );
   }
 
-  DateTime _endOfDay(DateTime date) =>
-      DateTime(date.year, date.month, date.day, 23, 59, 59);
-
-  String _modeForIndex(int index) {
-    switch (index) {
-      case 1:
-        return 'credit';
-      case 2:
-        return 'upi';
-      default:
-        return 'cash';
-    }
+  Widget _barChart(List<ChartPoint> series, Color color, double peak) {
+    final maxY = peak <= 0 ? 1.0 : peak * 1.2;
+    return BarChart(
+      BarChartData(
+        maxY: maxY,
+        borderData: FlBorderData(show: false),
+        gridData: FlGridData(show: false),
+        titlesData: FlTitlesData(
+          topTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)),
+          rightTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)),
+          leftTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)),
+          bottomTitles: AxisTitles(
+            sideTitles: SideTitles(
+              showTitles: true, reservedSize: 32, interval: 1,
+              getTitlesWidget: (v, m) {
+                final idx = v.toInt();
+                if (idx < 0 || idx >= series.length) return const SizedBox();
+                return Transform.rotate(
+                  angle: -math.pi / 2.5,
+                  child: Text(series[idx].label, style: const TextStyle(fontSize: 8, color: AppColors.textHint)),
+                );
+              },
+            ),
+          ),
+        ),
+        barTouchData: BarTouchData(
+          enabled: true,
+          touchTooltipData: BarTouchTooltipData(
+            getTooltipItem: (g, gIdx, r, rIdx) => BarTooltipItem('₹${_compactMoney(r.toY)}', const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 10)),
+          ),
+        ),
+        barGroups: [
+          for (var i = 0; i < series.length; i++)
+            BarChartGroupData(x: i, barRods: [
+              BarChartRodData(toY: series[i].amount, width: 6, color: color, borderRadius: BorderRadius.circular(2))
+            ]),
+        ],
+      ),
+    );
   }
 
-  String _formatDate(DateTime date) =>
-      '${date.day.toString().padLeft(2, '0')}/${date.month.toString().padLeft(2, '0')}/${date.year}';
+  Widget _pieChart(List<ChartPoint> series, Color baseColor) {
+    final nonZero = <int>[];
+    for (var i = 0; i < series.length; i++) if (series[i].amount > 0) nonZero.add(i);
+    
+    final hsl = HSLColor.fromColor(baseColor);
+    final colors = List.generate(nonZero.length, (i) {
+      final hue = (hsl.hue + i * (360.0 / math.max(nonZero.length, 1))) % 360;
+      return HSLColor.fromAHSL(1, hue, hsl.saturation * 0.85, hsl.lightness).toColor();
+    });
 
-  String _typeLabel(_DashboardType type, bool isEn) {
-    switch (type) {
-      case _DashboardType.sale:
-        return AppLang.tr(isEn, 'Sale', 'Sale');
-      case _DashboardType.purchase:
-        return AppLang.tr(isEn, 'Purchase', 'Purchase');
-      case _DashboardType.saleReturn:
-        return AppLang.tr(isEn, 'Sale Return', 'Sale Return');
-      case _DashboardType.purchaseReturn:
-        return AppLang.tr(isEn, 'Purchase Return', 'Purchase Return');
-      case _DashboardType.receivable:
-        return AppLang.tr(
-            isEn, 'Outstanding Receivable', 'Outstanding Receivable');
-    }
+    return Row(
+      children: [
+        Expanded(
+          child: PieChart(
+            PieChartData(
+              sectionsSpace: 2, centerSpaceRadius: 28,
+              pieTouchData: PieTouchData(enabled: true),
+              sections: [
+                for (var j = 0; j < nonZero.length; j++)
+                  PieChartSectionData(
+                    value: series[nonZero[j]].amount, 
+                    color: colors[j], 
+                    radius: 34, 
+                    showTitle: true,
+                    title: _compactMoney(series[nonZero[j]].amount),
+                    titleStyle: const TextStyle(fontSize: 8, color: Colors.white, fontWeight: FontWeight.bold)
+                  ),
+              ],
+            ),
+          ),
+        ),
+        if (nonZero.isNotEmpty) const SizedBox(width: 8),
+        if (nonZero.isNotEmpty)
+          SizedBox(
+            width: 70,
+            child: ListView.builder(
+              shrinkWrap: true,
+              physics: const BouncingScrollPhysics(),
+              itemCount: nonZero.length,
+              itemBuilder: (context, j) => Padding(
+                padding: const EdgeInsets.only(bottom: 6),
+                child: Row(
+                  children: [
+                    Container(width: 8, height: 8, color: colors[j]),
+                    const SizedBox(width: 4),
+                    Expanded(child: Text(series[nonZero[j]].label, style: const TextStyle(fontSize: 9, color: AppColors.textSecondary), maxLines: 1, overflow: TextOverflow.ellipsis)),
+                  ],
+                ),
+              ),
+            ),
+          ),
+      ],
+    );
   }
 
-  String _filterLabel(_DateFilter filter, bool isEn) {
-    switch (filter) {
-      case _DateFilter.today:
-        return AppLang.tr(isEn, 'Today', 'Today');
-      case _DateFilter.yesterday:
-        return AppLang.tr(isEn, 'Yesterday', 'Yesterday');
-      case _DateFilter.lastWeek:
-        return AppLang.tr(isEn, 'Last Week', 'Last Week');
-      case _DateFilter.previousMonth:
-        return AppLang.tr(isEn, 'Previous Month', 'Previous Month');
-      case _DateFilter.thisMonth:
-        return AppLang.tr(isEn, 'This Month', 'This Month');
-      case _DateFilter.currentYear:
-        return AppLang.tr(isEn, 'Current Year', 'Current Year');
-      case _DateFilter.previousYear:
-        return AppLang.tr(isEn, 'Previous Year', 'Previous Year');
-      case _DateFilter.custom:
-        return AppLang.tr(isEn, 'Custom Date', 'Custom Date');
-    }
-  }
-
-  IconData _typeIcon(_DashboardType type) {
-    switch (type) {
-      case _DashboardType.sale:
-        return Icons.trending_up_rounded;
-      case _DashboardType.purchase:
-        return Icons.shopping_bag_rounded;
-      case _DashboardType.saleReturn:
-        return Icons.assignment_return_rounded;
-      case _DashboardType.purchaseReturn:
-        return Icons.keyboard_return_rounded;
-      case _DashboardType.receivable:
-        return Icons.account_balance_wallet_rounded;
-    }
-  }
-
-  Color _typeColor(_DashboardType type) {
-    switch (type) {
-      case _DashboardType.sale:
-        return AppColors.success;
-      case _DashboardType.purchase:
-        return AppColors.primary;
-      case _DashboardType.saleReturn:
-        return AppColors.warning;
-      case _DashboardType.purchaseReturn:
-        return AppColors.purple;
-      case _DashboardType.receivable:
-        return AppColors.error;
-    }
+  String _compactMoney(double v) {
+    if (v >= 10000000) return '${(v / 10000000).toStringAsFixed(1)}Cr';
+    if (v >= 100000) return '${(v / 100000).toStringAsFixed(1)}L';
+    if (v >= 1000) return '${(v / 1000).toStringAsFixed(1)}k';
+    return v.toStringAsFixed(0);
   }
 }
 
@@ -1081,12 +582,7 @@ class _DashboardAppBar extends StatelessWidget {
   Widget build(BuildContext context) {
     return Container(
       color: AppColors.primary,
-      padding: EdgeInsets.only(
-        top: MediaQuery.of(context).padding.top + 12,
-        left: 20,
-        right: 20,
-        bottom: 20,
-      ),
+      padding: EdgeInsets.only(top: MediaQuery.of(context).padding.top + 12, left: 20, right: 20, bottom: 20),
       child: Row(
         children: [
           GestureDetector(
@@ -1098,27 +594,23 @@ class _DashboardAppBar extends StatelessWidget {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(
-                  AppLang.tr(isEn, 'Hello, $ownerName', 'Hello, $ownerName'),
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: const TextStyle(
-                    fontSize: 18,
-                    fontWeight: FontWeight.bold,
-                    color: Colors.white,
-                  ),
+                Text(AppLang.tr(isEn, 'Hello, $ownerName', 'Hello, $ownerName'),
+                  maxLines: 1, overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Colors.white),
                 ),
                 const SizedBox(height: 2),
-                Text(
-                  shopName,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: TextStyle(
-                    fontSize: 13,
-                    color: Colors.white.withOpacity(0.75),
-                  ),
-                ),
+                Text(shopName, maxLines: 1, overflow: TextOverflow.ellipsis, style: TextStyle(fontSize: 13, color: Colors.white.withOpacity(0.75))),
               ],
+            ),
+          ),
+          GestureDetector(
+            onTap: () {
+              Navigator.push(context, MaterialPageRoute(builder: (_) => const ProfileScreen()));
+            },
+            child: Container(
+              padding: const EdgeInsets.all(8),
+              decoration: BoxDecoration(color: Colors.white.withOpacity(0.2), shape: BoxShape.circle),
+              child: const Icon(Icons.settings_rounded, color: Colors.white, size: 22),
             ),
           ),
         ],
@@ -1128,105 +620,31 @@ class _DashboardAppBar extends StatelessWidget {
 }
 
 class _DashboardData {
-  final List<BillModel> bills;
-  final List<SaleModel> sales;
-  final List<UdharCustomerModel> receivables;
+  final double totalSales;
+  final double totalPurchase;
+  final double totalCredit;
+  final int lowStockCount;
+  final ChartsData charts;
+  final List<ChartPoint> saleReturnsPoints;
+  final List<ChartPoint> purchaseReturnsPoints;
 
   const _DashboardData({
-    required this.bills,
-    required this.sales,
-    required this.receivables,
+    required this.totalSales,
+    required this.totalPurchase,
+    required this.totalCredit,
+    required this.lowStockCount,
+    required this.charts,
+    required this.saleReturnsPoints,
+    required this.purchaseReturnsPoints,
   });
 
-  factory _DashboardData.empty() =>
-      const _DashboardData(bills: [], sales: [], receivables: []);
-
-  double financialYearTotal(_DashboardType type) {
-    if (type == _DashboardType.receivable) {
-      return receivables.fold(0.0, (sum, item) => sum + item.totalDue);
-    }
-    return bills
-        .where((bill) => bill.billType == _billType(type))
-        .fold(0.0, (sum, bill) => sum + bill.amount);
-  }
-
-  List<_DashboardEntry> entriesFor(_DashboardType type, DateTimeRange range) {
-    if (type == _DashboardType.receivable) {
-      return receivables
-          .where((item) => _inRange(item.createdAt, range))
-          .map(
-            (item) => _DashboardEntry(
-              title: item.customerName,
-              amount: item.totalDue,
-              date: item.createdAt,
-              paymentMode: 'credit',
-              model: item,
-            ),
-          )
-          .toList()
-        ..sort((a, b) => b.date.compareTo(a.date));
-    }
-
-    return bills
-        .where((bill) =>
-            bill.billType == _billType(type) && _inRange(bill.billDate, range))
-        .map((bill) => _entryFromBill(bill))
-        .toList()
-      ..sort((a, b) => b.date.compareTo(a.date));
-  }
-
-  static _DashboardEntry _entryFromBill(BillModel bill) {
-    return _DashboardEntry(
-      title: bill.vendorName,
-      amount: bill.amount,
-      date: bill.billDate,
-      paymentMode: 'cash',
-      model: bill,
-    );
-  }
-
-  static String _billType(_DashboardType type) {
-    switch (type) {
-      case _DashboardType.sale:
-        return 'sale';
-      case _DashboardType.purchase:
-        return 'purchase';
-      case _DashboardType.saleReturn:
-        return 'sale_return';
-      case _DashboardType.purchaseReturn:
-        return 'purchase_return';
-      case _DashboardType.receivable:
-        return '';
-    }
-  }
-
-  static String _normalizeMode(String mode) {
-    final lower = mode.toLowerCase();
-    if (lower == 'upi') return 'upi';
-    if (lower == 'credit' || lower == 'udhar') return 'credit';
-    return 'cash';
-  }
-
-  static bool _inRange(DateTime date, DateTimeRange range) {
-    final normalized = DateTime(date.year, date.month, date.day);
-    final start = DateTime(range.start.year, range.start.month, range.start.day);
-    final end = DateTime(range.end.year, range.end.month, range.end.day);
-    return !normalized.isBefore(start) && !normalized.isAfter(end);
-  }
-}
-
-class _DashboardEntry {
-  final String title;
-  final double amount;
-  final DateTime date;
-  final String paymentMode;
-  final dynamic model;
-
-  const _DashboardEntry({
-    required this.title,
-    required this.amount,
-    required this.date,
-    required this.paymentMode,
-    this.model,
-  });
+  factory _DashboardData.empty() => _DashboardData(
+        totalSales: 0,
+        totalPurchase: 0,
+        totalCredit: 0,
+        lowStockCount: 0,
+        charts: ChartsData.empty(),
+        saleReturnsPoints: [],
+        purchaseReturnsPoints: [],
+      );
 }

@@ -134,66 +134,75 @@ class _SetPasscodeScreenState extends ConsumerState<SetPasscodeScreen>
 
           // Content area
           Expanded(
-            child: Column(
-              children: [
-                const SizedBox(height: 28),
+            child: CustomScrollView(
+              physics: const BouncingScrollPhysics(),
+              slivers: [
+                SliverFillRemaining(
+                  hasScrollBody: false,
+                  child: Column(
+                    children: [
+                      const SizedBox(height: 28),
 
-                // Title
-                Text(
-                  _isConfirming
-                      ? AppLang.tr(isEn, 'Confirm Passcode', 'Passcode confirm करें')
-                      : AppLang.tr(isEn, 'Set Passcode', 'Passcode set करें'),
-                  style: const TextStyle(
-                    fontSize: 22, fontWeight: FontWeight.bold, color: AppColors.textPrimary,
-                  ),
-                ),
-                const SizedBox(height: 6),
-                Text(
-                  _isConfirming
-                      ? AppLang.tr(isEn, 'Re-enter your 4-digit passcode', '4 अंकों का passcode दोबारा डालें')
-                      : AppLang.tr(isEn, 'Enter a 4-digit passcode', '4 अंकों का passcode डालें'),
-                  style: const TextStyle(fontSize: 13, color: AppColors.textSecondary),
-                ),
 
-                const SizedBox(height: 28),
-
-                // Dots
-                AnimatedBuilder(
-                  animation: _shakeAnimation,
-                  builder: (context, child) {
-                    return Transform.translate(
-                      offset: Offset(
-                        _shakeController.isAnimating
-                            ? _shakeAnimation.value * ((_shakeController.value * 10).toInt().isEven ? 1 : -1)
-                            : 0,
-                        0,
+                      // Title
+                      Text(
+                        _isConfirming
+                            ? AppLang.tr(isEn, 'Confirm Passcode', 'Passcode confirm करें')
+                            : AppLang.tr(isEn, 'Set Passcode', 'Passcode set करें'),
+                        style: const TextStyle(
+                          fontSize: 22, fontWeight: FontWeight.bold, color: AppColors.textPrimary,
+                        ),
                       ),
-                      child: child,
-                    );
-                  },
-                  child: Row(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: List.generate(4, (i) => _buildDot(i)),
+                      const SizedBox(height: 6),
+                      Text(
+                        _isConfirming
+                            ? AppLang.tr(isEn, 'Re-enter your 4-digit passcode', '4 अंकों का passcode दोबारा डालें')
+                            : AppLang.tr(isEn, 'Enter a 4-digit passcode', '4 अंकों का passcode डालें'),
+                        style: const TextStyle(fontSize: 13, color: AppColors.textSecondary),
+                      ),
+
+                      const SizedBox(height: 28),
+
+                      // Dots
+                      AnimatedBuilder(
+                        animation: _shakeAnimation,
+                        builder: (context, child) {
+                          return Transform.translate(
+                            offset: Offset(
+                              _shakeController.isAnimating
+                                  ? _shakeAnimation.value * ((_shakeController.value * 10).toInt().isEven ? 1 : -1)
+                                  : 0,
+                              0,
+                            ),
+                            child: child,
+                          );
+                        },
+                        child: Row(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: List.generate(4, (i) => _buildDot(i)),
+                        ),
+                      ),
+
+                      // Error text
+                      const SizedBox(height: 14),
+                      AnimatedOpacity(
+                        opacity: _showError ? 1.0 : 0.0,
+                        duration: const Duration(milliseconds: 200),
+                        child: Text(
+                          AppLang.tr(isEn, 'Passcode did not match', 'Passcode match नहीं हुआ'),
+                          style: const TextStyle(fontSize: 13, color: AppColors.error, fontWeight: FontWeight.w500),
+                        ),
+                      ),
+
+                      const Spacer(),
+
+                      // Numpad
+                      _buildNumpad(),
+
+                      SizedBox(height: bottomPadding + 16),
+                    ],
                   ),
                 ),
-
-                // Error text
-                const SizedBox(height: 14),
-                AnimatedOpacity(
-                  opacity: _showError ? 1.0 : 0.0,
-                  duration: const Duration(milliseconds: 200),
-                  child: Text(
-                    AppLang.tr(isEn, 'Passcode did not match', 'Passcode match नहीं हुआ'),
-                    style: const TextStyle(fontSize: 13, color: AppColors.error, fontWeight: FontWeight.w500),
-                  ),
-                ),
-
-                const Spacer(),
-
-                // Numpad
-                _buildNumpad(),
-
-                SizedBox(height: bottomPadding + 16),
               ],
             ),
           ),

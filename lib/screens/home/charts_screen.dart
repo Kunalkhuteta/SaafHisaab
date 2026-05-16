@@ -18,7 +18,6 @@ class ChartsScreen extends ConsumerStatefulWidget {
 class _ChartsScreenState extends ConsumerState<ChartsScreen>
     with TickerProviderStateMixin {
   ChartRange _range = ChartRange.month;
-  ChartType _chartType = ChartType.bar;
   DateTimeRange? _customRange;
   late final TabController _dataTabCtrl;
   int _touchedPieIndex = -1;
@@ -174,6 +173,10 @@ class _ChartsScreenState extends ConsumerState<ChartsScreen>
     final peak =
         series.fold(0.0, (m, p) => p.amount > m ? p.amount : m);
 
+    // Get chart type from global provider
+    final String cTypeStr = ref.watch(chartTypeProvider);
+    final ChartType cType = cTypeStr == 'line' ? ChartType.line : cTypeStr == 'pie' ? ChartType.pie : ChartType.bar;
+
     return RefreshIndicator(
       color: AppColors.primary,
       onRefresh: () async {
@@ -251,15 +254,11 @@ class _ChartsScreenState extends ConsumerState<ChartsScreen>
                   ),
                 ),
               SizedBox(
-                height: _chartType == ChartType.pie ? 260 : 280,
-                child: _hasData(series) ? _buildChart(series, color, peak) : _emptyState(),
+                height: cType == ChartType.pie ? 260 : 280,
+                child: _hasData(series) ? _buildChart(series, color, peak, cType) : _emptyState(),
               ),
             ]),
           ),
-          const SizedBox(height: 12),
-
-          // Chart type switcher
-          _chartTypeSwitcher(color),
           const SizedBox(height: 12),
 
           // Date range label
@@ -275,63 +274,9 @@ class _ChartsScreenState extends ConsumerState<ChartsScreen>
     );
   }
 
-  // ─── CHART TYPE SWITCHER ───
-  Widget _chartTypeSwitcher(Color activeColor) {
-    return Container(
-      padding: const EdgeInsets.all(4),
-      decoration: BoxDecoration(
-        color: AppColors.background,
-        borderRadius: BorderRadius.circular(14),
-        border: Border.all(color: AppColors.border),
-      ),
-      child: Row(
-        children: ChartType.values.map((t) {
-          final selected = t == _chartType;
-          return Expanded(
-            child: GestureDetector(
-              onTap: () => setState(() => _chartType = t),
-              child: AnimatedContainer(
-                duration: const Duration(milliseconds: 250),
-                curve: Curves.easeOutCubic,
-                padding: const EdgeInsets.symmetric(vertical: 10),
-                decoration: BoxDecoration(
-                  color: selected ? activeColor.withOpacity(0.12) : Colors.transparent,
-                  borderRadius: BorderRadius.circular(10),
-                  border: selected
-                      ? Border.all(color: activeColor.withOpacity(0.3))
-                      : null,
-                ),
-                child: Row(mainAxisAlignment: MainAxisAlignment.center, children: [
-                  Icon(
-                    t == ChartType.line
-                        ? Icons.show_chart_rounded
-                        : t == ChartType.bar
-                            ? Icons.bar_chart_rounded
-                            : Icons.pie_chart_rounded,
-                    size: 18,
-                    color: selected ? activeColor : AppColors.textHint,
-                  ),
-                  const SizedBox(width: 6),
-                  Text(
-                    t == ChartType.line ? 'Line' : t == ChartType.bar ? 'Bar' : 'Pie',
-                    style: TextStyle(
-                      fontSize: 13,
-                      fontWeight: selected ? FontWeight.w700 : FontWeight.w500,
-                      color: selected ? activeColor : AppColors.textSecondary,
-                    ),
-                  ),
-                ]),
-              ),
-            ),
-          );
-        }).toList(),
-      ),
-    );
-  }
-
   // ─── CHART BUILDERS ───
-  Widget _buildChart(List<ChartPoint> series, Color color, double peak) {
-    switch (_chartType) {
+  Widget _buildChart(List<ChartPoint> series, Color color, double peak, ChartType cType) {
+    switch (cType) {
       case ChartType.line:
         return _lineChart(series, color, peak);
       case ChartType.bar:

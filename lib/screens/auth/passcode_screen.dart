@@ -125,8 +125,13 @@ class _PasscodeScreenState extends ConsumerState<PasscodeScreen>
       canPop: false,
       child: Scaffold(
         backgroundColor: AppColors.background,
-        body: Column(
-          children: [
+        body: CustomScrollView(
+          physics: const BouncingScrollPhysics(),
+          slivers: [
+            SliverFillRemaining(
+              hasScrollBody: false,
+              child: Column(
+                children: [
             // Blue header
             Container(
               width: double.infinity,
@@ -271,11 +276,13 @@ class _PasscodeScreenState extends ConsumerState<PasscodeScreen>
               ),
             ),
 
-            SizedBox(height: MediaQuery.of(context).padding.bottom + 8),
-          ],
-        ),
-      ),
-    );
+                ], // close Column children
+              ), // close Column
+            ), // close SliverFillRemaining
+          ], // close slivers
+        ), // close CustomScrollView
+      ), // close Scaffold
+    ); // close PopScope
   }
 
   Widget _buildDot(int index) {

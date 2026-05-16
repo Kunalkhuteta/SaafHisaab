@@ -108,7 +108,50 @@ class ProfileScreen extends ConsumerWidget {
                     ],
                   ),
                 ),
+                const SizedBox(height: 12),
 
+                // Chart Type Setting
+                Container(
+                  margin: const EdgeInsets.only(bottom: 12),
+                  padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 4),
+                  decoration: BoxDecoration(
+                    color: AppColors.surface,
+                    borderRadius: BorderRadius.circular(12),
+                    border: Border.all(color: AppColors.border),
+                  ),
+                  child: Row(
+                    children: [
+                      const Icon(Icons.bar_chart_rounded, color: AppColors.primary, size: 20),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: Text(AppLang.tr(isEn, 'Default Chart Type', 'डिफ़ॉल्ट चार्ट प्रकार'),
+                            style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w500, color: AppColors.textPrimary)),
+                      ),
+                      Consumer(
+                        builder: (ctx, ref, _) {
+                          final chartType = ref.watch(chartTypeProvider);
+                          return DropdownButtonHideUnderline(
+                            child: DropdownButton<String>(
+                              value: chartType,
+                              icon: const Icon(Icons.keyboard_arrow_down_rounded, size: 20, color: AppColors.textHint),
+                              style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w600, color: AppColors.primary),
+                              items: const [
+                                DropdownMenuItem(value: 'bar', child: Text('Bar Chart')),
+                                DropdownMenuItem(value: 'line', child: Text('Line Chart')),
+                                DropdownMenuItem(value: 'pie', child: Text('Pie Chart')),
+                              ],
+                              onChanged: (val) {
+                                if (val != null) {
+                                  ref.read(chartTypeProvider.notifier).setChartType(val);
+                                }
+                              },
+                            ),
+                          );
+                        },
+                      ),
+                    ],
+                  ),
+                ),
                 // Security section
                 Padding(
                   padding: const EdgeInsets.only(bottom: 8),
