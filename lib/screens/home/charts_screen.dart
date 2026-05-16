@@ -23,6 +23,11 @@ class _ChartsScreenState extends ConsumerState<ChartsScreen>
   late final TabController _dataTabCtrl;
   int _touchedPieIndex = -1;
 
+  Future<ChartsData>? _chartsFuture;
+  ChartRange? _lastRange;
+  String? _lastShopId;
+  DateTimeRange? _lastCustomRange;
+
   @override
   void initState() {
     super.initState();
@@ -49,8 +54,16 @@ class _ChartsScreenState extends ConsumerState<ChartsScreen>
           data: (shop) {
             if (shop == null) return const SizedBox();
             final range = _selectedRange();
+            
+            if (_chartsFuture == null || _lastShopId != shop.id || _lastRange != _range || _lastCustomRange != _customRange) {
+              _lastShopId = shop.id;
+              _lastRange = _range;
+              _lastCustomRange = _customRange;
+              _chartsFuture = _loadData(shop.id, range);
+            }
+
             return FutureBuilder<ChartsData>(
-              future: _loadData(shop.id, range),
+              future: _chartsFuture,
               builder: (ctx, snap) {
                 if (snap.connectionState == ConnectionState.waiting) {
                   return const Center(
@@ -163,7 +176,11 @@ class _ChartsScreenState extends ConsumerState<ChartsScreen>
 
     return RefreshIndicator(
       color: AppColors.primary,
-      onRefresh: () async => setState(() {}),
+      onRefresh: () async {
+        setState(() {
+          _chartsFuture = null; // Force reload
+        });
+      },
       child: ListView(
         padding: const EdgeInsets.fromLTRB(16, 14, 16, 24),
         children: [
