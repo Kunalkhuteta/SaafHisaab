@@ -570,12 +570,15 @@ class _ChartsScreenState extends ConsumerState<ChartsScreen>
             if (idx % showEvery != 0) return const SizedBox();
             return Padding(
               padding: const EdgeInsets.only(top: 6),
-              child: Text(
-                series[idx].label,
-                style: const TextStyle(
-                  color: AppColors.textSecondary,
-                  fontSize: 10,
-                  fontWeight: FontWeight.w600,
+              child: RotatedBox(
+                quarterTurns: 3,
+                child: Text(
+                  series[idx].label,
+                  style: const TextStyle(
+                    color: AppColors.textSecondary,
+                    fontSize: 10,
+                    fontWeight: FontWeight.w600,
+                  ),
                 ),
               ),
             );
