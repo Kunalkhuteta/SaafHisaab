@@ -10,6 +10,7 @@ import '../../providers/app_providers.dart';
 import '../../services/supabase_service.dart';
 import '../bills/invoice_list_screen.dart';
 import '../udhar/udhar_screen.dart';
+import 'dashboard_item_detail.dart';
 
 enum _DashboardType {
   sale,
@@ -153,7 +154,7 @@ class _DashboardTabState extends ConsumerState<DashboardTab>
               isEn: isEn,
             ),
           ),
-        );
+        ).then((_) => setState(() {}));
       },
       borderRadius: BorderRadius.circular(12),
       child: Container(
@@ -350,65 +351,73 @@ class _DashboardTabState extends ConsumerState<DashboardTab>
 
   Widget _entryTile(_DashboardEntry entry, int index) {
     final color = _typeColor(_selectedType);
-    return Container(
-      padding: const EdgeInsets.all(12),
-      decoration: BoxDecoration(
-        color: AppColors.background,
-        borderRadius: BorderRadius.circular(10),
-        border: Border.all(color: AppColors.border),
-      ),
-      child: Row(
-        children: [
-          Container(
-            width: 38,
-            height: 38,
-            decoration: BoxDecoration(
-              color: color.withOpacity(0.12),
-              borderRadius: BorderRadius.circular(10),
-            ),
-            child: Center(
-              child: Text(
-                '#${index + 1}',
-                style: TextStyle(fontWeight: FontWeight.w800, color: color),
+    return GestureDetector(
+      onTap: () {
+        if (entry.model != null) {
+          Navigator.push(context, MaterialPageRoute(builder: (_) => DashboardItemDetailScreen(item: entry.model)))
+            .then((_) => setState(() {}));
+        }
+      },
+      child: Container(
+        padding: const EdgeInsets.all(12),
+        decoration: BoxDecoration(
+          color: AppColors.background,
+          borderRadius: BorderRadius.circular(10),
+          border: Border.all(color: AppColors.border),
+        ),
+        child: Row(
+          children: [
+            Container(
+              width: 38,
+              height: 38,
+              decoration: BoxDecoration(
+                color: color.withOpacity(0.12),
+                borderRadius: BorderRadius.circular(10),
+              ),
+              child: Center(
+                child: Text(
+                  '#${index + 1}',
+                  style: TextStyle(fontWeight: FontWeight.w800, color: color),
+                ),
               ),
             ),
-          ),
-          const SizedBox(width: 10),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  entry.title.isEmpty ? 'Entry' : entry.title,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: const TextStyle(
-                    fontSize: 14,
-                    fontWeight: FontWeight.w700,
-                    color: AppColors.textPrimary,
+            const SizedBox(width: 10),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    entry.title.isEmpty ? 'Entry' : entry.title,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(
+                      fontSize: 14,
+                      fontWeight: FontWeight.w700,
+                      color: AppColors.textPrimary,
+                    ),
                   ),
-                ),
-                const SizedBox(height: 3),
-                Text(
-                  '${_formatDate(entry.date)} • ${entry.paymentMode.toUpperCase()}',
-                  style: const TextStyle(
-                    fontSize: 11,
-                    color: AppColors.textSecondary,
+                  const SizedBox(height: 3),
+                  Text(
+                    '${_formatDate(entry.date)} • ${entry.paymentMode.toUpperCase()}',
+                    style: const TextStyle(
+                      fontSize: 11,
+                      color: AppColors.textSecondary,
+                    ),
                   ),
-                ),
-              ],
+                ],
+              ),
             ),
-          ),
-          const SizedBox(width: 8),
-          Text(
-            '₹${entry.amount.toStringAsFixed(0)}',
-            style: TextStyle(
-              fontSize: 15,
-              fontWeight: FontWeight.w800,
-              color: color,
+            const SizedBox(width: 8),
+            Text(
+              '₹${entry.amount.toStringAsFixed(0)}',
+              style: TextStyle(
+                fontSize: 15,
+                fontWeight: FontWeight.w800,
+                color: color,
+              ),
             ),
-          ),
-        ],
+          ],
+        ),
       ),
     );
   }
@@ -827,65 +836,73 @@ class _DashboardDetailScreenState extends State<_DashboardDetailScreen>
   }
 
   Widget _entryTile(_DashboardEntry entry, int index, Color color) {
-    return Container(
-      padding: const EdgeInsets.all(12),
-      decoration: BoxDecoration(
-        color: AppColors.surface,
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: AppColors.border),
-      ),
-      child: Row(
-        children: [
-          Container(
-            width: 38,
-            height: 38,
-            decoration: BoxDecoration(
-              color: color.withOpacity(0.12),
-              borderRadius: BorderRadius.circular(10),
-            ),
-            child: Center(
-              child: Text(
-                '#${index + 1}',
-                style: TextStyle(fontWeight: FontWeight.w800, color: color),
+    return GestureDetector(
+      onTap: () {
+        if (entry.model != null) {
+          Navigator.push(context, MaterialPageRoute(builder: (_) => DashboardItemDetailScreen(item: entry.model)))
+            .then((_) => setState(() {}));
+        }
+      },
+      child: Container(
+        padding: const EdgeInsets.all(12),
+        decoration: BoxDecoration(
+          color: AppColors.surface,
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(color: AppColors.border),
+        ),
+        child: Row(
+          children: [
+            Container(
+              width: 38,
+              height: 38,
+              decoration: BoxDecoration(
+                color: color.withOpacity(0.12),
+                borderRadius: BorderRadius.circular(10),
+              ),
+              child: Center(
+                child: Text(
+                  '#${index + 1}',
+                  style: TextStyle(fontWeight: FontWeight.w800, color: color),
+                ),
               ),
             ),
-          ),
-          const SizedBox(width: 10),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  entry.title.isEmpty ? 'Entry' : entry.title,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: const TextStyle(
-                    fontSize: 14,
-                    fontWeight: FontWeight.w700,
-                    color: AppColors.textPrimary,
+            const SizedBox(width: 10),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    entry.title.isEmpty ? 'Entry' : entry.title,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(
+                      fontSize: 14,
+                      fontWeight: FontWeight.w700,
+                      color: AppColors.textPrimary,
+                    ),
                   ),
-                ),
-                const SizedBox(height: 3),
-                Text(
-                  '${_formatDate(entry.date)} • ${entry.paymentMode.toUpperCase()}',
-                  style: const TextStyle(
-                    fontSize: 11,
-                    color: AppColors.textSecondary,
+                  const SizedBox(height: 3),
+                  Text(
+                    '${_formatDate(entry.date)} • ${entry.paymentMode.toUpperCase()}',
+                    style: const TextStyle(
+                      fontSize: 11,
+                      color: AppColors.textSecondary,
+                    ),
                   ),
-                ),
-              ],
+                ],
+              ),
             ),
-          ),
-          const SizedBox(width: 8),
-          Text(
-            '₹${entry.amount.toStringAsFixed(0)}',
-            style: TextStyle(
-              fontSize: 15,
-              fontWeight: FontWeight.w800,
-              color: color,
+            const SizedBox(width: 8),
+            Text(
+              '₹${entry.amount.toStringAsFixed(0)}',
+              style: TextStyle(
+                fontSize: 15,
+                fontWeight: FontWeight.w800,
+                color: color,
+              ),
             ),
-          ),
-        ],
+          ],
+        ),
       ),
     );
   }
@@ -1134,31 +1151,6 @@ class _DashboardData {
   }
 
   List<_DashboardEntry> entriesFor(_DashboardType type, DateTimeRange range) {
-    if (type == _DashboardType.sale) {
-      final saleEntries = sales
-          .where((sale) => _inRange(sale.saleDate, range))
-          .map(
-            (sale) => _DashboardEntry(
-              title: sale.itemName,
-              amount: sale.totalAmount,
-              date: sale.saleDate,
-              paymentMode: _normalizeMode(sale.paymentMode),
-            ),
-          )
-          .toList();
-
-      final saleBillEntries = bills
-          .where((bill) =>
-              bill.billType == 'sale' &&
-              _inRange(bill.billDate, range) &&
-              !sales.any((sale) => sale.billId == bill.id))
-          .map((bill) => _entryFromBill(bill))
-          .toList();
-
-      return [...saleEntries, ...saleBillEntries]
-        ..sort((a, b) => b.date.compareTo(a.date));
-    }
-
     if (type == _DashboardType.receivable) {
       return receivables
           .where((item) => _inRange(item.createdAt, range))
@@ -1168,6 +1160,7 @@ class _DashboardData {
               amount: item.totalDue,
               date: item.createdAt,
               paymentMode: 'credit',
+              model: item,
             ),
           )
           .toList()
@@ -1188,6 +1181,7 @@ class _DashboardData {
       amount: bill.amount,
       date: bill.billDate,
       paymentMode: 'cash',
+      model: bill,
     );
   }
 
@@ -1226,11 +1220,13 @@ class _DashboardEntry {
   final double amount;
   final DateTime date;
   final String paymentMode;
+  final dynamic model;
 
   const _DashboardEntry({
     required this.title,
     required this.amount,
     required this.date,
     required this.paymentMode,
+    this.model,
   });
 }

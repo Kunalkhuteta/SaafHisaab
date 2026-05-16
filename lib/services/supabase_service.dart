@@ -157,13 +157,17 @@ class SupabaseService {
     double? amount,
     String? vendorName,
     String? notes,
+    bool? isGstBill,
+    double? gstAmount,
+    DateTime? billDate,
   }) async {
-    final updates = <String, dynamic>{
-      'updated_at': DateTime.now().toIso8601String(),
-    };
+    final updates = <String, dynamic>{};
     if (amount != null) updates['amount'] = amount;
     if (vendorName != null) updates['vendor_name'] = vendorName;
     if (notes != null) updates['notes'] = notes;
+    if (isGstBill != null) updates['is_gst_bill'] = isGstBill;
+    if (gstAmount != null) updates['gst_amount'] = gstAmount;
+    if (billDate != null) updates['bill_date'] = billDate.toIso8601String().split('T')[0];
     await _client.from('bills').update(updates).eq('id', billId);
   }
 
@@ -477,15 +481,15 @@ static Future<double> getTotalUdhar(String shopId) async {
   // DASHBOARD
   // ─────────────────────────────────────────
 
-  /// Sum of sale-type bill amounts from [bills] table for today
-  static Future<double> getTodayBillSalesTotal(String shopId) async {
+  /// Sum of bill amounts by type from [bills] table for today
+  static Future<double> getTodayBillTotalByType(String shopId, String type) async {
     final today = DateTime.now().toIso8601String().split('T')[0];
     final data = await _client
         .from('bills')
         .select('amount')
         .eq('shop_id', shopId)
         .eq('bill_date', today)
-        .eq('bill_type', 'sale');
+        .eq('bill_type', type);
     if ((data as List).isEmpty) return 0.0;
     double total = 0.0;
     for (final b in data) {
@@ -508,19 +512,19 @@ static Future<double> getTotalUdhar(String shopId) async {
   static Future<Map<String, dynamic>> getDashboardStats(
       String shopId) async {
     final results = await Future.wait([
-      getTodaySalesTotal(shopId),
-      getTodaySalesCount(shopId),
+      getTodayBillTotalByType(shopId, 'sale'),
+      getTodayBillTotalByType(shopId, 'sale_return'),
       getTotalUdhar(shopId),
       getLowStockCount(shopId),
-      getTodayBillSalesTotal(shopId),
       getTodayBillCount(shopId),
     ]);
-    final salesTotalFromSales = (results[0] as double);
-    final billSalesTotal = (results[4] as double);
-    final billCount = (results[5] as int);
+    final salesTotal = (results[0] as double);
+    final returnsTotal = (results[1] as double);
+    final billCount = (results[4] as int);
+    
     return {
-      'today_sales': salesTotalFromSales + billSalesTotal,
-      'today_bills': billCount > 0 ? billCount : results[1],
+      'today_sales': salesTotal - returnsTotal, // Net sales
+      'today_bills': billCount,
       'total_udhar': results[2],
       'low_stock': results[3],
     };

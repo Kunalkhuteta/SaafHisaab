@@ -10,6 +10,57 @@ import '../../models/sale_model.dart';
 import '../../models/stock_model.dart';
 import '../../globalVar.dart';
 
+/// Invoice type codes and utilities
+class InvType {
+  static const sin = 'sale';
+  static const pin = 'purchase';
+  static const srn = 'sale_return';
+  static const prn = 'purchase_return';
+
+  static String label(String type, bool isEn) {
+    switch (type) {
+      case sin: return AppLang.tr(isEn, 'Sales Invoice (SIN)', 'बिक्री चालान (SIN)');
+      case pin: return AppLang.tr(isEn, 'Purchase Invoice (PIN)', 'खरीद चालान (PIN)');
+      case srn: return AppLang.tr(isEn, 'Sales Return (SRN)', 'बिक्री वापसी (SRN)');
+      case prn: return AppLang.tr(isEn, 'Purchase Return (PRN)', 'खरीद वापसी (PRN)');
+      default: return type;
+    }
+  }
+
+  static String shortCode(String type) {
+    switch (type) {
+      case sin: return 'SIN';
+      case pin: return 'PIN';
+      case srn: return 'SRN';
+      case prn: return 'PRN';
+      default: return '';
+    }
+  }
+
+  static Color color(String type) {
+    switch (type) {
+      case sin: return AppColors.success;
+      case pin: return AppColors.primary;
+      case srn: return AppColors.warning;
+      case prn: return AppColors.purple;
+      default: return AppColors.textSecondary;
+    }
+  }
+
+  static IconData icon(String type) {
+    switch (type) {
+      case sin: return Icons.trending_up_rounded;
+      case pin: return Icons.shopping_cart_rounded;
+      case srn: return Icons.assignment_return_rounded;
+      case prn: return Icons.outbox_rounded;
+      default: return Icons.receipt_rounded;
+    }
+  }
+
+  static bool deductsStock(String type) => type == sin || type == prn;
+  static bool addsStock(String type) => type == pin || type == srn;
+}
+
 class _SaleLineItem {
   String? stockItemId;
   String stockItemName = '';
@@ -35,7 +86,8 @@ class _SaleLineItem {
 
 class SaleEntryScreen extends ConsumerStatefulWidget {
   final BillModel? bill;
-  const SaleEntryScreen({super.key, this.bill});
+  final String billType;
+  const SaleEntryScreen({super.key, this.bill, this.billType = 'sale'});
   @override
   ConsumerState<SaleEntryScreen> createState() => _SaleEntryScreenState();
 }
@@ -49,6 +101,12 @@ class _SaleEntryScreenState extends ConsumerState<SaleEntryScreen> {
 
   double get _grandTotal =>
       _lineItems.fold(0.0, (sum, item) => sum + item.lineTotal);
+
+  String get _billType => widget.bill?.billType ?? widget.billType;
+  bool get _deductsStock => InvType.deductsStock(_billType);
+  bool get _addsStock => InvType.addsStock(_billType);
+  Color get _typeColor => InvType.color(_billType);
+  String get _typeCode => InvType.shortCode(_billType);
 
   @override
   void initState() {
@@ -141,7 +199,7 @@ class _SaleEntryScreenState extends ConsumerState<SaleEntryScreen> {
             '${li.stockItemName} की मात्रा 0 से अधिक होनी चाहिए'));
         return;
       }
-      if (li.quantity > li.currentStock) {
+      if (_deductsStock && li.quantity > li.currentStock) {
         _showError(AppLang.tr(
             isEn,
             'Insufficient stock for ${li.stockItemName}! Available: ${li.currentStock.toStringAsFixed(0)} ${li.unit}',
@@ -167,55 +225,58 @@ class _SaleEntryScreenState extends ConsumerState<SaleEntryScreen> {
         // UPDATE MODE
         billId = widget.bill!.id;
         
-        // 1. Reverse old stock deductions
+        // 1. Reverse old stock operations
         oldSales = await SupabaseService.getSalesByBillId(billId);
         for (var os in oldSales) {
           if (os.stockItemId != null) {
-            await SupabaseService.addStockById(os.stockItemId!, os.quantity);
+            if (_deductsStock) {
+              await SupabaseService.addStockById(os.stockItemId!, os.quantity);
+            } else if (_addsStock) {
+              await SupabaseService.deductStockById(os.stockItemId!, os.quantity);
+            }
           }
         }
 
+        // 2. Apply new stock operations
         for (final li in _lineItems) {
-          final deducted = await SupabaseService.deductStockById(
-            li.stockItemId!,
-            li.quantity,
-          );
-          if (!deducted) {
-            throw StockUnavailableException(
-              AppLang.tr(
-                isEn,
-                'Insufficient stock for ${li.stockItemName}',
-                '${li.stockItemName} ka stock kam',
-              ),
-            );
+          bool ok = true;
+          if (_deductsStock) {
+            ok = await SupabaseService.deductStockById(li.stockItemId!, li.quantity);
+          } else if (_addsStock) {
+            ok = await SupabaseService.addStockById(li.stockItemId!, li.quantity);
+          }
+          
+          if (!ok) {
+            throw StockUnavailableException(AppLang.tr(isEn,
+              'Stock operation failed for ${li.stockItemName}',
+              '${li.stockItemName} के लिए स्टॉक ऑपरेशन विफल'));
           }
           deductedItems.add(li);
         }
 
-        // 2. Update Bill
+        // 3. Update Bill
         await SupabaseService.updateBill(billId, 
           amount: _grandTotal, 
           vendorName: _customerCtrl.text.trim(), 
           notes: _notesCtrl.text.trim()
         );
 
-        // 3. Delete old sale items
+        // 4. Delete old sale items
         await SupabaseService.deleteSalesByBillId(billId);
       } else {
         // NEW MODE
         for (final li in _lineItems) {
-          final deducted = await SupabaseService.deductStockById(
-            li.stockItemId!,
-            li.quantity,
-          );
-          if (!deducted) {
-            throw StockUnavailableException(
-              AppLang.tr(
-                isEn,
-                'Insufficient stock for ${li.stockItemName}',
-                '${li.stockItemName} ka stock kam',
-              ),
-            );
+          bool ok = true;
+          if (_deductsStock) {
+            ok = await SupabaseService.deductStockById(li.stockItemId!, li.quantity);
+          } else if (_addsStock) {
+            ok = await SupabaseService.addStockById(li.stockItemId!, li.quantity);
+          }
+          
+          if (!ok) {
+            throw StockUnavailableException(AppLang.tr(isEn,
+              'Stock operation failed for ${li.stockItemName}',
+              '${li.stockItemName} के लिए स्टॉक ऑपरेशन विफल'));
           }
           deductedItems.add(li);
         }
@@ -228,7 +289,7 @@ class _SaleEntryScreenState extends ConsumerState<SaleEntryScreen> {
           amount: _grandTotal,
           billDate: DateTime.now(),
           vendorName: _customerCtrl.text.trim(),
-          billType: 'sale',
+          billType: _billType,
           notes: _notesCtrl.text.trim(),
           createdAt: DateTime.now(),
         ));
@@ -265,8 +326,8 @@ class _SaleEntryScreenState extends ConsumerState<SaleEntryScreen> {
 
       if (mounted) {
         final msg = stockUpdated == _lineItems.length
-            ? AppLang.tr(isEn, 'Sale saved & stock updated!', 'बिक्री सहेजी और स्टॉक अपडेट!')
-            : AppLang.tr(isEn, 'Sale saved! (Stock update partial)', 'बिक्री सहेजी! (स्टॉक आंशिक अपडेट)');
+            ? AppLang.tr(isEn, '$_typeCode saved & stock updated!', '$_typeCode सहेजा और स्टॉक अपडेट!')
+            : AppLang.tr(isEn, '$_typeCode saved!', '$_typeCode सहेजा!');
         ScaffoldMessenger.of(context).showSnackBar(SnackBar(
           content: Text(msg),
           backgroundColor: AppColors.success,
@@ -275,12 +336,20 @@ class _SaleEntryScreenState extends ConsumerState<SaleEntryScreen> {
       }
     } catch (e) {
       for (final li in deductedItems.reversed) {
-        await SupabaseService.addStockById(li.stockItemId!, li.quantity);
+        if (_deductsStock) {
+          await SupabaseService.addStockById(li.stockItemId!, li.quantity);
+        } else if (_addsStock) {
+          await SupabaseService.deductStockById(li.stockItemId!, li.quantity);
+        }
       }
       if (widget.bill != null) {
         for (final os in oldSales) {
           if (os.stockItemId != null) {
-            await SupabaseService.deductStockById(os.stockItemId!, os.quantity);
+            if (_deductsStock) {
+              await SupabaseService.deductStockById(os.stockItemId!, os.quantity);
+            } else if (_addsStock) {
+              await SupabaseService.addStockById(os.stockItemId!, os.quantity);
+            }
           }
         }
       } else if (createdBillId != null && createdBillId!.isNotEmpty) {
@@ -297,8 +366,8 @@ class _SaleEntryScreenState extends ConsumerState<SaleEntryScreen> {
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
-        title: Text(AppLang.tr(isEn, 'Delete Sale?', 'बिक्री हटाएं?')),
-        content: Text(AppLang.tr(isEn, 'Are you sure? This will reverse stock deductions.', 'क्या आप वाकई चाहते हैं? इससे स्टॉक वापस जुड़ जाएगा।')),
+        title: Text(AppLang.tr(isEn, 'Delete $_typeCode?', '$_typeCode हटाएं?')),
+        content: Text(AppLang.tr(isEn, 'Are you sure? This will reverse stock operations.', 'क्या आप वाकई चाहते हैं? इससे स्टॉक वापस जुड़/घट जाएगा।')),
         actions: [
           TextButton(onPressed: () => Navigator.pop(ctx, false), child: Text(AppLang.tr(isEn, 'Cancel', 'रद्द करें'))),
           TextButton(
@@ -319,7 +388,11 @@ class _SaleEntryScreenState extends ConsumerState<SaleEntryScreen> {
       final oldSales = await SupabaseService.getSalesByBillId(billId);
       for (var os in oldSales) {
         if (os.stockItemId != null) {
-          await SupabaseService.addStockById(os.stockItemId!, os.quantity);
+          if (_deductsStock) {
+            await SupabaseService.addStockById(os.stockItemId!, os.quantity);
+          } else if (_addsStock) {
+            await SupabaseService.deductStockById(os.stockItemId!, os.quantity);
+          }
         }
       }
       // 2. Delete data
@@ -334,7 +407,7 @@ class _SaleEntryScreenState extends ConsumerState<SaleEntryScreen> {
       if (mounted) {
         Navigator.pop(context, true);
         ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-          content: Text(AppLang.tr(isEn, 'Sale deleted successfully', 'बिक्री सफलतापूर्वक हटा दी गई')),
+          content: Text(AppLang.tr(isEn, '$_typeCode deleted successfully', '$_typeCode सफलतापूर्वक हटा दिया गया')),
           backgroundColor: AppColors.error,
         ));
       }
@@ -355,7 +428,12 @@ class _SaleEntryScreenState extends ConsumerState<SaleEntryScreen> {
       body: Column(children: [
         // ── Header ──
         Container(
-          color: AppColors.primary,
+          decoration: BoxDecoration(
+            gradient: LinearGradient(
+              colors: [_typeColor, _typeColor.withOpacity(0.8)],
+              begin: Alignment.topLeft, end: Alignment.bottomRight,
+            ),
+          ),
           padding: EdgeInsets.only(
               top: MediaQuery.of(context).padding.top + 12,
               left: 20,
@@ -368,15 +446,36 @@ class _SaleEntryScreenState extends ConsumerState<SaleEntryScreen> {
                     color: Colors.white, size: 24)),
             const SizedBox(width: 14),
             Expanded(
-                child: Text(
-                    AppLang.tr(isEn, 
-                        widget.bill != null ? 'Edit Sale' : 'New Sale Entry', 
-                        widget.bill != null ? 'बिक्री एडिट करें' : 'नई बिक्री एंट्री'),
-                    style: const TextStyle(
-                        fontSize: 20,
-                        fontWeight: FontWeight.bold,
-                        color: Colors.white))),
-            if (widget.bill != null)
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      widget.bill != null
+                        ? AppLang.tr(isEn, 'Edit $_typeCode', '$_typeCode एडिट करें')
+                        : AppLang.tr(isEn, 'New $_typeCode Entry', 'नई $_typeCode एंट्री'),
+                      style: const TextStyle(
+                          fontSize: 18,
+                          fontWeight: FontWeight.bold,
+                          color: Colors.white),
+                    ),
+                    Text(
+                      InvType.label(_billType, isEn),
+                      style: TextStyle(fontSize: 11, color: Colors.white.withOpacity(0.8)),
+                    ),
+                  ],
+                )),
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+              decoration: BoxDecoration(
+                color: Colors.white.withOpacity(0.2),
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: Text(_typeCode, style: const TextStyle(
+                fontSize: 13, fontWeight: FontWeight.w800, color: Colors.white, letterSpacing: 1.5,
+              )),
+            ),
+            if (widget.bill != null) ...[
+              const SizedBox(width: 8),
               GestureDetector(
                 onTap: () {
                   // Share functionality
@@ -397,6 +496,7 @@ class _SaleEntryScreenState extends ConsumerState<SaleEntryScreen> {
                   child: const Icon(Icons.share_rounded, color: Colors.white, size: 20),
                 ),
               ),
+            ],
           ]),
         ),
 
@@ -419,9 +519,9 @@ class _SaleEntryScreenState extends ConsumerState<SaleEntryScreen> {
     return SingleChildScrollView(
       padding: const EdgeInsets.all(20),
       child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-        // ── Customer Name ──
-        _sectionLabel(AppLang.tr(isEn, 'Customer Name (optional)',
-            'ग्राहक का नाम (वैकल्पिक)')),
+        // ── Party / Customer Name ──
+        _sectionLabel(AppLang.tr(isEn, 'Party / Customer Name (optional)',
+            'पार्टी / ग्राहक का नाम (वैकल्पिक)')),
         const SizedBox(height: 6),
         _textField(_customerCtrl,
             AppLang.tr(isEn, 'e.g. Ramesh Ji', 'जैसे रमेश जी')),
@@ -432,7 +532,7 @@ class _SaleEntryScreenState extends ConsumerState<SaleEntryScreen> {
         Row(children: [
           Expanded(
               child: _sectionLabel(
-                  AppLang.tr(isEn, 'Sale Items', 'बिक्री आइटम'))),
+                  AppLang.tr(isEn, '$_typeCode Items', '$_typeCode आइटम'))),
           GestureDetector(
             onTap: _addLineItem,
             child: Container(
@@ -489,8 +589,8 @@ class _SaleEntryScreenState extends ConsumerState<SaleEntryScreen> {
           padding: const EdgeInsets.all(16),
           decoration: BoxDecoration(
             gradient: LinearGradient(colors: [
-              AppColors.primary,
-              AppColors.primary.withOpacity(0.85)
+              _typeColor,
+              _typeColor.withOpacity(0.85)
             ]),
             borderRadius: BorderRadius.circular(14),
           ),
@@ -516,7 +616,7 @@ class _SaleEntryScreenState extends ConsumerState<SaleEntryScreen> {
             child: TextButton.icon(
               onPressed: _isSaving ? null : () => _deleteSale(isEn),
               icon: const Icon(Icons.delete_outline_rounded, size: 18),
-              label: Text(AppLang.tr(isEn, 'Delete This Sale', 'यह बिक्री हटाएं')),
+              label: Text(AppLang.tr(isEn, 'Delete This $_typeCode', 'यह $_typeCode हटाएं')),
               style: TextButton.styleFrom(foregroundColor: AppColors.error),
             ),
           ),
@@ -539,15 +639,15 @@ class _SaleEntryScreenState extends ConsumerState<SaleEntryScreen> {
                         color: Colors.white, strokeWidth: 2))
                 : const Icon(Icons.check_rounded, color: Colors.white),
             label: Text(
-                AppLang.tr(ref.read(appLanguageProvider), 
-                    widget.bill != null ? 'Update Sale' : 'Save Sale',
-                    widget.bill != null ? 'बिक्री अपडेट करें' : 'बिक्री सहेजें'),
+                widget.bill != null
+                    ? AppLang.tr(isEn, 'Update $_typeCode', '$_typeCode अपडेट करें')
+                    : AppLang.tr(isEn, 'Save $_typeCode', '$_typeCode सहेजें'),
                 style: const TextStyle(
                     fontSize: 16,
                     fontWeight: FontWeight.w600,
                     color: Colors.white)),
             style: ElevatedButton.styleFrom(
-              backgroundColor: AppColors.success,
+              backgroundColor: _typeColor,
               shape: RoundedRectangleBorder(
                   borderRadius: BorderRadius.circular(14)),
               elevation: 0,
