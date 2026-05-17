@@ -100,6 +100,15 @@ class _BillReviewScreenState extends ConsumerState<BillReviewScreen> {
   }
 
   Future<void> _saveBill(bool isEn) async {
+    final vendorName = _vendorCtrl.text.trim();
+    if (vendorName.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+        content: Text(AppLang.tr(isEn, 'Party / Vendor Name is required', 'पार्टी / वेंडर का नाम आवश्यक है')),
+        backgroundColor: AppColors.error,
+      ));
+      return;
+    }
+
     final amount = double.tryParse(_amountCtrl.text.trim());
     if (amount == null || amount <= 0) {
       ScaffoldMessenger.of(context).showSnackBar(SnackBar(
@@ -139,7 +148,6 @@ class _BillReviewScreenState extends ConsumerState<BillReviewScreen> {
       final shop = await ref.read(shopProvider.future);
       if (userId == null || shop == null) throw Exception('User or shop not found');
 
-      final vendorName = _vendorCtrl.text.trim();
       final gstAmount = double.tryParse(_gstAmountCtrl.text.trim()) ?? 0;
       final notes = _notesCtrl.text.trim();
 
@@ -315,9 +323,37 @@ class _BillReviewScreenState extends ConsumerState<BillReviewScreen> {
                     const SizedBox(height: 14),
                   ],
 
-                  _label(AppLang.tr(isEn, 'Vendor / Party Name', 'वेंडर / पार्टी नाम')),
+                  _label(AppLang.tr(isEn, 'Vendor / Party Name *', 'वेंडर / पार्टी नाम *')),
                   const SizedBox(height: 6),
-                  _field(_vendorCtrl, AppLang.tr(isEn, 'E.g. Sharma Traders', 'जैसे शर्मा ट्रेडर्स')),
+                  if (_billType == 'purchase' || _billType == 'purchase_return')
+                    ref.watch(purchasePartiesProvider).when(
+                      loading: () => const Center(child: Padding(padding: EdgeInsets.all(8.0), child: CircularProgressIndicator(color: AppColors.primary, strokeWidth: 2))),
+                      error: (e, _) => Text('Error: $e'),
+                      data: (parties) => DropdownButtonFormField<String>(
+                        value: _vendorCtrl.text.isNotEmpty && parties.any((p) => p['name'] == _vendorCtrl.text) ? _vendorCtrl.text : null,
+                        isExpanded: true,
+                        decoration: InputDecoration(
+                          hintText: AppLang.tr(isEn, 'Select Party', 'पार्टी चुनें'),
+                          filled: true,
+                          fillColor: AppColors.surface,
+                          border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: const BorderSide(color: AppColors.borderBlue)),
+                          enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: const BorderSide(color: AppColors.borderBlue)),
+                          focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: const BorderSide(color: AppColors.primary, width: 2)),
+                          contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+                        ),
+                        items: parties.map((p) => DropdownMenuItem<String>(
+                          value: p['name'] as String,
+                          child: Text(p['name'] as String, style: const TextStyle(fontSize: 15)),
+                        )).toList(),
+                        onChanged: (val) {
+                          if (val != null) {
+                            setState(() => _vendorCtrl.text = val);
+                          }
+                        },
+                      ),
+                    )
+                  else
+                    _field(_vendorCtrl, AppLang.tr(isEn, 'E.g. Sharma Traders', 'जैसे शर्मा ट्रेडर्स')),
                   const SizedBox(height: 14),
 
                   _label(AppLang.tr(isEn, 'Amount (₹) *', 'राशि (₹) *')),

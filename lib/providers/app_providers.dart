@@ -80,3 +80,15 @@ final udharCustomersProvider = FutureProvider((ref) async {
   if (shop == null) return [];
   return await SupabaseService.getUdharCustomers(shop.id);
 });
+
+// ── Purchase parties provider ──
+final purchasePartiesProvider = FutureProvider<List<Map<String, dynamic>>>((ref) async {
+  final shop = await ref.watch(shopProvider.future);
+  if (shop == null) return [];
+  final response = await Supabase.instance.client
+      .from('purchase_parties')
+      .select()
+      .eq('shop_id', shop.id)
+      .order('name');
+  return List<Map<String, dynamic>>.from(response);
+});

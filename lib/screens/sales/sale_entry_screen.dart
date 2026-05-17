@@ -186,6 +186,11 @@ class _SaleEntryScreenState extends ConsumerState<SaleEntryScreen> {
   }
 
   Future<void> _saveSale(bool isEn) async {
+    if (_customerCtrl.text.trim().isEmpty) {
+      _showError(AppLang.tr(isEn, 'Party / Customer Name is required', 'पार्टी / ग्राहक का नाम आवश्यक है'));
+      return;
+    }
+
     // ── Validate ──
     for (int i = 0; i < _lineItems.length; i++) {
       final li = _lineItems[i];
@@ -520,11 +525,37 @@ class _SaleEntryScreenState extends ConsumerState<SaleEntryScreen> {
       padding: const EdgeInsets.all(20),
       child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
         // ── Party / Customer Name ──
-        _sectionLabel(AppLang.tr(isEn, 'Party / Customer Name (optional)',
-            'पार्टी / ग्राहक का नाम (वैकल्पिक)')),
+        _sectionLabel(AppLang.tr(isEn, 'Party / Customer Name *', 'पार्टी / ग्राहक का नाम *')),
         const SizedBox(height: 6),
-        _textField(_customerCtrl,
-            AppLang.tr(isEn, 'e.g. Ramesh Ji', 'जैसे रमेश जी')),
+        if (_billType == 'purchase' || _billType == 'purchase_return')
+          ref.watch(purchasePartiesProvider).when(
+            loading: () => const Center(child: Padding(padding: EdgeInsets.all(8.0), child: CircularProgressIndicator(color: AppColors.primary, strokeWidth: 2))),
+            error: (e, _) => Text('Error: $e'),
+            data: (parties) => DropdownButtonFormField<String>(
+              value: _customerCtrl.text.isNotEmpty && parties.any((p) => p['name'] == _customerCtrl.text) ? _customerCtrl.text : null,
+              isExpanded: true,
+              decoration: InputDecoration(
+                hintText: AppLang.tr(isEn, 'Select Party', 'पार्टी चुनें'),
+                filled: true,
+                fillColor: AppColors.surface,
+                border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: const BorderSide(color: AppColors.borderBlue)),
+                enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: const BorderSide(color: AppColors.borderBlue)),
+                focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: const BorderSide(color: AppColors.primary, width: 2)),
+                contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+              ),
+              items: parties.map((p) => DropdownMenuItem<String>(
+                value: p['name'] as String,
+                child: Text(p['name'] as String, style: const TextStyle(fontSize: 15)),
+              )).toList(),
+              onChanged: (val) {
+                if (val != null) {
+                  setState(() => _customerCtrl.text = val);
+                }
+              },
+            ),
+          )
+        else
+          _textField(_customerCtrl, AppLang.tr(isEn, 'e.g. Ramesh Ji', 'जैसे रमेश जी')),
 
         const SizedBox(height: 20),
 
