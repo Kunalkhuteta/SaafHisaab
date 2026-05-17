@@ -11,8 +11,10 @@ import '../bills/bill_scan_screen.dart';
 import '../profile/profile_screen.dart';
 import '../stock/stock_screen.dart';
 import '../udhar/udhar_screen.dart';
+import '../purchase/purchase_parties_list_screen.dart';
 import 'reports_tab.dart';
 import 'dashboard_tab.dart';
+import '../settings/system_params_screen.dart';
 
 class HomeScreen extends ConsumerStatefulWidget {
   const HomeScreen({super.key});
@@ -177,10 +179,34 @@ class _HomeDrawer extends StatelessWidget {
               onTap: onProfile,
             ),
             ListTile(
+              leading: const Icon(Icons.shopping_cart_rounded,
+                  color: AppColors.textSecondary),
+              title: Text(AppLang.tr(isEn, 'Purchase Account', 'खरीद खाता')),
+              onTap: () {
+                Navigator.pop(context);
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(builder: (_) => const PurchasePartiesListScreen()),
+                );
+              },
+            ),
+            ListTile(
               leading: const Icon(Icons.settings_rounded,
                   color: AppColors.textSecondary),
               title: Text(AppLang.tr(isEn, 'Settings', 'Settings')),
               onTap: onSettings,
+            ),
+            ListTile(
+              leading: const Icon(Icons.tune_rounded,
+                  color: AppColors.textSecondary),
+              title: Text(AppLang.tr(isEn, 'System Params', 'सिस्टम पैरामीटर')),
+              onTap: () {
+                Navigator.pop(context);
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(builder: (_) => const SystemParamsScreen()),
+                );
+              },
             ),
             ListTile(
               leading: const Icon(Icons.help_outline_rounded,
