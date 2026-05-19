@@ -63,6 +63,8 @@ class InvType {
 
 class _SaleLineItem {
   String? stockItemId;
+  String? originalStockItemId;
+  double originalQty = 0;
   String stockItemName = '';
   String unit = 'piece';
   double currentStock = 0;
@@ -129,6 +131,8 @@ class _SaleEntryScreenState extends ConsumerState<SaleEntryScreen> {
             final item = _SaleLineItem();
             item.stockItemName = s.itemName;
             item.stockItemId = s.stockItemId;
+            item.originalStockItemId = s.stockItemId;
+            item.originalQty = s.quantity;
             item.unit = s.unit;
             item.qtyCtrl.text = s.quantity.toString();
             item.priceCtrl.text = s.sellingPrice.toString();
@@ -204,11 +208,16 @@ class _SaleEntryScreenState extends ConsumerState<SaleEntryScreen> {
             '${li.stockItemName} की मात्रा 0 से अधिक होनी चाहिए'));
         return;
       }
-      if (_deductsStock && li.quantity > li.currentStock) {
+      double availableStock = li.currentStock;
+      if (widget.bill != null && li.stockItemId != null && li.stockItemId == li.originalStockItemId) {
+        availableStock += li.originalQty;
+      }
+
+      if (_deductsStock && li.quantity > availableStock) {
         _showError(AppLang.tr(
             isEn,
-            'Insufficient stock for ${li.stockItemName}! Available: ${li.currentStock.toStringAsFixed(0)} ${li.unit}',
-            '${li.stockItemName} का स्टॉक कम! उपलब्ध: ${li.currentStock.toStringAsFixed(0)} ${li.unit}'));
+            'Insufficient stock for ${li.stockItemName}! Available: ${availableStock.toStringAsFixed(0)} ${li.unit}',
+            '${li.stockItemName} का स्टॉक कम! उपलब्ध: ${availableStock.toStringAsFixed(0)} ${li.unit}'));
         return;
       }
     }
