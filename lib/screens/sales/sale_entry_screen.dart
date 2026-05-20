@@ -7,7 +7,7 @@ import '../../services/supabase_service.dart';
 import '../../services/share_service.dart';
 import '../../models/bill_model.dart';
 import '../../models/sale_model.dart';
-import '../../models/stock_model.dart';
+import '../../models/item_master_model.dart';
 import '../../globalVar.dart';
 
 /// Invoice type codes and utilities
@@ -141,22 +141,21 @@ class _SaleEntryScreenState extends ConsumerState<SaleEntryScreen> {
         });
         
         // Refresh current stock for these items
-        final stockItems = await ref.read(stockItemsProvider.future);
+        final stockItems = await ref.read(itemMasterProvider.future);
         setState(() {
           for (var li in _lineItems) {
             final si = stockItems.firstWhere(
               (element) => element.id == li.stockItemId, 
-              orElse: () => StockItemModel(
+              orElse: () => ItemMasterModel(
                 id: '', 
                 shopId: '', 
                 userId: '', 
                 itemName: '', 
-                currentQuantity: 0, 
-                unit: '',
+                currentStock: 0, 
                 createdAt: DateTime.now(),
               )
             );
-            li.currentStock = si.currentQuantity;
+            li.currentStock = si.currentStock;
           }
         });
       }
@@ -208,6 +207,11 @@ class _SaleEntryScreenState extends ConsumerState<SaleEntryScreen> {
             '${li.stockItemName} की मात्रा 0 से अधिक होनी चाहिए'));
         return;
       }
+      if (li.unitPrice <= 0) {
+        _showError(AppLang.tr(isEn, 'Price/Amount must be > 0 for ${li.stockItemName}',
+            '${li.stockItemName} का मूल्य 0 से अधिक होना चाहिए'));
+        return;
+      }
       double availableStock = li.currentStock;
       if (widget.bill != null && li.stockItemId != null && li.stockItemId == li.originalStockItemId) {
         availableStock += li.originalQty;
@@ -244,9 +248,9 @@ class _SaleEntryScreenState extends ConsumerState<SaleEntryScreen> {
         for (var os in oldSales) {
           if (os.stockItemId != null) {
             if (_deductsStock) {
-              await SupabaseService.addStockById(os.stockItemId!, os.quantity);
+              await SupabaseService.addMasterStockById(os.stockItemId!, os.quantity);
             } else if (_addsStock) {
-              await SupabaseService.deductStockById(os.stockItemId!, os.quantity);
+              await SupabaseService.deductMasterStockById(os.stockItemId!, os.quantity);
             }
           }
         }
@@ -255,9 +259,9 @@ class _SaleEntryScreenState extends ConsumerState<SaleEntryScreen> {
         for (final li in _lineItems) {
           bool ok = true;
           if (_deductsStock) {
-            ok = await SupabaseService.deductStockById(li.stockItemId!, li.quantity);
+            ok = await SupabaseService.deductMasterStockById(li.stockItemId!, li.quantity);
           } else if (_addsStock) {
-            ok = await SupabaseService.addStockById(li.stockItemId!, li.quantity);
+            ok = await SupabaseService.addMasterStockById(li.stockItemId!, li.quantity);
           }
           
           if (!ok) {
@@ -282,9 +286,9 @@ class _SaleEntryScreenState extends ConsumerState<SaleEntryScreen> {
         for (final li in _lineItems) {
           bool ok = true;
           if (_deductsStock) {
-            ok = await SupabaseService.deductStockById(li.stockItemId!, li.quantity);
+            ok = await SupabaseService.deductMasterStockById(li.stockItemId!, li.quantity);
           } else if (_addsStock) {
-            ok = await SupabaseService.addStockById(li.stockItemId!, li.quantity);
+            ok = await SupabaseService.addMasterStockById(li.stockItemId!, li.quantity);
           }
           
           if (!ok) {
@@ -336,7 +340,7 @@ class _SaleEntryScreenState extends ConsumerState<SaleEntryScreen> {
       ref.invalidate(todayBillsProvider);
       ref.invalidate(filteredBillsProvider);
       ref.invalidate(dashboardStatsProvider);
-      ref.invalidate(stockItemsProvider);
+      ref.invalidate(itemMasterProvider);
 
       if (mounted) {
         final msg = stockUpdated == _lineItems.length
@@ -351,18 +355,18 @@ class _SaleEntryScreenState extends ConsumerState<SaleEntryScreen> {
     } catch (e) {
       for (final li in deductedItems.reversed) {
         if (_deductsStock) {
-          await SupabaseService.addStockById(li.stockItemId!, li.quantity);
+          await SupabaseService.addMasterStockById(li.stockItemId!, li.quantity);
         } else if (_addsStock) {
-          await SupabaseService.deductStockById(li.stockItemId!, li.quantity);
+          await SupabaseService.deductMasterStockById(li.stockItemId!, li.quantity);
         }
       }
       if (widget.bill != null) {
         for (final os in oldSales) {
           if (os.stockItemId != null) {
             if (_deductsStock) {
-              await SupabaseService.deductStockById(os.stockItemId!, os.quantity);
+              await SupabaseService.deductMasterStockById(os.stockItemId!, os.quantity);
             } else if (_addsStock) {
-              await SupabaseService.addStockById(os.stockItemId!, os.quantity);
+              await SupabaseService.addMasterStockById(os.stockItemId!, os.quantity);
             }
           }
         }
@@ -403,9 +407,9 @@ class _SaleEntryScreenState extends ConsumerState<SaleEntryScreen> {
       for (var os in oldSales) {
         if (os.stockItemId != null) {
           if (_deductsStock) {
-            await SupabaseService.addStockById(os.stockItemId!, os.quantity);
+            await SupabaseService.addMasterStockById(os.stockItemId!, os.quantity);
           } else if (_addsStock) {
-            await SupabaseService.deductStockById(os.stockItemId!, os.quantity);
+            await SupabaseService.deductMasterStockById(os.stockItemId!, os.quantity);
           }
         }
       }
@@ -416,7 +420,7 @@ class _SaleEntryScreenState extends ConsumerState<SaleEntryScreen> {
       ref.invalidate(todayBillsProvider);
       ref.invalidate(filteredBillsProvider);
       ref.invalidate(dashboardStatsProvider);
-      ref.invalidate(stockItemsProvider);
+      ref.invalidate(itemMasterProvider);
 
       if (mounted) {
         Navigator.pop(context, true);
@@ -435,7 +439,7 @@ class _SaleEntryScreenState extends ConsumerState<SaleEntryScreen> {
   @override
   Widget build(BuildContext context) {
     final isEn = ref.watch(appLanguageProvider);
-    final stockAsync = ref.watch(stockItemsProvider);
+    final stockAsync = ref.watch(itemMasterProvider);
 
     return Scaffold(
       backgroundColor: AppColors.background,
@@ -528,7 +532,7 @@ class _SaleEntryScreenState extends ConsumerState<SaleEntryScreen> {
   }
 
   Widget _buildForm(bool isEn, List<dynamic> rawStockItems) {
-    final stockItems = rawStockItems.cast<StockItemModel>();
+    final stockItems = rawStockItems.cast<ItemMasterModel>();
 
     return SingleChildScrollView(
       padding: const EdgeInsets.all(20),
@@ -699,7 +703,7 @@ class _SaleEntryScreenState extends ConsumerState<SaleEntryScreen> {
     );
   }
 
-  Widget _lineItemCard(int index, List<StockItemModel> stockItems, bool isEn) {
+  Widget _lineItemCard(int index, List<ItemMasterModel> stockItems, bool isEn) {
     final li = _lineItems[index];
     return Container(
       margin: const EdgeInsets.only(bottom: 10),
@@ -772,13 +776,13 @@ class _SaleEntryScreenState extends ConsumerState<SaleEntryScreen> {
                               style: const TextStyle(fontSize: 14),
                               overflow: TextOverflow.ellipsis)),
                       Text(
-                          '${item.currentQuantity.toStringAsFixed(0)} ${item.unit}',
+                          '${item.currentStock.toStringAsFixed(0)} piece',
                           style: TextStyle(
                               fontSize: 11,
-                              color: item.isLowStock
+                              color: item.currentStock <= 5
                                   ? AppColors.error
                                   : AppColors.textSecondary,
-                              fontWeight: item.isLowStock
+                              fontWeight: item.currentStock <= 5
                                   ? FontWeight.w600
                                   : FontWeight.normal)),
                     ]),
@@ -790,10 +794,12 @@ class _SaleEntryScreenState extends ConsumerState<SaleEntryScreen> {
             setState(() {
               li.stockItemId = id;
               li.stockItemName = item.itemName;
-              li.unit = item.unit;
-              li.currentStock = item.currentQuantity;
-              li.isLowStock = item.isLowStock;
-              li.priceCtrl.text = item.sellingPrice.toStringAsFixed(0);
+              li.unit = 'piece';
+              li.currentStock = item.currentStock;
+              li.isLowStock = item.currentStock <= 5;
+              if (li.priceCtrl.text.isEmpty || li.priceCtrl.text == '0') {
+                li.priceCtrl.text = '0'; // No selling price in Master Item
+              }
             });
           },
         ),

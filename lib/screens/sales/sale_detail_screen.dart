@@ -254,7 +254,7 @@ class _SaleDetailScreenState extends ConsumerState<SaleDetailScreen> {
                       if (result == true && mounted) {
                         ref.invalidate(filteredBillsProvider);
                         ref.invalidate(dashboardStatsProvider);
-                        ref.invalidate(stockItemsProvider);
+                        ref.invalidate(itemMasterProvider);
                         Navigator.pop(context, true);
                       }
                     },
