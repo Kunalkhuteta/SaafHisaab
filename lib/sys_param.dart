@@ -13,6 +13,8 @@ class SysParamNotifier extends Notifier<SysParamState> {
       showStock: prefs.getBool('sysParam_showStock') ?? true,
       showStation: prefs.getBool('sysParam_showStation') ?? true,
       showAddress: prefs.getBool('sysParam_showAddress') ?? true,
+      showItemCategory: prefs.getBool('sysParam_showItemCategory') ?? false,
+      showItemGroup: prefs.getBool('sysParam_showItemGroup') ?? false,
     );
   }
 
@@ -23,6 +25,8 @@ class SysParamNotifier extends Notifier<SysParamState> {
     bool? showStock,
     bool? showStation,
     bool? showAddress,
+    bool? showItemCategory,
+    bool? showItemGroup,
   }) {
     final newState = state.copyWith(
       showNumber: showNumber,
@@ -31,6 +35,8 @@ class SysParamNotifier extends Notifier<SysParamState> {
       showStock: showStock,
       showStation: showStation,
       showAddress: showAddress,
+      showItemCategory: showItemCategory,
+      showItemGroup: showItemGroup,
     );
 
     if (showNumber != null) prefs.setBool('sysParam_showNumber', showNumber);
@@ -39,6 +45,8 @@ class SysParamNotifier extends Notifier<SysParamState> {
     if (showStock != null) prefs.setBool('sysParam_showStock', showStock);
     if (showStation != null) prefs.setBool('sysParam_showStation', showStation);
     if (showAddress != null) prefs.setBool('sysParam_showAddress', showAddress);
+    if (showItemCategory != null) prefs.setBool('sysParam_showItemCategory', showItemCategory);
+    if (showItemGroup != null) prefs.setBool('sysParam_showItemGroup', showItemGroup);
 
     state = newState;
   }
@@ -51,6 +59,8 @@ class SysParamState {
   final bool showStock;
   final bool showStation;
   final bool showAddress;
+  final bool showItemCategory;
+  final bool showItemGroup;
 
   SysParamState({
     required this.showNumber,
@@ -59,6 +69,8 @@ class SysParamState {
     required this.showStock,
     required this.showStation,
     required this.showAddress,
+    required this.showItemCategory,
+    required this.showItemGroup,
   });
 
   SysParamState copyWith({
@@ -68,6 +80,8 @@ class SysParamState {
     bool? showStock,
     bool? showStation,
     bool? showAddress,
+    bool? showItemCategory,
+    bool? showItemGroup,
   }) {
     return SysParamState(
       showNumber: showNumber ?? this.showNumber,
@@ -76,6 +90,8 @@ class SysParamState {
       showStock: showStock ?? this.showStock,
       showStation: showStation ?? this.showStation,
       showAddress: showAddress ?? this.showAddress,
+      showItemCategory: showItemCategory ?? this.showItemCategory,
+      showItemGroup: showItemGroup ?? this.showItemGroup,
     );
   }
 }
