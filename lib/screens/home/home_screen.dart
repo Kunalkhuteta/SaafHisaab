@@ -15,6 +15,7 @@ import '../purchase/purchase_parties_list_screen.dart';
 import 'reports_tab.dart';
 import 'dashboard_tab.dart';
 import '../settings/system_params_screen.dart';
+import '../master/master_screen.dart';
 
 class HomeScreen extends ConsumerStatefulWidget {
   const HomeScreen({super.key});
@@ -42,7 +43,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     final screens = [
       const DashboardTab(),
       const BillScanScreen(),
-      const StockScreen(),
+      const MasterScreen(),
       const UdharScreen(),
       const ReportsTab(),
     ];
@@ -74,8 +75,8 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
             label: AppLang.tr(isEn, 'Bills', 'Bills'),
           ),
           BottomNavigationBarItem(
-            icon: const Icon(Icons.inventory_2_rounded),
-            label: AppLang.tr(isEn, 'Stock', 'Stock'),
+            icon: const Icon(Icons.dashboard_rounded),
+            label: AppLang.tr(isEn, 'Master', 'मास्टर'),
           ),
           BottomNavigationBarItem(
             icon: const Icon(Icons.people_rounded),
@@ -187,6 +188,25 @@ class _HomeDrawer extends StatelessWidget {
                 Navigator.push(
                   context,
                   MaterialPageRoute(builder: (_) => const PurchasePartiesListScreen()),
+                );
+              },
+            ),
+            ListTile(
+              leading: const Icon(Icons.inventory_2_rounded,
+                  color: AppColors.textSecondary),
+              title: Text(AppLang.tr(isEn, 'Stock', 'स्टॉक')),
+              onTap: () {
+                Navigator.pop(context);
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(builder: (_) => Scaffold(
+                    appBar: AppBar(
+                      title: Text(AppLang.tr(isEn, 'Stock', 'स्टॉक')),
+                      backgroundColor: AppColors.primary,
+                      foregroundColor: Colors.white,
+                    ),
+                    body: const StockScreen(),
+                  )),
                 );
               },
             ),
