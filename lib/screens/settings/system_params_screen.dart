@@ -19,6 +19,8 @@ class _SystemParamsScreenState extends ConsumerState<SystemParamsScreen> {
   late bool showStock;
   late bool showStation;
   late bool showAddress;
+  late bool showItemCategory;
+  late bool showItemGroup;
 
   @override
   void initState() {
@@ -30,6 +32,8 @@ class _SystemParamsScreenState extends ConsumerState<SystemParamsScreen> {
     showStock = sysParams.showStock;
     showStation = sysParams.showStation;
     showAddress = sysParams.showAddress;
+    showItemCategory = sysParams.showItemCategory;
+    showItemGroup = sysParams.showItemGroup;
   }
 
   void _saveSettings() {
@@ -40,6 +44,8 @@ class _SystemParamsScreenState extends ConsumerState<SystemParamsScreen> {
       showStock: showStock,
       showStation: showStation,
       showAddress: showAddress,
+      showItemCategory: showItemCategory,
+      showItemGroup: showItemGroup,
     );
 
     ScaffoldMessenger.of(context).showSnackBar(
@@ -108,6 +114,28 @@ class _SystemParamsScreenState extends ConsumerState<SystemParamsScreen> {
                   title: AppLang.tr(isEn, 'Show Address', 'पता दिखाएं'),
                   value: showAddress,
                   onChanged: (val) => setState(() => showAddress = val),
+                ),
+                const SizedBox(height: 16),
+                Text(
+                  AppLang.tr(isEn, 'Item Master Configuration', 'आइटम मास्टर कॉन्फ़िगरेशन'),
+                  style: const TextStyle(
+                    fontSize: 18,
+                    fontWeight: FontWeight.bold,
+                    color: AppColors.textPrimary,
+                  ),
+                ),
+                const SizedBox(height: 16),
+                _buildSwitchTile(
+                  context: context,
+                  title: AppLang.tr(isEn, 'Prompt Item Category', 'आइटम श्रेणी पूछें'),
+                  value: showItemCategory,
+                  onChanged: (val) => setState(() => showItemCategory = val),
+                ),
+                _buildSwitchTile(
+                  context: context,
+                  title: AppLang.tr(isEn, 'Prompt Item Group', 'आइटम समूह पूछें'),
+                  value: showItemGroup,
+                  onChanged: (val) => setState(() => showItemGroup = val),
                 ),
               ],
             ),

@@ -4,7 +4,9 @@ import '../models/shop_model.dart';
 import '../models/bill_model.dart';
 import '../models/sale_model.dart';
 import '../models/stock_model.dart';
+import '../models/item_master_model.dart';
 import '../models/udhar_model.dart';
+import 'dart:typed_data';
 
 class StockUnavailableException implements Exception {
   final String message;
@@ -275,6 +277,119 @@ static Future<double> getTodaySalesTotal(String shopId) async {
   /// Delete stock item
   static Future<void> deleteStockItem(String itemId) async {
     await _client.from('stock_items').delete().eq('id', itemId);
+  }
+
+  // ─────────────────────────────────────────
+  // ITEM MASTER
+  // ─────────────────────────────────────────
+
+  static Future<ItemMasterModel> saveMasterItem(ItemMasterModel item) async {
+    final data = await _client
+        .from('item_master')
+        .insert(item.toJson())
+        .select()
+        .single();
+    return ItemMasterModel.fromJson(data);
+  }
+
+  static Future<void> updateMasterItem(ItemMasterModel item) async {
+    // using patch correctly
+    final updates = item.toJson();
+    updates['updated_at'] = DateTime.now().toIso8601String();
+    
+    await _client
+        .from('item_master')
+        .update(updates)
+        .eq('id', item.id);
+  }
+
+  static Future<List<ItemMasterModel>> getMasterItems(String shopId) async {
+    final data = await _client
+        .from('item_master')
+        .select()
+        .eq('shop_id', shopId)
+        .order('item_name');
+    return (data as List).map((s) => ItemMasterModel.fromJson(s)).toList();
+  }
+
+  static Future<void> deleteMasterItem(String itemId) async {
+    await _client.from('item_master').delete().eq('id', itemId);
+  }
+
+  static Future<String> uploadItemImage(String shopId, String itemName, Uint8List imageBytes, String extension) async {
+    final fileName = '${shopId}_${DateTime.now().millisecondsSinceEpoch}.$extension';
+    final path = '$shopId/$fileName';
+    
+    await _client.storage.from('items').uploadBinary(
+      path,
+      imageBytes,
+      fileOptions: const FileOptions(upsert: true),
+    );
+    
+    return _client.storage.from('items').getPublicUrl(path);
+  }
+
+  static Future<bool> addMasterStockById(String stockItemId, double quantity) async {
+    try {
+      final data = await _client
+          .from('item_master')
+          .select('current_stock')
+          .eq('id', stockItemId)
+          .single();
+      final current = (data['current_stock'] as num?)?.toDouble() ?? 0.0;
+      await _client
+          .from('item_master')
+          .update({
+            'current_stock': current + quantity,
+            'updated_at': DateTime.now().toIso8601String(),
+          })
+          .eq('id', stockItemId);
+      return true;
+    } catch (e) {
+      debugPrint('Add master stock error: $e');
+      return false;
+    }
+  }
+
+  static Future<bool> deductMasterStockById(String stockItemId, double quantity) async {
+    if (quantity <= 0) return false;
+
+    try {
+      final data = await _client
+          .from('item_master')
+          .select('id, current_stock')
+          .eq('id', stockItemId)
+          .maybeSingle();
+
+      if (data == null) {
+        print('⚠️ deductMasterStockById: item $stockItemId not found');
+        return false;
+      }
+
+      final current = (data['current_stock'] as num?)?.toDouble() ?? 0.0;
+      if (current < quantity) {
+        debugPrint(
+          'deductMasterStockById blocked: requested $quantity, available $current',
+        );
+        return false;
+      }
+      final newQty = current - quantity;
+      
+      final updated = await _client
+          .from('item_master')
+          .update({
+            'current_stock': newQty,
+            'updated_at': DateTime.now().toIso8601String(),
+          })
+          .eq('id', stockItemId)
+          .eq('current_stock', current)
+          .select('id');
+
+      return (updated as List).isNotEmpty;
+    } catch (e) {
+      print('❌ deductMasterStockById error: $e');
+      return false;
+    }
   }
 
   /// Update Udhar customer
