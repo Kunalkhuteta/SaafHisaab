@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../constants/app_colors.dart';
 import '../../globalVar.dart';
+import '../reports/daily_balances_screen.dart';
 
 class ReportsTab extends ConsumerStatefulWidget {
   const ReportsTab({super.key});
@@ -114,9 +115,16 @@ class _ReportsTabState extends ConsumerState<ReportsTab> {
                 child: InkWell(
                   borderRadius: BorderRadius.circular(12),
                   onTap: () {
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      SnackBar(content: Text('${item.title} coming soon')),
-                    );
+                    if (item.title == 'Daily Cash & Bank Balance') {
+                      Navigator.push(
+                        context,
+                        MaterialPageRoute(builder: (_) => const DailyBalancesScreen()),
+                      );
+                    } else {
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        SnackBar(content: Text('${item.title} coming soon')),
+                      );
+                    }
                   },
                   child: Container(
                     padding: const EdgeInsets.symmetric(
