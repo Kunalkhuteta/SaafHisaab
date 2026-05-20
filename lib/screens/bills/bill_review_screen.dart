@@ -7,7 +7,7 @@ import '../../services/auth_service.dart';
 import '../../services/supabase_service.dart';
 import '../../services/share_service.dart';
 import '../../models/bill_model.dart';
-import '../../models/stock_model.dart';
+import '../../models/item_master_model.dart';
 import '../../globalVar.dart';
 
 class BillReviewScreen extends ConsumerStatefulWidget {
@@ -40,7 +40,7 @@ class _BillReviewScreenState extends ConsumerState<BillReviewScreen> {
   bool _isGstBill = false;
   bool _isSaving = false;
   bool _isNewItem = false;
-  StockItemModel? _selectedStockItem;
+  ItemMasterModel? _selectedStockItem;
 
   @override
   void initState() {
@@ -129,11 +129,11 @@ class _BillReviewScreenState extends ConsumerState<BillReviewScreen> {
 
     // Check stock availability for sale/purchase_return
     if ((_billType == 'sale' || _billType == 'purchase_return') && _selectedStockItem != null) {
-      if (_selectedStockItem!.currentQuantity < qty) {
+      if (_selectedStockItem!.currentStock < qty) {
         ScaffoldMessenger.of(context).showSnackBar(SnackBar(
           content: Text(AppLang.tr(isEn,
-            'Insufficient stock! Available: ${_selectedStockItem!.currentQuantity.toStringAsFixed(0)} ${_selectedStockItem!.unit}',
-            'स्टॉक अपर्याप्त! उपलब्ध: ${_selectedStockItem!.currentQuantity.toStringAsFixed(0)} ${_selectedStockItem!.unit}',
+            'Insufficient stock! Available: ${_selectedStockItem!.currentStock.toStringAsFixed(0)} piece',
+            'स्टॉक अपर्याप्त! उपलब्ध: ${_selectedStockItem!.currentStock.toStringAsFixed(0)} piece',
           )),
           backgroundColor: AppColors.error,
         ));
@@ -154,7 +154,7 @@ class _BillReviewScreenState extends ConsumerState<BillReviewScreen> {
       // Stock logic
       if (_billType == 'sale' || _billType == 'purchase_return') {
         if (_selectedStockItem != null) {
-          final deducted = await SupabaseService.deductStockById(_selectedStockItem!.id, qty);
+          final deducted = await SupabaseService.deductMasterStockById(_selectedStockItem!.id, qty);
           if (!deducted) {
             throw StockUnavailableException(AppLang.tr(
               isEn,
@@ -166,18 +166,15 @@ class _BillReviewScreenState extends ConsumerState<BillReviewScreen> {
         }
       } else if (_billType == 'purchase' || _billType == 'sale_return') {
         if (_isNewItem && _newItemNameCtrl.text.isNotEmpty) {
-          final buyingPrice = qty > 0 ? (amount / qty) : 0.0;
-          final sellingPrice = double.tryParse(_newItemSellingPriceCtrl.text) ?? buyingPrice;
-          final newItem = StockItemModel(
+          final newItem = ItemMasterModel(
             id: '', shopId: shop.id, userId: userId, 
             itemName: _newItemNameCtrl.text.trim(),
-            currentQuantity: qty,
-            buyingPrice: buyingPrice, sellingPrice: sellingPrice,
+            currentStock: qty,
             createdAt: DateTime.now(),
           );
-          await SupabaseService.saveStockItem(newItem);
+          await SupabaseService.saveMasterItem(newItem);
         } else if (!_isNewItem && _selectedStockItem != null) {
-          await SupabaseService.addStockById(_selectedStockItem!.id, qty);
+          await SupabaseService.addMasterStockById(_selectedStockItem!.id, qty);
         }
       }
 
@@ -199,7 +196,7 @@ class _BillReviewScreenState extends ConsumerState<BillReviewScreen> {
 
       ref.invalidate(todayBillsProvider);
       ref.invalidate(dashboardStatsProvider);
-      ref.invalidate(stockItemsProvider);
+      ref.invalidate(itemMasterProvider);
 
       if (mounted) {
         await _showShareDialog(isEn, vendorName, amount, gstAmount, notes);
@@ -207,7 +204,7 @@ class _BillReviewScreenState extends ConsumerState<BillReviewScreen> {
       }
     } catch (e) {
       if (stockDeducted && _selectedStockItem != null) {
-        await SupabaseService.addStockById(_selectedStockItem!.id, qty);
+        await SupabaseService.addMasterStockById(_selectedStockItem!.id, qty);
       }
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Save failed: $e'), backgroundColor: AppColors.error));
@@ -421,11 +418,11 @@ class _BillReviewScreenState extends ConsumerState<BillReviewScreen> {
                       ],
 
                       if ((_billType == 'sale' || _billType == 'purchase_return') || !_isNewItem) ...[
-                        ref.watch(stockItemsProvider).when(
+                        ref.watch(itemMasterProvider).when(
                           loading: () => const Center(child: Padding(padding: EdgeInsets.all(8.0), child: CircularProgressIndicator(color: AppColors.primary, strokeWidth: 2))),
                           error: (e, _) => Text('Error loading stock', style: const TextStyle(color: AppColors.error, fontSize: 12)),
                           data: (stockItems) {
-                            return DropdownButtonFormField<StockItemModel>(
+                            return DropdownButtonFormField<ItemMasterModel>(
                               value: _selectedStockItem, isExpanded: true,
                               decoration: InputDecoration(
                                 hintText: AppLang.tr(isEn, 'Choose item', 'आइटम चुनें'),
@@ -433,13 +430,13 @@ class _BillReviewScreenState extends ConsumerState<BillReviewScreen> {
                                 border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: const BorderSide(color: AppColors.borderBlue)),
                                 contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
                               ),
-                              items: stockItems.map((item) => DropdownMenuItem<StockItemModel>(
+                              items: stockItems.map((item) => DropdownMenuItem<ItemMasterModel>(
                                 value: item,
                                 child: Row(
                                   children: [
                                     Expanded(child: Text(item.itemName, style: const TextStyle(fontSize: 14), overflow: TextOverflow.ellipsis)),
                                     const SizedBox(width: 6),
-                                    Text('${item.currentQuantity.toStringAsFixed(0)} ${item.unit}', style: TextStyle(fontSize: 11, color: item.isLowStock ? AppColors.error : AppColors.textSecondary, fontWeight: item.isLowStock ? FontWeight.w600 : FontWeight.normal)),
+                                    Text('${item.currentStock.toStringAsFixed(0)} piece', style: TextStyle(fontSize: 11, color: item.currentStock <= 5 ? AppColors.error : AppColors.textSecondary, fontWeight: item.currentStock <= 5 ? FontWeight.w600 : FontWeight.normal)),
                                   ],
                                 ),
                               )).toList(),

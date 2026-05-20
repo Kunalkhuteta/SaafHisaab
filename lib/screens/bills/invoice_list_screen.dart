@@ -140,7 +140,7 @@ class _InvoiceListScreenState extends ConsumerState<InvoiceListScreen> {
     if (result == true) {
       ref.invalidate(filteredBillsProvider);
       ref.invalidate(dashboardStatsProvider);
-      ref.invalidate(stockItemsProvider);
+      ref.invalidate(itemMasterProvider);
     }
   }
 
@@ -151,7 +151,7 @@ class _InvoiceListScreenState extends ConsumerState<InvoiceListScreen> {
     if (result == true) {
       ref.invalidate(filteredBillsProvider);
       ref.invalidate(dashboardStatsProvider);
-      ref.invalidate(stockItemsProvider);
+      ref.invalidate(itemMasterProvider);
     }
   }
 

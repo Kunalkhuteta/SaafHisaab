@@ -74,6 +74,13 @@ final stockItemsProvider = FutureProvider((ref) async {
   return await SupabaseService.getStockItems(shop.id);
 });
 
+// ── Item Master provider ──
+final itemMasterProvider = FutureProvider((ref) async {
+  final shop = await ref.watch(shopProvider.future);
+  if (shop == null) return [];
+  return await SupabaseService.getMasterItems(shop.id);
+});
+
 // ── Udhar customers provider ──
 final udharCustomersProvider = FutureProvider((ref) async {
   final shop = await ref.watch(shopProvider.future);
