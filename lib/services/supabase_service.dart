@@ -23,6 +23,13 @@ class SupabaseService {
   // Use getter so it's always fresh
   static SupabaseClient get _client => Supabase.instance.client;
 
+  static double _creditAdvanceFromNotes(String notes) {
+    final match = RegExp(r'__saafhisaab_credit_advance:([0-9.]+);credit:([0-9.]+)__')
+        .firstMatch(notes);
+    if (match == null) return 0;
+    return double.tryParse(match.group(1) ?? '') ?? 0;
+  }
+
   // ─────────────────────────────────────────
   // SHOP
   // ─────────────────────────────────────────
@@ -806,16 +813,18 @@ static Future<double> getTotalUdhar(String shopId) async {
     // 2. Fetch sales for the month to get payment mode distribution
     final salesData = await _client
         .from('sales')
-        .select('bill_id, payment_mode')
+        .select('bill_id, payment_mode, notes')
         .eq('shop_id', shopId)
         .gte('sale_date', start)
         .lte('sale_date', end);
 
     final Map<String, String> billPaymentModes = {};
+    final Map<String, double> billCashPaid = {};
     for (var sale in salesData) {
       final bId = sale['bill_id'];
       if (bId != null && !billPaymentModes.containsKey(bId)) {
         billPaymentModes[bId] = sale['payment_mode'] ?? 'cash';
+        billCashPaid[bId] = _creditAdvanceFromNotes(sale['notes'] ?? '');
       }
     }
 
@@ -839,6 +848,12 @@ static Future<double> getTotalUdhar(String shopId) async {
       if (mode == 'upi' || mode == 'card') {
         if (billType == 'sale' || billType == 'purchase_return') bankIn += amount;
         else bankOut += amount;
+      } else if (mode == 'credit') {
+        // Credit sales do not add cash or bank balance on invoice day.
+      } else if (mode == 'split') {
+        final cashPaid = (billCashPaid[billId] ?? 0).clamp(0, amount).toDouble();
+        if (billType == 'sale' || billType == 'purchase_return') cashIn += cashPaid;
+        else cashOut += cashPaid;
       } else {
         if (billType == 'sale' || billType == 'purchase_return') cashIn += amount;
         else cashOut += amount;
