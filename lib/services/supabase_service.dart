@@ -6,6 +6,7 @@ import '../models/sale_model.dart';
 import '../models/stock_model.dart';
 import '../models/item_master_model.dart';
 import '../models/udhar_model.dart';
+import '../models/daily_balance_model.dart';
 import 'dart:typed_data';
 
 class StockUnavailableException implements Exception {
@@ -643,6 +644,105 @@ static Future<double> getTotalUdhar(String shopId) async {
       'total_udhar': results[2],
       'low_stock': results[3],
     };
+  }
+
+  // ─────────────────────────────────────────
+  // DAILY BALANCES
+  // ─────────────────────────────────────────
+
+  static Future<List<DailyBalanceModel>> syncAndGetDailyBalances(String shopId, int month, int year) async {
+    final start = DateTime(year, month, 1).toIso8601String().split('T')[0];
+    // End date is the last day of the month
+    final end = DateTime(year, month + 1, 0).toIso8601String().split('T')[0];
+
+    // 1. Fetch bills for the month
+    final billsData = await _client
+        .from('bills')
+        .select('id, amount, bill_type, bill_date')
+        .eq('shop_id', shopId)
+        .gte('bill_date', start)
+        .lte('bill_date', end);
+
+    // 2. Fetch sales for the month to get payment mode distribution
+    final salesData = await _client
+        .from('sales')
+        .select('bill_id, payment_mode')
+        .eq('shop_id', shopId)
+        .gte('sale_date', start)
+        .lte('sale_date', end);
+
+    final Map<String, String> billPaymentModes = {};
+    for (var sale in salesData) {
+      final bId = sale['bill_id'];
+      if (bId != null && !billPaymentModes.containsKey(bId)) {
+        billPaymentModes[bId] = sale['payment_mode'] ?? 'cash';
+      }
+    }
+
+    final Map<String, DailyBalanceModel> dailyMap = {};
+
+    for (var b in billsData) {
+      final dateStr = b['bill_date'] as String;
+      final billType = b['bill_type'] as String;
+      final amount = (b['amount'] as num).toDouble();
+      final billId = b['id'] as String;
+
+      if (!dailyMap.containsKey(dateStr)) {
+        dailyMap[dateStr] = DailyBalanceModel(
+          id: '', shopId: shopId, balanceDate: DateTime.parse(dateStr),
+        );
+      }
+
+      double cashIn = 0, cashOut = 0, bankIn = 0, bankOut = 0;
+      final mode = billPaymentModes[billId] ?? 'cash';
+
+      if (mode == 'upi' || mode == 'card') {
+        if (billType == 'sale' || billType == 'purchase_return') bankIn += amount;
+        else bankOut += amount;
+      } else {
+        if (billType == 'sale' || billType == 'purchase_return') cashIn += amount;
+        else cashOut += amount;
+      }
+
+      final current = dailyMap[dateStr]!;
+      dailyMap[dateStr] = DailyBalanceModel(
+        id: current.id, shopId: shopId, balanceDate: current.balanceDate,
+        cashIn: current.cashIn + cashIn,
+        cashOut: current.cashOut + cashOut,
+        bankIn: current.bankIn + bankIn,
+        bankOut: current.bankOut + bankOut,
+      );
+    }
+
+    // Upsert into database
+    final upsertList = dailyMap.values.map((d) {
+      return {
+        'shop_id': shopId,
+        'balance_date': d.balanceDate.toIso8601String().split('T')[0],
+        'cash_in': d.cashIn,
+        'cash_out': d.cashOut,
+        'bank_in': d.bankIn,
+        'bank_out': d.bankOut,
+        'net_cash': d.cashIn - d.cashOut,
+        'net_bank': d.bankIn - d.bankOut,
+        'updated_at': DateTime.now().toIso8601String(),
+      };
+    }).toList();
+
+    if (upsertList.isNotEmpty) {
+      await _client.from('daily_balances').upsert(upsertList, onConflict: 'shop_id, balance_date');
+    }
+
+    // Fetch the stored models from DB (sorted desc)
+    final savedData = await _client
+        .from('daily_balances')
+        .select('*')
+        .eq('shop_id', shopId)
+        .gte('balance_date', start)
+        .lte('balance_date', end)
+        .order('balance_date', ascending: false);
+
+    return savedData.map((d) => DailyBalanceModel.fromJson(d)).toList();
   }
 
   // ─────────────────────────────────────────
