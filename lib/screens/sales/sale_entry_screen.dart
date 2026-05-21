@@ -196,6 +196,14 @@ class _SaleEntryScreenState extends ConsumerState<SaleEntryScreen> {
         SnackBar(content: Text(msg), backgroundColor: AppColors.error));
   }
 
+  String _saleNotesForPersistence() {
+    final baseNotes = _notesCtrl.text.trim();
+    if (_creditSale == null) return baseNotes;
+    final marker =
+        '__saafhisaab_credit_advance:${_creditSale!.advancePaid};credit:${_creditSale!.creditAmount}__';
+    return baseNotes.isEmpty ? marker : '$baseNotes\n$marker';
+  }
+
   Future<void> _openCreditSheet(bool isEn, List<ItemMasterModel> stockItems) async {
     final userId = AuthService.currentUserId;
     final shop = await ref.read(shopProvider.future);
@@ -441,7 +449,7 @@ class _SaleEntryScreenState extends ConsumerState<SaleEntryScreen> {
           paymentMode: _paymentMode,
           billId: billId.isNotEmpty ? billId : null,
           saleDate: DateTime.now(),
-          notes: _notesCtrl.text.trim(),
+          notes: _saleNotesForPersistence(),
           createdAt: DateTime.now(),
           stockItemId: li.stockItemId,
         ));
