@@ -14,6 +14,7 @@ class PartyNameField extends StatefulWidget {
   final String hint;
   final bool required;
   final ValueChanged<UdharCustomerModel?>? onCustomerSelected;
+  final ValueChanged<String>? onChanged;
 
   const PartyNameField({
     super.key,
@@ -25,6 +26,7 @@ class PartyNameField extends StatefulWidget {
     this.phoneController,
     this.required = false,
     this.onCustomerSelected,
+    this.onChanged,
   });
 
   @override
@@ -65,7 +67,10 @@ class _PartyNameFieldState extends State<PartyNameField> {
           controller: textController,
           focusNode: focusNode,
           textInputAction: TextInputAction.next,
-          onChanged: (_) => widget.onCustomerSelected?.call(null),
+          onChanged: (value) {
+            widget.onCustomerSelected?.call(null);
+            widget.onChanged?.call(value);
+          },
           decoration: InputDecoration(
             labelText: widget.required ? '${widget.label} *' : widget.label,
             hintText: widget.hint,
