@@ -691,6 +691,17 @@ static Future<double> getTodaySalesTotal(String shopId) async {
     await _client.from('udhar_entries').delete().eq('id', entryId);
   }
 
+  static Future<List<UdharEntryModel>> getUdharEntriesForCustomer(
+      String customerId) async {
+    final data = await _client
+        .from('udhar_entries')
+        .select()
+        .eq('customer_id', customerId)
+        .order('entry_date', ascending: false)
+        .order('created_at', ascending: false);
+    return (data as List).map((e) => UdharEntryModel.fromJson(e)).toList();
+  }
+
 static Future<double> getTotalUdhar(String shopId) async {
   final data = await _client
       .from('udhar_customers')

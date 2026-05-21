@@ -118,9 +118,6 @@ class _SaleEntryScreenState extends ConsumerState<SaleEntryScreen> {
   @override
   void initState() {
     super.initState();
-    _customerCtrl.addListener(() {
-      if (mounted) setState(() {});
-    });
     if (widget.bill != null) {
       _loadExistingSale();
     }
@@ -251,7 +248,7 @@ class _SaleEntryScreenState extends ConsumerState<SaleEntryScreen> {
         userId: userId,
         customerId: customer.id,
         amount: credit.creditAmount,
-        note: credit.note,
+        note: credit.toEntryNote(),
       );
 
       if (credit.advancePaid > 0) {
@@ -809,6 +806,8 @@ class _SaleEntryScreenState extends ConsumerState<SaleEntryScreen> {
           label: AppLang.tr(isEn, 'Customer Name', 'ग्राहक का नाम'),
           hint: AppLang.tr(isEn, 'e.g. Ramesh Ji', 'जैसे रमेश जी'),
           required: true,
+          onCustomerSelected: (_) => setState(() {}),
+          onChanged: (_) => setState(() {}),
         ),
 
         const SizedBox(height: 20),
