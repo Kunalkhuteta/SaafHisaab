@@ -8,6 +8,7 @@ import '../../services/share_service.dart';
 import '../../models/bill_model.dart';
 import '../../models/sale_model.dart';
 import '../../models/item_master_model.dart';
+import '../../models/udhar_model.dart';
 import '../../globalVar.dart';
 import '../../widgets/credit_entry_sheet.dart';
 import '../../widgets/party_name_field.dart';
@@ -202,6 +203,96 @@ class _SaleEntryScreenState extends ConsumerState<SaleEntryScreen> {
     final marker =
         '__saafhisaab_credit_advance:${_creditSale!.advancePaid};credit:${_creditSale!.creditAmount}__';
     return baseNotes.isEmpty ? marker : '$baseNotes\n$marker';
+  }
+
+  Future<SavedCreditSale?> _persistCreditOnBillSave({
+    required String shopId,
+    required String userId,
+    required bool isEn,
+  }) async {
+    final credit = _creditSale;
+    if (credit == null || credit.creditAmount <= 0) return null;
+
+    UdharCustomerModel? customer;
+    UdharCustomerModel? createdCustomer;
+    UdharEntryModel? creditEntry;
+    UdharEntryModel? debitEntry;
+    double? oldDue;
+
+    try {
+      if (credit.customerId.isNotEmpty) {
+        oldDue = await SupabaseService.getCustomerTotalDue(credit.customerId);
+        customer = UdharCustomerModel(
+          id: credit.customerId,
+          shopId: shopId,
+          userId: userId,
+          customerName: credit.customerName,
+          customerPhone: credit.customerPhone,
+          totalDue: oldDue,
+          createdAt: DateTime.now(),
+        );
+      } else {
+        customer = await SupabaseService.findCustomerByName(shopId, credit.customerName);
+        customer ??= await SupabaseService.findCustomerByPhone(shopId, credit.customerPhone);
+        if (customer == null) {
+          customer = await SupabaseService.createUdharCustomer(
+            shopId: shopId,
+            userId: userId,
+            customerName: credit.customerName,
+            phone: credit.customerPhone,
+          );
+          createdCustomer = customer;
+        }
+        oldDue = await SupabaseService.getCustomerTotalDue(customer.id);
+      }
+
+      creditEntry = await SupabaseService.addCreditEntry(
+        shopId: shopId,
+        userId: userId,
+        customerId: customer.id,
+        amount: credit.creditAmount,
+        note: credit.note,
+      );
+
+      if (credit.advancePaid > 0) {
+        debitEntry = await SupabaseService.addDebitEntry(
+          shopId: shopId,
+          userId: userId,
+          customerId: customer.id,
+          amount: credit.advancePaid,
+          note: 'Advance payment on credit sale',
+        );
+      }
+
+      await SupabaseService.updateCustomerTotalDue(
+        customer.id,
+        (oldDue ?? 0) + credit.creditAmount,
+      );
+
+      return SavedCreditSale(
+        customerId: customer.id,
+        customerName: credit.customerName,
+        customerPhone: credit.customerPhone,
+        creditAmount: credit.creditAmount,
+        advancePaid: credit.advancePaid,
+        totalAmount: credit.totalAmount,
+        dueDate: credit.dueDate,
+        note: credit.note,
+        items: credit.items,
+        creditEntryId: creditEntry.id,
+        debitEntryId: debitEntry?.id,
+      );
+    } catch (e) {
+      if (creditEntry != null) await SupabaseService.deleteUdharEntry(creditEntry.id);
+      if (debitEntry != null) await SupabaseService.deleteUdharEntry(debitEntry.id);
+      if (customer != null && oldDue != null) {
+        await SupabaseService.updateCustomerTotalDue(customer.id, oldDue);
+      }
+      if (createdCustomer != null) {
+        await SupabaseService.deleteUdharCustomer(createdCustomer.id);
+      }
+      throw Exception(AppLang.tr(isEn, 'Credit save failed', 'क्रेडिट सेव नहीं हुआ'));
+    }
   }
 
   Future<void> _openCreditSheet(bool isEn, List<ItemMasterModel> stockItems) async {
@@ -455,6 +546,15 @@ class _SaleEntryScreenState extends ConsumerState<SaleEntryScreen> {
         ));
 
         stockUpdated++;
+      }
+
+      final persistedCredit = await _persistCreditOnBillSave(
+        shopId: shop.id,
+        userId: userId,
+        isEn: isEn,
+      );
+      if (persistedCredit != null) {
+        _creditSale = persistedCredit;
       }
 
       ref.invalidate(todayBillsProvider);

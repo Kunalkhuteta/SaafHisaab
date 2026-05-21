@@ -4,7 +4,6 @@ import '../constants/app_colors.dart';
 import '../globalVar.dart';
 import '../models/item_master_model.dart';
 import '../models/udhar_model.dart';
-import '../services/supabase_service.dart';
 import 'credit_item_row.dart';
 import 'party_name_field.dart';
 
@@ -192,43 +191,6 @@ class _CreditEntrySheetState extends State<CreditEntrySheet> {
     if (picked != null) setState(() => _dueDate = picked);
   }
 
-  Future<UdharCustomerModel> _resolveCustomer() async {
-    final name = _nameCtrl.text.trim();
-    final phone = _phoneCtrl.text.trim();
-    if (_selectedCustomer != null &&
-        _selectedCustomer!.customerName.toLowerCase() == name.toLowerCase()) {
-      return _selectedCustomer!;
-    }
-
-    final byName = await SupabaseService.findCustomerByName(widget.shopId, name);
-    if (byName != null) return byName;
-
-    final byPhone = await SupabaseService.findCustomerByPhone(widget.shopId, phone);
-    if (byPhone != null) return byPhone;
-
-    return SupabaseService.createUdharCustomer(
-      shopId: widget.shopId,
-      userId: widget.userId,
-      customerName: name,
-      phone: phone,
-    );
-  }
-
-  Future<void> _reverseExistingCredit() async {
-    final existing = widget.existingCredit;
-    if (existing == null || existing.customerId.isEmpty) return;
-    final currentDue = await SupabaseService.getCustomerTotalDue(existing.customerId);
-    final newDue =
-        (currentDue - existing.creditAmount).clamp(0, double.infinity).toDouble();
-    if (existing.creditEntryId != null) {
-      await SupabaseService.deleteUdharEntry(existing.creditEntryId!);
-    }
-    if (existing.debitEntryId != null) {
-      await SupabaseService.deleteUdharEntry(existing.debitEntryId!);
-    }
-    await SupabaseService.updateCustomerTotalDue(existing.customerId, newDue);
-  }
-
   Future<void> _save() async {
     final name = _nameCtrl.text.trim();
     final total = _total;
@@ -264,90 +226,28 @@ class _CreditEntrySheetState extends State<CreditEntrySheet> {
       return;
     }
 
-    setState(() => _saving = true);
-    UdharCustomerModel? createdCustomer;
-    UdharEntryModel? creditEntry;
-    UdharEntryModel? debitEntry;
-    try {
-      await _reverseExistingCredit();
-      final customer = await _resolveCustomer();
-      if (customer.createdAt.difference(DateTime.now()).inSeconds.abs() < 5 &&
-          customer.totalDue == 0) {
-        createdCustomer = customer;
-      }
+    if (_credit <= 0 && mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+        content: Text(AppLang.tr(_isEn, 'Full payment received - no credit created', 'पूरा भुगतान मिल गया - क्रेडिट नहीं बनेगा')),
+        backgroundColor: AppColors.success,
+      ));
+    }
 
-      if (_credit <= 0) {
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-            content: Text(AppLang.tr(_isEn, 'Full payment received - no credit created', 'पूरा भुगतान मिल गया - क्रेडिट नहीं बनेगा')),
-            backgroundColor: AppColors.success,
-          ));
-          Navigator.pop(
-            context,
-            SavedCreditSale(
-              customerId: customer.id,
-              customerName: name,
-              customerPhone: _phoneCtrl.text.trim(),
-              creditAmount: 0,
-              advancePaid: advance,
-              totalAmount: total,
-              dueDate: _dueDate,
-              note: _noteCtrl.text.trim(),
-              items: validItems,
-            ),
-          );
-        }
-        return;
-      }
-
-      creditEntry = await SupabaseService.addCreditEntry(
-        shopId: widget.shopId,
-        userId: widget.userId,
-        customerId: customer.id,
-        amount: _credit,
-        note: _noteCtrl.text.trim(),
+    if (mounted) {
+      Navigator.pop(
+        context,
+        SavedCreditSale(
+          customerId: _selectedCustomer?.id ?? widget.existingCredit?.customerId ?? '',
+          customerName: name,
+          customerPhone: _phoneCtrl.text.trim(),
+          creditAmount: _credit,
+          advancePaid: advance,
+          totalAmount: total,
+          dueDate: _dueDate,
+          note: _noteCtrl.text.trim(),
+          items: validItems,
+        ),
       );
-      if (advance > 0) {
-        debitEntry = await SupabaseService.addDebitEntry(
-          shopId: widget.shopId,
-          userId: widget.userId,
-          customerId: customer.id,
-          amount: advance,
-          note: 'Advance payment on credit sale',
-        );
-      }
-      final currentDue = await SupabaseService.getCustomerTotalDue(customer.id);
-      await SupabaseService.updateCustomerTotalDue(customer.id, currentDue + _credit);
-
-      if (mounted) {
-        Navigator.pop(
-          context,
-          SavedCreditSale(
-            customerId: customer.id,
-            customerName: name,
-            customerPhone: _phoneCtrl.text.trim(),
-            creditAmount: _credit,
-            advancePaid: advance,
-            totalAmount: total,
-            dueDate: _dueDate,
-            note: _noteCtrl.text.trim(),
-            items: validItems,
-            creditEntryId: creditEntry.id,
-            debitEntryId: debitEntry?.id,
-          ),
-        );
-      }
-    } catch (e) {
-      if (creditEntry != null) await SupabaseService.deleteUdharEntry(creditEntry.id);
-      if (debitEntry != null) await SupabaseService.deleteUdharEntry(debitEntry.id);
-      if (createdCustomer != null) {
-        await SupabaseService.deleteUdharCustomer(createdCustomer.id);
-      }
-      if (mounted) {
-        _showError(AppLang.tr(_isEn, 'Could not save credit. Please retry.', 'क्रेडिट सेव नहीं हुआ। दोबारा कोशिश करें।'));
-      }
-    } finally {
-      if (mounted) setState(() => _saving = false);
     }
   }
 
