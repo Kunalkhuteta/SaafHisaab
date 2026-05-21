@@ -6,6 +6,8 @@ import '../../services/auth_service.dart';
 import '../../services/supabase_service.dart';
 import '../../models/udhar_model.dart';
 import '../../globalVar.dart';
+import '../../widgets/credit_entry_sheet.dart';
+import 'udhar_detail_screen.dart';
 
 class UdharScreen extends ConsumerStatefulWidget {
   const UdharScreen({super.key});
@@ -30,7 +32,7 @@ class _UdharScreenState extends ConsumerState<UdharScreen> {
                 child: Text(AppLang.tr(isEn, 'Credit Account', 'उधार खाता'), style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold, color: Colors.white)),
               ),
               GestureDetector(
-                onTap: () => _showAddCustomerDialog(context, isEn),
+                onTap: () => _openNewCreditEntry(context, isEn),
                 child: Container(
                   padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
                   decoration: BoxDecoration(color: Colors.white.withOpacity(0.2), borderRadius: BorderRadius.circular(10)),
@@ -70,7 +72,20 @@ class _UdharScreenState extends ConsumerState<UdharScreen> {
   }
 
   Widget _customerCard(UdharCustomerModel customer, bool isEn) {
-    return Container(
+    return InkWell(
+      onTap: () {
+        Navigator.push(
+          context,
+          MaterialPageRoute(
+            builder: (_) => UdharDetailScreen(customer: customer),
+          ),
+        ).then((_) {
+          ref.invalidate(udharCustomersProvider);
+          ref.invalidate(dashboardStatsProvider);
+        });
+      },
+      borderRadius: BorderRadius.circular(14),
+      child: Container(
       margin: const EdgeInsets.only(bottom: 10),
       padding: const EdgeInsets.all(14),
       decoration: BoxDecoration(color: AppColors.surface, borderRadius: BorderRadius.circular(14), border: Border.all(color: AppColors.border)),
@@ -110,6 +125,117 @@ class _UdharScreenState extends ConsumerState<UdharScreen> {
           ],
         ),
       ]),
+      ),
+    );
+  }
+
+  Future<void> _openNewCreditEntry(BuildContext context, bool isEn) async {
+    final userId = AuthService.currentUserId;
+    final shop = await ref.read(shopProvider.future);
+    final stockItems = await ref.read(itemMasterProvider.future);
+    if (userId == null || shop == null) {
+      _showSnack(AppLang.tr(isEn, 'Shop not found', 'दुकान नहीं मिली'), true);
+      return;
+    }
+
+    if (!context.mounted) return;
+    final result = await showModalBottomSheet<SavedCreditSale>(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: AppColors.background,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(22)),
+      ),
+      builder: (_) => CreditEntrySheet(
+        shopId: shop.id,
+        userId: userId,
+        isEn: isEn,
+        initialCustomerName: '',
+        initialCustomerPhone: '',
+        initialTotal: 0,
+        stockItems: stockItems.cast(),
+      ),
+    );
+    if (result == null || result.creditAmount <= 0) return;
+
+    try {
+      await _saveDirectCredit(shop.id, userId, result);
+      ref.invalidate(udharCustomersProvider);
+      ref.invalidate(dashboardStatsProvider);
+      if (mounted) {
+        _showSnack(
+          AppLang.tr(
+            isEn,
+            'Credit saved for ${result.customerName}',
+            '${result.customerName} के लिए उधार सेव हुआ',
+          ),
+          false,
+        );
+      }
+    } catch (_) {
+      if (mounted) {
+        _showSnack(
+          AppLang.tr(isEn, 'Credit save failed', 'उधार सेव नहीं हुआ'),
+          true,
+        );
+      }
+    }
+  }
+
+  Future<void> _saveDirectCredit(
+    String shopId,
+    String userId,
+    SavedCreditSale credit,
+  ) async {
+    UdharCustomerModel? customer =
+        await SupabaseService.findCustomerByName(shopId, credit.customerName);
+    customer ??=
+        await SupabaseService.findCustomerByPhone(shopId, credit.customerPhone);
+    customer ??= await SupabaseService.createUdharCustomer(
+      shopId: shopId,
+      userId: userId,
+      customerName: credit.customerName,
+      phone: credit.customerPhone,
+    );
+
+    final oldDue = await SupabaseService.getCustomerTotalDue(customer.id);
+    UdharEntryModel? creditEntry;
+    UdharEntryModel? debitEntry;
+    try {
+      creditEntry = await SupabaseService.addCreditEntry(
+        shopId: shopId,
+        userId: userId,
+        customerId: customer.id,
+        amount: credit.creditAmount,
+        note: credit.toEntryNote(),
+      );
+      if (credit.advancePaid > 0) {
+        debitEntry = await SupabaseService.addDebitEntry(
+          shopId: shopId,
+          userId: userId,
+          customerId: customer.id,
+          amount: credit.advancePaid,
+          note: 'Advance payment on credit sale',
+        );
+      }
+      await SupabaseService.updateCustomerTotalDue(
+        customer.id,
+        oldDue + credit.creditAmount,
+      );
+    } catch (_) {
+      if (creditEntry != null) await SupabaseService.deleteUdharEntry(creditEntry.id);
+      if (debitEntry != null) await SupabaseService.deleteUdharEntry(debitEntry.id);
+      await SupabaseService.updateCustomerTotalDue(customer.id, oldDue);
+      rethrow;
+    }
+  }
+
+  void _showSnack(String message, bool isError) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(message),
+        backgroundColor: isError ? AppColors.error : AppColors.success,
+      ),
     );
   }
 

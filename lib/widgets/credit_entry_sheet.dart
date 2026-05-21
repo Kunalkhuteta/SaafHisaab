@@ -1,3 +1,5 @@
+import 'dart:convert';
+
 import 'package:flutter/material.dart';
 
 import '../constants/app_colors.dart';
@@ -23,9 +25,33 @@ class CreditSaleItem {
     this.unit = 'piece',
     required this.amount,
   });
+
+  Map<String, dynamic> toJson() {
+    return {
+      'stockItemId': stockItemId,
+      'itemName': itemName,
+      'quantity': quantity,
+      'category': category,
+      'unit': unit,
+      'amount': amount,
+    };
+  }
+
+  factory CreditSaleItem.fromJson(Map<String, dynamic> json) {
+    return CreditSaleItem(
+      stockItemId: json['stockItemId'] as String?,
+      itemName: json['itemName'] ?? '',
+      quantity: (json['quantity'] as num?)?.toDouble() ?? 0,
+      category: json['category'] ?? '',
+      unit: json['unit'] ?? 'piece',
+      amount: (json['amount'] as num?)?.toDouble() ?? 0,
+    );
+  }
 }
 
 class SavedCreditSale {
+  static const noteMarker = '__saafhisaab_credit_sale_v1__';
+
   final String customerId;
   final String customerName;
   final String customerPhone;
@@ -51,6 +77,50 @@ class SavedCreditSale {
     this.creditEntryId,
     this.debitEntryId,
   });
+
+  String toEntryNote() {
+    final payload = {
+      'customerId': customerId,
+      'customerName': customerName,
+      'customerPhone': customerPhone,
+      'creditAmount': creditAmount,
+      'advancePaid': advancePaid,
+      'totalAmount': totalAmount,
+      'dueDate': dueDate?.toIso8601String(),
+      'note': note,
+      'items': items.map((item) => item.toJson()).toList(),
+    };
+    return '$noteMarker${jsonEncode(payload)}';
+  }
+
+  static SavedCreditSale? tryParseNote(String note, {String? customerId}) {
+    final markerIndex = note.indexOf(noteMarker);
+    if (markerIndex < 0) return null;
+    final jsonText = note.substring(markerIndex + noteMarker.length).trim();
+    try {
+      final payload = jsonDecode(jsonText) as Map<String, dynamic>;
+      final rawItems = payload['items'] as List? ?? [];
+      return SavedCreditSale(
+        customerId: customerId ?? payload['customerId'] ?? '',
+        customerName: payload['customerName'] ?? '',
+        customerPhone: payload['customerPhone'] ?? '',
+        creditAmount: (payload['creditAmount'] as num?)?.toDouble() ?? 0,
+        advancePaid: (payload['advancePaid'] as num?)?.toDouble() ?? 0,
+        totalAmount: (payload['totalAmount'] as num?)?.toDouble() ?? 0,
+        dueDate: payload['dueDate'] == null
+            ? null
+            : DateTime.tryParse(payload['dueDate']),
+        note: payload['note'] ?? '',
+        items: rawItems
+            .whereType<Map>()
+            .map((item) => CreditSaleItem.fromJson(
+                item.map((key, value) => MapEntry(key.toString(), value))))
+            .toList(),
+      );
+    } catch (_) {
+      return null;
+    }
+  }
 }
 
 class CreditEntrySheet extends StatefulWidget {
@@ -94,7 +164,7 @@ class _CreditEntrySheetState extends State<CreditEntrySheet> {
   bool get _isEn => widget.isEn;
   double get _total => double.tryParse(_totalCtrl.text.trim()) ?? 0;
   double get _advance => double.tryParse(_advanceCtrl.text.trim()) ?? 0;
-  double get _credit => (_total - _advance).clamp(0, double.infinity);
+  double get _credit => (_total - _advance).clamp(0, double.infinity).toDouble();
 
   @override
   void initState() {
