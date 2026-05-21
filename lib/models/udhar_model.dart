@@ -6,6 +6,7 @@ class UdharCustomerModel {
   final String customerPhone;
   final double totalDue;
   final DateTime createdAt;
+  final DateTime? updatedAt;
 
   UdharCustomerModel({
     required this.id,
@@ -15,6 +16,7 @@ class UdharCustomerModel {
     this.customerPhone = '',
     this.totalDue = 0,
     required this.createdAt,
+    this.updatedAt,
   });
 
   factory UdharCustomerModel.fromJson(Map<String, dynamic> json) {
@@ -24,8 +26,11 @@ class UdharCustomerModel {
       userId: json['user_id'] ?? '',
       customerName: json['customer_name'] ?? '',
       customerPhone: json['customer_phone'] ?? '',
-      totalDue: (json['total_due'] ?? 0).toDouble(),
+      totalDue: (json['total_due'] as num?)?.toDouble() ?? 0,
       createdAt: DateTime.parse(json['created_at']),
+      updatedAt: json['updated_at'] != null
+          ? DateTime.parse(json['updated_at'])
+          : null,
     );
   }
 
@@ -37,6 +42,28 @@ class UdharCustomerModel {
       'customer_phone': customerPhone,
       'total_due': totalDue,
     };
+  }
+
+  UdharCustomerModel copyWith({
+    String? id,
+    String? shopId,
+    String? userId,
+    String? customerName,
+    String? customerPhone,
+    double? totalDue,
+    DateTime? createdAt,
+    DateTime? updatedAt,
+  }) {
+    return UdharCustomerModel(
+      id: id ?? this.id,
+      shopId: shopId ?? this.shopId,
+      userId: userId ?? this.userId,
+      customerName: customerName ?? this.customerName,
+      customerPhone: customerPhone ?? this.customerPhone,
+      totalDue: totalDue ?? this.totalDue,
+      createdAt: createdAt ?? this.createdAt,
+      updatedAt: updatedAt ?? this.updatedAt,
+    );
   }
 }
 

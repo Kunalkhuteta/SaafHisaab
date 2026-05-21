@@ -9,6 +9,8 @@ import '../../models/bill_model.dart';
 import '../../models/sale_model.dart';
 import '../../models/item_master_model.dart';
 import '../../globalVar.dart';
+import '../../widgets/credit_entry_sheet.dart';
+import '../../widgets/party_name_field.dart';
 
 /// Invoice type codes and utilities
 class InvType {
@@ -96,10 +98,12 @@ class SaleEntryScreen extends ConsumerStatefulWidget {
 
 class _SaleEntryScreenState extends ConsumerState<SaleEntryScreen> {
   final _customerCtrl = TextEditingController();
+  final _customerPhoneCtrl = TextEditingController();
   final _notesCtrl = TextEditingController();
   final List<_SaleLineItem> _lineItems = [_SaleLineItem()];
   String _paymentMode = 'cash';
   bool _isSaving = false;
+  SavedCreditSale? _creditSale;
 
   double get _grandTotal =>
       _lineItems.fold(0.0, (sum, item) => sum + item.lineTotal);
@@ -113,6 +117,9 @@ class _SaleEntryScreenState extends ConsumerState<SaleEntryScreen> {
   @override
   void initState() {
     super.initState();
+    _customerCtrl.addListener(() {
+      if (mounted) setState(() {});
+    });
     if (widget.bill != null) {
       _loadExistingSale();
     }
@@ -167,6 +174,7 @@ class _SaleEntryScreenState extends ConsumerState<SaleEntryScreen> {
   @override
   void dispose() {
     _customerCtrl.dispose();
+    _customerPhoneCtrl.dispose();
     _notesCtrl.dispose();
     for (final item in _lineItems) {
       item.dispose();
@@ -188,6 +196,106 @@ class _SaleEntryScreenState extends ConsumerState<SaleEntryScreen> {
         SnackBar(content: Text(msg), backgroundColor: AppColors.error));
   }
 
+  Future<void> _openCreditSheet(bool isEn, List<ItemMasterModel> stockItems) async {
+    final userId = AuthService.currentUserId;
+    final shop = await ref.read(shopProvider.future);
+    if (userId == null || shop == null) {
+      _showError(AppLang.tr(isEn, 'Shop not found', 'दुकान नहीं मिली'));
+      return;
+    }
+
+    final result = await showModalBottomSheet<SavedCreditSale>(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: AppColors.background,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(22)),
+      ),
+      builder: (_) => CreditEntrySheet(
+        shopId: shop.id,
+        userId: userId,
+        isEn: isEn,
+        initialCustomerName: _customerCtrl.text.trim(),
+        initialCustomerPhone: _customerPhoneCtrl.text.trim(),
+        initialTotal: _grandTotal,
+        stockItems: stockItems,
+        existingCredit: _creditSale,
+      ),
+    );
+
+    if (result == null) return;
+    setState(() {
+      _creditSale = result.creditAmount > 0 ? result : null;
+      _customerCtrl.text = result.customerName;
+      _customerPhoneCtrl.text = result.customerPhone;
+      _patchCreditItems(result.items, stockItems);
+      _paymentMode = result.creditAmount > 0
+          ? (result.advancePaid > 0 ? 'split' : 'credit')
+          : 'cash';
+    });
+    ref.invalidate(udharCustomersProvider);
+    ref.invalidate(dashboardStatsProvider);
+  }
+
+  void _patchCreditItems(
+      List<CreditSaleItem> creditItems, List<ItemMasterModel> stockItems) {
+    final hasOnlyEmptyRow = _lineItems.length == 1 &&
+        _lineItems.first.stockItemName.trim().isEmpty &&
+        _lineItems.first.stockItemId == null;
+    if (hasOnlyEmptyRow) {
+      _lineItems.first.dispose();
+      _lineItems.clear();
+    }
+    for (final item in creditItems) {
+      final line = _SaleLineItem();
+      line.stockItemId = item.stockItemId;
+      line.stockItemName = item.itemName;
+      line.unit = item.unit.isEmpty ? 'piece' : item.unit;
+      line.qtyCtrl.text = item.quantity.toString();
+      line.priceCtrl.text =
+          item.quantity == 0 ? item.amount.toString() : (item.amount / item.quantity).toStringAsFixed(2);
+      if (item.stockItemId != null) {
+        final stock = stockItems.where((s) => s.id == item.stockItemId).toList();
+        if (stock.isNotEmpty) {
+          line.currentStock = stock.first.currentStock;
+          line.isLowStock = stock.first.currentStock <= 5;
+        }
+      }
+      _lineItems.add(line);
+    }
+  }
+
+  Future<void> _selectPaymentMode(
+      String value, bool isEn, List<ItemMasterModel> stockItems) async {
+    if (value == 'credit') {
+      await _openCreditSheet(isEn, stockItems);
+      return;
+    }
+    if ((_paymentMode == 'credit' || _paymentMode == 'split') &&
+        _creditSale != null) {
+      final remove = await showDialog<bool>(
+        context: context,
+        builder: (ctx) => AlertDialog(
+          title: Text(AppLang.tr(isEn, 'Remove credit entry?', 'क्रेडिट एंट्री हटाएं?')),
+          content: Text(AppLang.tr(isEn, 'This will clear credit data from this invoice.', 'इस इनवॉइस से क्रेडिट विवरण हट जाएगा।')),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(ctx, false),
+              child: Text(AppLang.tr(isEn, 'No', 'नहीं')),
+            ),
+            TextButton(
+              onPressed: () => Navigator.pop(ctx, true),
+              child: Text(AppLang.tr(isEn, 'Yes', 'हाँ')),
+            ),
+          ],
+        ),
+      );
+      if (remove != true) return;
+      setState(() => _creditSale = null);
+    }
+    setState(() => _paymentMode = value);
+  }
+
   Future<void> _saveSale(bool isEn) async {
     if (_customerCtrl.text.trim().isEmpty) {
       _showError(AppLang.tr(isEn, 'Party / Customer Name is required', 'पार्टी / ग्राहक का नाम आवश्यक है'));
@@ -197,7 +305,7 @@ class _SaleEntryScreenState extends ConsumerState<SaleEntryScreen> {
     // ── Validate ──
     for (int i = 0; i < _lineItems.length; i++) {
       final li = _lineItems[i];
-      if (li.stockItemId == null) {
+      if (li.stockItemName.trim().isEmpty) {
         _showError(AppLang.tr(isEn, 'Select item for row ${i + 1}',
             'पंक्ति ${i + 1} के लिए आइटम चुनें'));
         return;
@@ -217,7 +325,7 @@ class _SaleEntryScreenState extends ConsumerState<SaleEntryScreen> {
         availableStock += li.originalQty;
       }
 
-      if (_deductsStock && li.quantity > availableStock) {
+      if (li.stockItemId != null && _deductsStock && li.quantity > availableStock) {
         _showError(AppLang.tr(
             isEn,
             'Insufficient stock for ${li.stockItemName}! Available: ${availableStock.toStringAsFixed(0)} ${li.unit}',
@@ -258,7 +366,9 @@ class _SaleEntryScreenState extends ConsumerState<SaleEntryScreen> {
         // 2. Apply new stock operations
         for (final li in _lineItems) {
           bool ok = true;
-          if (_deductsStock) {
+          if (li.stockItemId == null) {
+            ok = true;
+          } else if (_deductsStock) {
             ok = await SupabaseService.deductMasterStockById(li.stockItemId!, li.quantity);
           } else if (_addsStock) {
             ok = await SupabaseService.addMasterStockById(li.stockItemId!, li.quantity);
@@ -269,7 +379,7 @@ class _SaleEntryScreenState extends ConsumerState<SaleEntryScreen> {
               'Stock operation failed for ${li.stockItemName}',
               '${li.stockItemName} के लिए स्टॉक ऑपरेशन विफल'));
           }
-          deductedItems.add(li);
+          if (li.stockItemId != null) deductedItems.add(li);
         }
 
         // 3. Update Bill
@@ -285,7 +395,9 @@ class _SaleEntryScreenState extends ConsumerState<SaleEntryScreen> {
         // NEW MODE
         for (final li in _lineItems) {
           bool ok = true;
-          if (_deductsStock) {
+          if (li.stockItemId == null) {
+            ok = true;
+          } else if (_deductsStock) {
             ok = await SupabaseService.deductMasterStockById(li.stockItemId!, li.quantity);
           } else if (_addsStock) {
             ok = await SupabaseService.addMasterStockById(li.stockItemId!, li.quantity);
@@ -296,7 +408,7 @@ class _SaleEntryScreenState extends ConsumerState<SaleEntryScreen> {
               'Stock operation failed for ${li.stockItemName}',
               '${li.stockItemName} के लिए स्टॉक ऑपरेशन विफल'));
           }
-          deductedItems.add(li);
+          if (li.stockItemId != null) deductedItems.add(li);
         }
 
         // 1. Save BillModel and get its unique ID
@@ -341,9 +453,11 @@ class _SaleEntryScreenState extends ConsumerState<SaleEntryScreen> {
       ref.invalidate(filteredBillsProvider);
       ref.invalidate(dashboardStatsProvider);
       ref.invalidate(itemMasterProvider);
+      ref.invalidate(stockItemsProvider);
+      ref.invalidate(udharCustomersProvider);
 
       if (mounted) {
-        final msg = stockUpdated == _lineItems.length
+        final msg = _creditSale != null ? AppLang.tr(isEn, 'Sale saved! Credit Rs ${_creditSale!.creditAmount.toStringAsFixed(0)} added for ${_creditSale!.customerName}', 'बिक्री सेव हुई! ${_creditSale!.customerName} के नाम Rs ${_creditSale!.creditAmount.toStringAsFixed(0)} उधार जोड़ा गया') : stockUpdated == _lineItems.length
             ? AppLang.tr(isEn, '$_typeCode saved & stock updated!', '$_typeCode सहेजा और स्टॉक अपडेट!')
             : AppLang.tr(isEn, '$_typeCode saved!', '$_typeCode सहेजा!');
         ScaffoldMessenger.of(context).showSnackBar(SnackBar(
@@ -440,6 +554,7 @@ class _SaleEntryScreenState extends ConsumerState<SaleEntryScreen> {
   Widget build(BuildContext context) {
     final isEn = ref.watch(appLanguageProvider);
     final stockAsync = ref.watch(itemMasterProvider);
+    final shopAsync = ref.watch(shopProvider);
 
     return Scaffold(
       backgroundColor: AppColors.background,
@@ -524,14 +639,21 @@ class _SaleEntryScreenState extends ConsumerState<SaleEntryScreen> {
             loading: () => const Center(
                 child: CircularProgressIndicator(color: AppColors.primary)),
             error: (e, _) => Center(child: Text('Error: $e')),
-            data: (stockItems) => _buildForm(isEn, stockItems),
+            data: (stockItems) => shopAsync.when(
+              loading: () => const Center(
+                  child: CircularProgressIndicator(color: AppColors.primary)),
+              error: (e, _) => Center(child: Text('Error: $e')),
+              data: (shop) => shop == null
+                  ? const Center(child: Text('Shop not found'))
+                  : _buildForm(isEn, stockItems, shop.id),
+            ),
           ),
         ),
       ]),
     );
   }
 
-  Widget _buildForm(bool isEn, List<dynamic> rawStockItems) {
+  Widget _buildForm(bool isEn, List<dynamic> rawStockItems, String shopId) {
     final stockItems = rawStockItems.cast<ItemMasterModel>();
 
     return SingleChildScrollView(
@@ -567,8 +689,19 @@ class _SaleEntryScreenState extends ConsumerState<SaleEntryScreen> {
               },
             ),
           )
-        else
+        else if (false)
           _textField(_customerCtrl, AppLang.tr(isEn, 'e.g. Ramesh Ji', 'जैसे रमेश जी')),
+
+        if (!(_billType == 'purchase' || _billType == 'purchase_return'))
+          PartyNameField(
+          shopId: shopId,
+          controller: _customerCtrl,
+          phoneController: _customerPhoneCtrl,
+          isEn: isEn,
+          label: AppLang.tr(isEn, 'Party / Customer Name', 'Party / Customer Name'),
+          hint: AppLang.tr(isEn, 'e.g. Ramesh Ji', 'Ramesh ji'),
+          required: true,
+        ),
 
         const SizedBox(height: 20),
 
@@ -602,6 +735,23 @@ class _SaleEntryScreenState extends ConsumerState<SaleEntryScreen> {
 
         ...List.generate(_lineItems.length,
             (i) => _lineItemCard(i, stockItems, isEn)),
+
+        if (_billType == 'sale') ...[
+          const SizedBox(height: 10),
+          Wrap(spacing: 8, runSpacing: 8, children: [
+            _creditPayChip(isEn, stockItems),
+          ]),
+        ],
+
+        if (_billType == 'sale' && _customerCtrl.text.trim().isNotEmpty) ...[
+          const SizedBox(height: 10),
+          _creditActionCard(isEn, stockItems),
+        ],
+
+        if (_creditSale != null) ...[
+          const SizedBox(height: 10),
+          _creditSummaryCard(isEn, stockItems),
+        ],
 
         const SizedBox(height: 16),
 
@@ -703,6 +853,131 @@ class _SaleEntryScreenState extends ConsumerState<SaleEntryScreen> {
     );
   }
 
+  Widget _creditPayChip(bool isEn, List<ItemMasterModel> stockItems) {
+    final selected = _paymentMode == 'credit' || _paymentMode == 'split';
+    return GestureDetector(
+      onTap: () => _openCreditSheet(isEn, stockItems),
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+        decoration: BoxDecoration(
+          color: selected ? AppColors.success : AppColors.surface,
+          borderRadius: BorderRadius.circular(10),
+          border: Border.all(color: selected ? AppColors.success : AppColors.border),
+        ),
+        child: Row(mainAxisSize: MainAxisSize.min, children: [
+          Icon(Icons.account_balance_wallet_outlined,
+              size: 16, color: selected ? Colors.white : AppColors.textSecondary),
+          const SizedBox(width: 6),
+          Text(
+            selected ? AppLang.tr(isEn, 'Credit ✓', 'Udhar ✓') : AppLang.tr(isEn, 'Credit / Udhar', 'Credit / Udhar'),
+            style: TextStyle(
+              fontSize: 13,
+              fontWeight: FontWeight.w700,
+              color: selected ? Colors.white : AppColors.textSecondary,
+            ),
+          ),
+        ]),
+      ),
+    );
+  }
+
+  Widget _creditActionCard(bool isEn, List<ItemMasterModel> stockItems) {
+    final hasCredit = _creditSale != null;
+    return InkWell(
+      onTap: () => _openCreditSheet(isEn, stockItems),
+      borderRadius: BorderRadius.circular(12),
+      child: Container(
+        width: double.infinity,
+        padding: const EdgeInsets.all(12),
+        decoration: BoxDecoration(
+          color: hasCredit ? AppColors.success.withOpacity(0.12) : AppColors.primaryBg,
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(
+            color: hasCredit ? AppColors.success.withOpacity(0.35) : AppColors.primaryBorder,
+          ),
+        ),
+        child: Row(children: [
+          Icon(
+            hasCredit ? Icons.check_circle_rounded : Icons.add_rounded,
+            color: hasCredit ? AppColors.success : AppColors.primary,
+          ),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Text(
+              hasCredit
+                  ? 'Credit: Rs ${_creditSale!.creditAmount.toStringAsFixed(0)} added'
+                  : AppLang.tr(isEn, '+ Add Credit / Udhar Joden', '+ Add Credit / Udhar Joden'),
+              style: TextStyle(
+                color: hasCredit ? AppColors.success : AppColors.primary,
+                fontWeight: FontWeight.w800,
+              ),
+            ),
+          ),
+        ]),
+      ),
+    );
+  }
+
+  Widget _creditSummaryCard(bool isEn, List<ItemMasterModel> stockItems) {
+    final credit = _creditSale!;
+    final due = credit.dueDate == null
+        ? '-'
+        : credit.dueDate!.toIso8601String().split('T')[0];
+    return InkWell(
+      onTap: () => _openCreditSheet(isEn, stockItems),
+      borderRadius: BorderRadius.circular(12),
+      child: Container(
+        width: double.infinity,
+        padding: const EdgeInsets.all(12),
+        decoration: BoxDecoration(
+          color: AppColors.surface,
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(color: AppColors.border),
+        ),
+        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          Text(
+            'Udhar: Rs ${credit.creditAmount.toStringAsFixed(0)} | ${credit.customerName} | Due: $due',
+            style: const TextStyle(
+              color: AppColors.textSecondary,
+              fontWeight: FontWeight.w700,
+            ),
+          ),
+          if (credit.advancePaid > 0) ...[
+            const SizedBox(height: 4),
+            Text(
+              'Split: Rs ${credit.advancePaid.toStringAsFixed(0)} Cash + Rs ${credit.creditAmount.toStringAsFixed(0)} Credit',
+              style: const TextStyle(
+                color: AppColors.success,
+                fontSize: 12,
+                fontWeight: FontWeight.w800,
+              ),
+            ),
+          ],
+        ]),
+      ),
+    );
+  }
+
+  Future<void> _changePaymentModeBasic(String value) async {
+    if ((_paymentMode == 'credit' || _paymentMode == 'split') && _creditSale != null) {
+      final isEn = ref.read(appLanguageProvider);
+      final remove = await showDialog<bool>(
+        context: context,
+        builder: (ctx) => AlertDialog(
+          title: Text(AppLang.tr(isEn, 'Remove credit entry?', 'Credit entry hatayein?')),
+          content: Text(AppLang.tr(isEn, 'Clear credit data from this invoice?', 'Is invoice se credit data hata dein?')),
+          actions: [
+            TextButton(onPressed: () => Navigator.pop(ctx, false), child: Text(AppLang.tr(isEn, 'No', 'Nahi'))),
+            TextButton(onPressed: () => Navigator.pop(ctx, true), child: Text(AppLang.tr(isEn, 'Yes', 'Haan'))),
+          ],
+        ),
+      );
+      if (remove != true) return;
+      _creditSale = null;
+    }
+    if (mounted) setState(() => _paymentMode = value);
+  }
+
   Widget _lineItemCard(int index, List<ItemMasterModel> stockItems, bool isEn) {
     final li = _lineItems[index];
     return Container(
@@ -753,7 +1028,23 @@ class _SaleEntryScreenState extends ConsumerState<SaleEntryScreen> {
         const SizedBox(height: 10),
 
         // Stock dropdown
-        DropdownButtonFormField<String>(
+        if (li.stockItemId == null && li.stockItemName.trim().isNotEmpty)
+          TextField(
+            controller: TextEditingController(text: li.stockItemName),
+            onChanged: (value) => li.stockItemName = value,
+            decoration: InputDecoration(
+              hintText: AppLang.tr(isEn, 'Item name', 'Item name'),
+              filled: true,
+              fillColor: AppColors.background,
+              border: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(12),
+                  borderSide: const BorderSide(color: AppColors.borderBlue)),
+              contentPadding:
+                  const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+            ),
+          )
+        else
+          DropdownButtonFormField<String>(
           value: li.stockItemId,
           isExpanded: true,
           decoration: InputDecoration(
@@ -802,7 +1093,7 @@ class _SaleEntryScreenState extends ConsumerState<SaleEntryScreen> {
               }
             });
           },
-        ),
+          ),
 
         // Low stock warning
         if (li.stockItemId != null && li.currentStock <= 0)
@@ -924,7 +1215,7 @@ class _SaleEntryScreenState extends ConsumerState<SaleEntryScreen> {
   Widget _payChip(String value, String label, IconData icon) {
     final sel = _paymentMode == value;
     return GestureDetector(
-      onTap: () => setState(() => _paymentMode = value),
+      onTap: () => _changePaymentModeBasic(value),
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
         decoration: BoxDecoration(
