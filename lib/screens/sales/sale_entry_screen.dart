@@ -298,7 +298,7 @@ class _SaleEntryScreenState extends ConsumerState<SaleEntryScreen> {
 
   Future<void> _saveSale(bool isEn) async {
     if (_customerCtrl.text.trim().isEmpty) {
-      _showError(AppLang.tr(isEn, 'Party / Customer Name is required', 'पार्टी / ग्राहक का नाम आवश्यक है'));
+      _showError(AppLang.tr(isEn, 'Customer name is required', 'ग्राहक का नाम आवश्यक है'));
       return;
     }
 
@@ -659,8 +659,8 @@ class _SaleEntryScreenState extends ConsumerState<SaleEntryScreen> {
     return SingleChildScrollView(
       padding: const EdgeInsets.all(20),
       child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-        // ── Party / Customer Name ──
-        _sectionLabel(AppLang.tr(isEn, 'Party / Customer Name *', 'पार्टी / ग्राहक का नाम *')),
+        // ── Customer Name ──
+        _sectionLabel(AppLang.tr(isEn, 'Customer Name *', 'ग्राहक का नाम *')),
         const SizedBox(height: 6),
         if (_billType == 'purchase' || _billType == 'purchase_return')
           ref.watch(purchasePartiesProvider).when(
@@ -698,8 +698,8 @@ class _SaleEntryScreenState extends ConsumerState<SaleEntryScreen> {
           controller: _customerCtrl,
           phoneController: _customerPhoneCtrl,
           isEn: isEn,
-          label: AppLang.tr(isEn, 'Party / Customer Name', 'Party / Customer Name'),
-          hint: AppLang.tr(isEn, 'e.g. Ramesh Ji', 'Ramesh ji'),
+          label: AppLang.tr(isEn, 'Customer Name', 'ग्राहक का नाम'),
+          hint: AppLang.tr(isEn, 'e.g. Ramesh Ji', 'जैसे रमेश जी'),
           required: true,
         ),
 
@@ -869,7 +869,7 @@ class _SaleEntryScreenState extends ConsumerState<SaleEntryScreen> {
               size: 16, color: selected ? Colors.white : AppColors.textSecondary),
           const SizedBox(width: 6),
           Text(
-            selected ? AppLang.tr(isEn, 'Credit ✓', 'Udhar ✓') : AppLang.tr(isEn, 'Credit / Udhar', 'Credit / Udhar'),
+            selected ? AppLang.tr(isEn, 'Credit ✓', 'उधार ✓') : AppLang.tr(isEn, 'Credit', 'उधार'),
             style: TextStyle(
               fontSize: 13,
               fontWeight: FontWeight.w700,
@@ -905,8 +905,8 @@ class _SaleEntryScreenState extends ConsumerState<SaleEntryScreen> {
           Expanded(
             child: Text(
               hasCredit
-                  ? 'Credit: Rs ${_creditSale!.creditAmount.toStringAsFixed(0)} added'
-                  : AppLang.tr(isEn, '+ Add Credit / Udhar Joden', '+ Add Credit / Udhar Joden'),
+                  ? AppLang.tr(isEn, 'Credit: Rs ${_creditSale!.creditAmount.toStringAsFixed(0)} added', 'उधार: Rs ${_creditSale!.creditAmount.toStringAsFixed(0)} जोड़ा गया')
+                  : AppLang.tr(isEn, '+ Add Credit', '+ उधार जोड़ें'),
               style: TextStyle(
                 color: hasCredit ? AppColors.success : AppColors.primary,
                 fontWeight: FontWeight.w800,
@@ -936,7 +936,7 @@ class _SaleEntryScreenState extends ConsumerState<SaleEntryScreen> {
         ),
         child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
           Text(
-            'Udhar: Rs ${credit.creditAmount.toStringAsFixed(0)} | ${credit.customerName} | Due: $due',
+            AppLang.tr(isEn, 'Credit: Rs ${credit.creditAmount.toStringAsFixed(0)} | ${credit.customerName} | Due: $due', 'उधार: Rs ${credit.creditAmount.toStringAsFixed(0)} | ${credit.customerName} | देय: $due'),
             style: const TextStyle(
               color: AppColors.textSecondary,
               fontWeight: FontWeight.w700,
@@ -945,7 +945,7 @@ class _SaleEntryScreenState extends ConsumerState<SaleEntryScreen> {
           if (credit.advancePaid > 0) ...[
             const SizedBox(height: 4),
             Text(
-              'Split: Rs ${credit.advancePaid.toStringAsFixed(0)} Cash + Rs ${credit.creditAmount.toStringAsFixed(0)} Credit',
+              AppLang.tr(isEn, 'Split: Rs ${credit.advancePaid.toStringAsFixed(0)} Cash + Rs ${credit.creditAmount.toStringAsFixed(0)} Credit', 'स्प्लिट: Rs ${credit.advancePaid.toStringAsFixed(0)} नकद + Rs ${credit.creditAmount.toStringAsFixed(0)} उधार'),
               style: const TextStyle(
                 color: AppColors.success,
                 fontSize: 12,
@@ -964,11 +964,11 @@ class _SaleEntryScreenState extends ConsumerState<SaleEntryScreen> {
       final remove = await showDialog<bool>(
         context: context,
         builder: (ctx) => AlertDialog(
-          title: Text(AppLang.tr(isEn, 'Remove credit entry?', 'Credit entry hatayein?')),
-          content: Text(AppLang.tr(isEn, 'Clear credit data from this invoice?', 'Is invoice se credit data hata dein?')),
+          title: Text(AppLang.tr(isEn, 'Remove credit entry?', 'क्रेडिट एंट्री हटाएं?')),
+          content: Text(AppLang.tr(isEn, 'Clear credit data from this invoice?', 'इस इनवॉइस से क्रेडिट विवरण हटाएं?')),
           actions: [
-            TextButton(onPressed: () => Navigator.pop(ctx, false), child: Text(AppLang.tr(isEn, 'No', 'Nahi'))),
-            TextButton(onPressed: () => Navigator.pop(ctx, true), child: Text(AppLang.tr(isEn, 'Yes', 'Haan'))),
+            TextButton(onPressed: () => Navigator.pop(ctx, false), child: Text(AppLang.tr(isEn, 'No', 'नहीं'))),
+            TextButton(onPressed: () => Navigator.pop(ctx, true), child: Text(AppLang.tr(isEn, 'Yes', 'हाँ'))),
           ],
         ),
       );

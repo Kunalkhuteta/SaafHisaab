@@ -544,6 +544,146 @@ static Future<double> getTodaySalesTotal(String shopId) async {
         .toList();
   }
 
+  static Future<List<UdharCustomerModel>> searchUdharCustomers(
+      String shopId, String query) async {
+    var request = _client
+        .from('udhar_customers')
+        .select()
+        .eq('shop_id', shopId);
+
+    final trimmed = query.trim();
+    final data = trimmed.isEmpty
+        ? await request.order('customer_name').limit(25)
+        : await request
+            .ilike('customer_name', '%$trimmed%')
+            .order('customer_name')
+            .limit(25);
+
+    return (data as List)
+        .map((u) => UdharCustomerModel.fromJson(u))
+        .toList();
+  }
+
+  static Future<UdharCustomerModel?> findCustomerByName(
+      String shopId, String name) async {
+    final data = await _client
+        .from('udhar_customers')
+        .select()
+        .eq('shop_id', shopId)
+        .ilike('customer_name', name.trim())
+        .order('updated_at', ascending: false)
+        .limit(1);
+    final rows = data as List;
+    if (rows.isEmpty) return null;
+    return UdharCustomerModel.fromJson(rows.first);
+  }
+
+  static Future<UdharCustomerModel?> findCustomerByPhone(
+      String shopId, String phone) async {
+    final trimmed = phone.trim();
+    if (trimmed.isEmpty) return null;
+    final data = await _client
+        .from('udhar_customers')
+        .select()
+        .eq('shop_id', shopId)
+        .eq('customer_phone', trimmed)
+        .order('updated_at', ascending: false)
+        .limit(1);
+    final rows = data as List;
+    if (rows.isEmpty) return null;
+    return UdharCustomerModel.fromJson(rows.first);
+  }
+
+  static Future<UdharCustomerModel> createUdharCustomer({
+    required String shopId,
+    required String userId,
+    required String customerName,
+    String phone = '',
+  }) async {
+    final data = await _client
+        .from('udhar_customers')
+        .insert({
+          'shop_id': shopId,
+          'user_id': userId,
+          'customer_name': customerName.trim(),
+          'customer_phone': phone.trim(),
+          'total_due': 0,
+        })
+        .select()
+        .single();
+    return UdharCustomerModel.fromJson(data);
+  }
+
+  static Future<UdharEntryModel> addCreditEntry({
+    required String shopId,
+    required String userId,
+    required String customerId,
+    required double amount,
+    String note = '',
+  }) async {
+    final data = await _client
+        .from('udhar_entries')
+        .insert({
+          'shop_id': shopId,
+          'user_id': userId,
+          'customer_id': customerId,
+          'entry_type': 'credit',
+          'amount': amount,
+          'note': note,
+          'entry_date': DateTime.now().toIso8601String().split('T')[0],
+        })
+        .select()
+        .single();
+    return UdharEntryModel.fromJson(data);
+  }
+
+  static Future<UdharEntryModel> addDebitEntry({
+    required String shopId,
+    required String userId,
+    required String customerId,
+    required double amount,
+    String note = '',
+  }) async {
+    final data = await _client
+        .from('udhar_entries')
+        .insert({
+          'shop_id': shopId,
+          'user_id': userId,
+          'customer_id': customerId,
+          'entry_type': 'debit',
+          'amount': amount,
+          'note': note,
+          'entry_date': DateTime.now().toIso8601String().split('T')[0],
+        })
+        .select()
+        .single();
+    return UdharEntryModel.fromJson(data);
+  }
+
+  static Future<void> updateCustomerTotalDue(
+      String customerId, double newTotalDue) async {
+    await _client
+        .from('udhar_customers')
+        .update({
+          'total_due': newTotalDue < 0 ? 0 : newTotalDue,
+          'updated_at': DateTime.now().toIso8601String(),
+        })
+        .eq('id', customerId);
+  }
+
+  static Future<double> getCustomerTotalDue(String customerId) async {
+    final data = await _client
+        .from('udhar_customers')
+        .select('total_due')
+        .eq('id', customerId)
+        .single();
+    return (data['total_due'] as num?)?.toDouble() ?? 0.0;
+  }
+
+  static Future<void> deleteUdharEntry(String entryId) async {
+    await _client.from('udhar_entries').delete().eq('id', entryId);
+  }
+
 static Future<double> getTotalUdhar(String shopId) async {
   final data = await _client
       .from('udhar_customers')
