@@ -165,6 +165,8 @@ class _CreditEntrySheetState extends State<CreditEntrySheet> {
   double get _total => double.tryParse(_totalCtrl.text.trim()) ?? 0;
   double get _advance => double.tryParse(_advanceCtrl.text.trim()) ?? 0;
   double get _credit => (_total - _advance).clamp(0, double.infinity).toDouble();
+  double get _itemsTotal =>
+      _items.fold<double>(0, (sum, item) => sum + item.total);
 
   @override
   void initState() {
@@ -199,7 +201,8 @@ class _CreditEntrySheetState extends State<CreditEntrySheet> {
                 ))
             .toList() ??
         [CreditItemDraft()];
-    _manualTotal = _totalCtrl.text.isNotEmpty;
+    _manualTotal = false;
+    _syncTotalWithItems();
   }
 
   @override
@@ -242,11 +245,18 @@ class _CreditEntrySheetState extends State<CreditEntrySheet> {
     return confirm == true;
   }
 
-  void _recalculateTotal() {
-    final total = _items.fold<double>(0, (sum, item) => sum + item.total);
-    if (!_manualTotal && total > 0) {
-      _totalCtrl.text = total.toStringAsFixed(0);
+  void _syncTotalWithItems() {
+    if (_manualTotal) return;
+
+    final total = _itemsTotal;
+    _totalCtrl.text = total > 0 ? total.toStringAsFixed(0) : '';
+    if (_advance > total) {
+      _advanceCtrl.clear();
     }
+  }
+
+  void _recalculateTotal() {
+    _syncTotalWithItems();
     setState(() {});
   }
 
@@ -263,6 +273,7 @@ class _CreditEntrySheetState extends State<CreditEntrySheet> {
 
   Future<void> _save() async {
     final name = _nameCtrl.text.trim();
+    _syncTotalWithItems();
     final total = _total;
     final advance = _advance;
 
