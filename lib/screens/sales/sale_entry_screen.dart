@@ -324,7 +324,6 @@ class _SaleEntryScreenState extends ConsumerState<SaleEntryScreen> {
       _creditSale = result.creditAmount > 0 ? result : null;
       _customerCtrl.text = result.customerName;
       _customerPhoneCtrl.text = result.customerPhone;
-      _patchCreditItems(result.items, stockItems);
       _paymentMode = result.creditAmount > 0
           ? (result.advancePaid > 0 ? 'split' : 'credit')
           : 'cash';
@@ -333,33 +332,6 @@ class _SaleEntryScreenState extends ConsumerState<SaleEntryScreen> {
     ref.invalidate(dashboardStatsProvider);
   }
 
-  void _patchCreditItems(
-      List<CreditSaleItem> creditItems, List<ItemMasterModel> stockItems) {
-    final hasOnlyEmptyRow = _lineItems.length == 1 &&
-        _lineItems.first.stockItemName.trim().isEmpty &&
-        _lineItems.first.stockItemId == null;
-    if (hasOnlyEmptyRow) {
-      _lineItems.first.dispose();
-      _lineItems.clear();
-    }
-    for (final item in creditItems) {
-      final line = _SaleLineItem();
-      line.stockItemId = item.stockItemId;
-      line.stockItemName = item.itemName;
-      line.unit = item.unit.isEmpty ? 'piece' : item.unit;
-      line.qtyCtrl.text = item.quantity.toString();
-      line.priceCtrl.text =
-          item.quantity == 0 ? item.amount.toString() : (item.amount / item.quantity).toStringAsFixed(2);
-      if (item.stockItemId != null) {
-        final stock = stockItems.where((s) => s.id == item.stockItemId).toList();
-        if (stock.isNotEmpty) {
-          line.currentStock = stock.first.currentStock;
-          line.isLowStock = stock.first.currentStock <= 5;
-        }
-      }
-      _lineItems.add(line);
-    }
-  }
 
   Future<void> _selectPaymentMode(
       String value, bool isEn, List<ItemMasterModel> stockItems) async {
@@ -1035,31 +1007,177 @@ class _SaleEntryScreenState extends ConsumerState<SaleEntryScreen> {
       borderRadius: BorderRadius.circular(12),
       child: Container(
         width: double.infinity,
-        padding: const EdgeInsets.all(12),
+        padding: const EdgeInsets.all(14),
         decoration: BoxDecoration(
           color: AppColors.surface,
-          borderRadius: BorderRadius.circular(12),
+          borderRadius: BorderRadius.circular(14),
           border: Border.all(color: AppColors.border),
         ),
         child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-          Text(
-            AppLang.tr(isEn, 'Credit: Rs ${credit.creditAmount.toStringAsFixed(0)} | ${credit.customerName} | Due: $due', 'उधार: Rs ${credit.creditAmount.toStringAsFixed(0)} | ${credit.customerName} | देय: $due'),
-            style: const TextStyle(
-              color: AppColors.textSecondary,
-              fontWeight: FontWeight.w700,
+          // Header row with credit amount and customer
+          Row(children: [
+            Container(
+              width: 36,
+              height: 36,
+              decoration: BoxDecoration(
+                color: AppColors.warning.withOpacity(0.12),
+                borderRadius: BorderRadius.circular(10),
+              ),
+              child: const Icon(
+                Icons.receipt_long_rounded,
+                color: AppColors.warning,
+                size: 18,
+              ),
             ),
-          ),
-          if (credit.advancePaid > 0) ...[
-            const SizedBox(height: 4),
-            Text(
-              AppLang.tr(isEn, 'Split: Rs ${credit.advancePaid.toStringAsFixed(0)} Cash + Rs ${credit.creditAmount.toStringAsFixed(0)} Credit', 'स्प्लिट: Rs ${credit.advancePaid.toStringAsFixed(0)} नकद + Rs ${credit.creditAmount.toStringAsFixed(0)} उधार'),
-              style: const TextStyle(
-                color: AppColors.success,
-                fontSize: 12,
-                fontWeight: FontWeight.w800,
+            const SizedBox(width: 10),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    credit.customerName,
+                    style: const TextStyle(
+                      color: AppColors.textPrimary,
+                      fontWeight: FontWeight.w800,
+                      fontSize: 14,
+                    ),
+                  ),
+                  const SizedBox(height: 2),
+                  Text(
+                    AppLang.tr(isEn, 'Due: $due', 'देय: $due'),
+                    style: const TextStyle(
+                      color: AppColors.textSecondary,
+                      fontSize: 11,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            Column(
+              crossAxisAlignment: CrossAxisAlignment.end,
+              children: [
+                Text(
+                  'Rs ${credit.creditAmount.toStringAsFixed(0)}',
+                  style: const TextStyle(
+                    color: AppColors.error,
+                    fontSize: 16,
+                    fontWeight: FontWeight.w900,
+                  ),
+                ),
+                if (credit.advancePaid > 0)
+                  Text(
+                    AppLang.tr(isEn, '+ Rs ${credit.advancePaid.toStringAsFixed(0)} paid', '+ Rs ${credit.advancePaid.toStringAsFixed(0)} दिया'),
+                    style: const TextStyle(
+                      color: AppColors.success,
+                      fontSize: 11,
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+              ],
+            ),
+          ]),
+
+          // Items breakdown
+          if (credit.items.isNotEmpty) ...[
+            const SizedBox(height: 10),
+            Container(
+              width: double.infinity,
+              padding: const EdgeInsets.all(10),
+              decoration: BoxDecoration(
+                color: AppColors.background,
+                borderRadius: BorderRadius.circular(10),
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    AppLang.tr(isEn, 'Items', 'आइटम'),
+                    style: const TextStyle(
+                      color: AppColors.textSecondary,
+                      fontSize: 11,
+                      fontWeight: FontWeight.w800,
+                    ),
+                  ),
+                  const SizedBox(height: 6),
+                  ...credit.items.map((item) => Padding(
+                    padding: const EdgeInsets.only(bottom: 4),
+                    child: Row(children: [
+                      Expanded(
+                        child: Text(
+                          item.itemName,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: const TextStyle(
+                            color: AppColors.textPrimary,
+                            fontSize: 12,
+                            fontWeight: FontWeight.w700,
+                          ),
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                      Text(
+                        '${item.quantity.toStringAsFixed(item.quantity.truncateToDouble() == item.quantity ? 0 : 1)} ${item.unit}',
+                        style: const TextStyle(
+                          color: AppColors.textSecondary,
+                          fontSize: 11,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                      Text(
+                        'Rs ${item.amount.toStringAsFixed(0)}',
+                        style: const TextStyle(
+                          color: AppColors.primary,
+                          fontSize: 12,
+                          fontWeight: FontWeight.w800,
+                        ),
+                      ),
+                    ]),
+                  )),
+                ],
               ),
             ),
           ],
+
+          // Split payment info
+          if (credit.advancePaid > 0) ...[
+            const SizedBox(height: 8),
+            Container(
+              width: double.infinity,
+              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+              decoration: BoxDecoration(
+                color: AppColors.success.withOpacity(0.08),
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: Text(
+                AppLang.tr(isEn, 'Split: Rs ${credit.advancePaid.toStringAsFixed(0)} Cash + Rs ${credit.creditAmount.toStringAsFixed(0)} Credit', 'स्प्लिट: Rs ${credit.advancePaid.toStringAsFixed(0)} नकद + Rs ${credit.creditAmount.toStringAsFixed(0)} उधार'),
+                style: const TextStyle(
+                  color: AppColors.success,
+                  fontSize: 12,
+                  fontWeight: FontWeight.w800,
+                ),
+              ),
+            ),
+          ],
+
+          // Tap to edit hint
+          const SizedBox(height: 6),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.end,
+            children: [
+              const Icon(Icons.edit_outlined, size: 12, color: AppColors.textHint),
+              const SizedBox(width: 4),
+              Text(
+                AppLang.tr(isEn, 'Tap to edit', 'एडिट करने के लिए दबाएं'),
+                style: const TextStyle(
+                  color: AppColors.textHint,
+                  fontSize: 10,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+            ],
+          ),
         ]),
       ),
     );
