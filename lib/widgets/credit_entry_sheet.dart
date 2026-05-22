@@ -78,7 +78,7 @@ class SavedCreditSale {
     this.debitEntryId,
   });
 
-  String toEntryNote() {
+  String toEntryNote({String? billId}) {
     final payload = {
       'customerId': customerId,
       'customerName': customerName,
@@ -89,6 +89,7 @@ class SavedCreditSale {
       'dueDate': dueDate?.toIso8601String(),
       'note': note,
       'items': items.map((item) => item.toJson()).toList(),
+      if (billId != null) 'billId': billId,
     };
     return '$noteMarker${jsonEncode(payload)}';
   }
