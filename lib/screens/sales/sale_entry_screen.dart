@@ -1,3 +1,4 @@
+import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../constants/app_colors.dart';
@@ -105,9 +106,14 @@ class _SaleEntryScreenState extends ConsumerState<SaleEntryScreen> {
   String _paymentMode = 'cash';
   bool _isSaving = false;
   SavedCreditSale? _creditSale;
+  SavedCreditSale? _originalCreditSale;
 
-  double get _grandTotal =>
-      _lineItems.fold(0.0, (sum, item) => sum + item.lineTotal);
+  double get _grandTotal {
+    if ((_paymentMode == 'credit' || _paymentMode == 'split') && _creditSale != null) {
+      return _creditSale!.totalAmount;
+    }
+    return _lineItems.fold(0.0, (sum, item) => sum + item.lineTotal);
+  }
 
   String get _billType => widget.bill?.billType ?? widget.billType;
   bool get _deductsStock => InvType.deductsStock(_billType);
@@ -163,9 +169,88 @@ class _SaleEntryScreenState extends ConsumerState<SaleEntryScreen> {
             li.currentStock = si.currentStock;
           }
         });
+
+        if (_paymentMode == 'credit' || _paymentMode == 'split') {
+          await _loadCreditSaleForExistingBill(widget.bill!.vendorName, '');
+        }
       }
     } catch (e) {
       debugPrint('Error loading existing sale: $e');
+    }
+  }
+
+  Future<void> _loadCreditSaleForExistingBill(String customerName, String customerPhone) async {
+    try {
+      final shop = await ref.read(shopProvider.future);
+      if (shop == null) return;
+      UdharCustomerModel? customer = await SupabaseService.findCustomerByName(shop.id, customerName);
+      customer ??= await SupabaseService.findCustomerByPhone(shop.id, customerPhone);
+      if (customer == null) return;
+
+      final entries = await SupabaseService.getUdharEntriesForCustomer(customer.id);
+      for (final entry in entries) {
+        if (entry.entryType == 'credit') {
+          final parsed = SavedCreditSale.tryParseNote(entry.note, customerId: customer.id);
+          if (parsed != null) {
+            bool isMatch = false;
+            final markerIndex = entry.note.indexOf(SavedCreditSale.noteMarker);
+            if (markerIndex >= 0) {
+              final jsonText = entry.note.substring(markerIndex + SavedCreditSale.noteMarker.length).trim();
+              try {
+                final payload = jsonDecode(jsonText) as Map<String, dynamic>;
+                final String? noteBillId = payload['billId'] as String?;
+                if (noteBillId != null) {
+                  isMatch = noteBillId == widget.bill!.id;
+                } else {
+                  // Backward compatibility: match by amount and date close to bill date
+                  final timeDiff = entry.entryDate.difference(widget.bill!.billDate).abs();
+                  isMatch = (parsed.totalAmount - widget.bill!.amount).abs() < 1.0 && timeDiff.inMinutes < 60;
+                }
+              } catch (_) {
+                final timeDiff = entry.entryDate.difference(widget.bill!.billDate).abs();
+                isMatch = (parsed.totalAmount - widget.bill!.amount).abs() < 1.0 && timeDiff.inMinutes < 60;
+              }
+            }
+
+            if (isMatch) {
+              String? debitEntryId;
+              if (parsed.advancePaid > 0) {
+                try {
+                  final debits = entries.where((e) =>
+                      e.entryType == 'debit' &&
+                      e.amount == parsed.advancePaid &&
+                      e.entryDate.difference(entry.entryDate).abs().inDays <= 1);
+                  if (debits.isNotEmpty) {
+                    debitEntryId = debits.first.id;
+                  }
+                } catch (_) {}
+              }
+
+              setState(() {
+                final updatedCreditSale = SavedCreditSale(
+                  customerId: parsed.customerId,
+                  customerName: parsed.customerName,
+                  customerPhone: parsed.customerPhone,
+                  creditAmount: parsed.creditAmount,
+                  advancePaid: parsed.advancePaid,
+                  totalAmount: parsed.totalAmount,
+                  dueDate: parsed.dueDate,
+                  note: parsed.note,
+                  items: parsed.items,
+                  creditEntryId: entry.id,
+                  debitEntryId: debitEntryId,
+                );
+                _creditSale = updatedCreditSale;
+                _originalCreditSale = updatedCreditSale;
+                _customerPhoneCtrl.text = parsed.customerPhone;
+              });
+              break;
+            }
+          }
+        }
+      }
+    } catch (e) {
+      debugPrint('Error loading credit sale for existing bill: $e');
     }
   }
 
@@ -206,6 +291,7 @@ class _SaleEntryScreenState extends ConsumerState<SaleEntryScreen> {
     required String shopId,
     required String userId,
     required bool isEn,
+    String? billId,
   }) async {
     final credit = _creditSale;
     if (credit == null || credit.creditAmount <= 0) return null;
@@ -248,7 +334,7 @@ class _SaleEntryScreenState extends ConsumerState<SaleEntryScreen> {
         userId: userId,
         customerId: customer.id,
         amount: credit.creditAmount,
-        note: credit.toEntryNote(),
+        note: credit.toEntryNote(billId: billId),
       );
 
       if (credit.advancePaid > 0) {
@@ -370,9 +456,70 @@ class _SaleEntryScreenState extends ConsumerState<SaleEntryScreen> {
       return;
     }
 
+    final bool isCreditSale = (_paymentMode == 'credit' || _paymentMode == 'split') && _creditSale != null;
+    final itemsToSave = <_SaleLineItem>[];
+
+    try {
+      final stockItems = await ref.read(itemMasterProvider.future);
+      if (isCreditSale) {
+        for (final ci in _creditSale!.items) {
+          final li = _SaleLineItem();
+          li.stockItemId = ci.stockItemId;
+          li.originalStockItemId = ci.stockItemId;
+          li.stockItemName = ci.itemName;
+          li.unit = ci.unit;
+          li.qtyCtrl.text = ci.quantity.toString();
+          final price = ci.quantity == 0 ? ci.amount : ci.amount / ci.quantity;
+          li.priceCtrl.text = price.toString();
+
+          final si = stockItems.firstWhere(
+            (element) => element.id == li.stockItemId,
+            orElse: () => ItemMasterModel(
+              id: '',
+              shopId: '',
+              userId: '',
+              itemName: '',
+              currentStock: 0,
+              createdAt: DateTime.now(),
+            ),
+          );
+          li.currentStock = si.currentStock;
+
+          if (widget.bill != null) {
+            try {
+              final oldSales = await SupabaseService.getSalesByBillId(widget.bill!.id);
+              final match = oldSales.firstWhere(
+                (os) => os.stockItemId == li.stockItemId,
+                orElse: () => SaleModel(
+                  id: '',
+                  shopId: '',
+                  userId: '',
+                  itemName: '',
+                  quantity: 0,
+                  unit: '',
+                  sellingPrice: 0,
+                  totalAmount: 0,
+                  paymentMode: '',
+                  saleDate: DateTime.now(),
+                  createdAt: DateTime.now(),
+                ),
+              );
+              li.originalQty = match.quantity;
+            } catch (_) {}
+          }
+          itemsToSave.add(li);
+        }
+      } else {
+        itemsToSave.addAll(_lineItems);
+      }
+    } catch (e) {
+      _showError('Failed to prepare items: $e');
+      return;
+    }
+
     // ── Validate ──
-    for (int i = 0; i < _lineItems.length; i++) {
-      final li = _lineItems[i];
+    for (int i = 0; i < itemsToSave.length; i++) {
+      final li = itemsToSave[i];
       if (li.stockItemName.trim().isEmpty) {
         _showError(AppLang.tr(isEn, 'Select item for row ${i + 1}',
             'पंक्ति ${i + 1} के लिए आइटम चुनें'));
@@ -432,7 +579,7 @@ class _SaleEntryScreenState extends ConsumerState<SaleEntryScreen> {
         }
 
         // 2. Apply new stock operations
-        for (final li in _lineItems) {
+        for (final li in itemsToSave) {
           bool ok = true;
           if (li.stockItemId == null) {
             ok = true;
@@ -461,7 +608,7 @@ class _SaleEntryScreenState extends ConsumerState<SaleEntryScreen> {
         await SupabaseService.deleteSalesByBillId(billId);
       } else {
         // NEW MODE
-        for (final li in _lineItems) {
+        for (final li in itemsToSave) {
           bool ok = true;
           if (li.stockItemId == null) {
             ok = true;
@@ -496,7 +643,7 @@ class _SaleEntryScreenState extends ConsumerState<SaleEntryScreen> {
 
       // 4. Save individual SaleModel records linked to the bill + deduct stock
       int stockUpdated = 0;
-      for (final li in _lineItems) {
+      for (final li in itemsToSave) {
         await SupabaseService.saveSale(SaleModel(
           id: '',
           shopId: shop.id,
@@ -517,10 +664,27 @@ class _SaleEntryScreenState extends ConsumerState<SaleEntryScreen> {
         stockUpdated++;
       }
 
+      // Reverse previous credit entries if they existed (in Update Mode)
+      if (widget.bill != null && _originalCreditSale != null) {
+        final orig = _originalCreditSale!;
+        if (orig.creditEntryId != null) {
+          await SupabaseService.deleteUdharEntry(orig.creditEntryId!);
+        }
+        if (orig.debitEntryId != null) {
+          await SupabaseService.deleteUdharEntry(orig.debitEntryId!);
+        }
+        if (orig.customerId.isNotEmpty) {
+          final oldDue = await SupabaseService.getCustomerTotalDue(orig.customerId);
+          await SupabaseService.updateCustomerTotalDue(orig.customerId, oldDue - orig.creditAmount);
+        }
+      }
+
+      // Persist new credit entries if current payment mode is credit or split
       final persistedCredit = await _persistCreditOnBillSave(
         shopId: shop.id,
         userId: userId,
         isEn: isEn,
+        billId: billId,
       );
       if (persistedCredit != null) {
         _creditSale = persistedCredit;
@@ -534,7 +698,7 @@ class _SaleEntryScreenState extends ConsumerState<SaleEntryScreen> {
       ref.invalidate(udharCustomersProvider);
 
       if (mounted) {
-        final msg = _creditSale != null ? AppLang.tr(isEn, 'Sale saved! Credit Rs ${_creditSale!.creditAmount.toStringAsFixed(0)} added for ${_creditSale!.customerName}', 'बिक्री सेव हुई! ${_creditSale!.customerName} के नाम Rs ${_creditSale!.creditAmount.toStringAsFixed(0)} उधार जोड़ा गया') : stockUpdated == _lineItems.length
+        final msg = _creditSale != null ? AppLang.tr(isEn, 'Sale saved! Credit Rs ${_creditSale!.creditAmount.toStringAsFixed(0)} added for ${_creditSale!.customerName}', 'बिक्री सेव हुई! ${_creditSale!.customerName} के नाम Rs ${_creditSale!.creditAmount.toStringAsFixed(0)} उधार जोड़ा गया') : stockUpdated == itemsToSave.length
             ? AppLang.tr(isEn, '$_typeCode saved & stock updated!', '$_typeCode सहेजा और स्टॉक अपडेट!')
             : AppLang.tr(isEn, '$_typeCode saved!', '$_typeCode सहेजा!');
         ScaffoldMessenger.of(context).showSnackBar(SnackBar(
@@ -567,6 +731,11 @@ class _SaleEntryScreenState extends ConsumerState<SaleEntryScreen> {
       }
       _showError(e is StockUnavailableException ? e.message : 'Save failed: $e');
     } finally {
+      if (isCreditSale) {
+        for (final li in itemsToSave) {
+          li.dispose();
+        }
+      }
       if (mounted) setState(() => _isSaving = false);
     }
   }
@@ -604,6 +773,22 @@ class _SaleEntryScreenState extends ConsumerState<SaleEntryScreen> {
           }
         }
       }
+
+      // Reverse credit entry if existed
+      if (_originalCreditSale != null) {
+        final orig = _originalCreditSale!;
+        if (orig.creditEntryId != null) {
+          await SupabaseService.deleteUdharEntry(orig.creditEntryId!);
+        }
+        if (orig.debitEntryId != null) {
+          await SupabaseService.deleteUdharEntry(orig.debitEntryId!);
+        }
+        if (orig.customerId.isNotEmpty) {
+          final oldDue = await SupabaseService.getCustomerTotalDue(orig.customerId);
+          await SupabaseService.updateCustomerTotalDue(orig.customerId, oldDue - orig.creditAmount);
+        }
+      }
+
       // 2. Delete data
       await SupabaseService.deleteSalesByBillId(billId);
       await SupabaseService.deleteBill(billId);
@@ -784,36 +969,38 @@ class _SaleEntryScreenState extends ConsumerState<SaleEntryScreen> {
 
         const SizedBox(height: 20),
 
-        // ── Line Items ──
-        Row(children: [
-          Expanded(
-              child: _sectionLabel(
-                  AppLang.tr(isEn, '$_typeCode Items', '$_typeCode आइटम'))),
-          GestureDetector(
-            onTap: _addLineItem,
-            child: Container(
-              padding:
-                  const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-              decoration: BoxDecoration(
-                  color: AppColors.primary.withOpacity(0.1),
-                  borderRadius: BorderRadius.circular(8)),
-              child: Row(mainAxisSize: MainAxisSize.min, children: [
-                const Icon(Icons.add_rounded,
-                    color: AppColors.primary, size: 16),
-                const SizedBox(width: 4),
-                Text(AppLang.tr(isEn, 'Add Item', 'आइटम जोड़ें'),
-                    style: const TextStyle(
-                        fontSize: 12,
-                        fontWeight: FontWeight.w600,
-                        color: AppColors.primary)),
-              ]),
+        if (_creditSale == null) ...[
+          // ── Line Items ──
+          Row(children: [
+            Expanded(
+                child: _sectionLabel(
+                    AppLang.tr(isEn, '$_typeCode Items', '$_typeCode आइटम'))),
+            GestureDetector(
+              onTap: _addLineItem,
+              child: Container(
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                decoration: BoxDecoration(
+                    color: AppColors.primary.withOpacity(0.1),
+                    borderRadius: BorderRadius.circular(8)),
+                child: Row(mainAxisSize: MainAxisSize.min, children: [
+                  const Icon(Icons.add_rounded,
+                      color: AppColors.primary, size: 16),
+                  const SizedBox(width: 4),
+                  Text(AppLang.tr(isEn, 'Add Item', 'आइटम जोड़ें'),
+                      style: const TextStyle(
+                          fontSize: 12,
+                          fontWeight: FontWeight.w600,
+                          color: AppColors.primary)),
+                ]),
+              ),
             ),
-          ),
-        ]),
-        const SizedBox(height: 10),
+          ]),
+          const SizedBox(height: 10),
 
-        ...List.generate(_lineItems.length,
-            (i) => _lineItemCard(i, stockItems, isEn)),
+          ...List.generate(_lineItems.length,
+              (i) => _lineItemCard(i, stockItems, isEn)),
+        ],
 
         if (_billType == 'sale') ...[
           const SizedBox(height: 10),
@@ -1100,41 +1287,73 @@ class _SaleEntryScreenState extends ConsumerState<SaleEntryScreen> {
                     ),
                   ),
                   const SizedBox(height: 6),
-                  ...credit.items.map((item) => Padding(
-                    padding: const EdgeInsets.only(bottom: 4),
-                    child: Row(children: [
-                      Expanded(
-                        child: Text(
-                          item.itemName,
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          style: const TextStyle(
-                            color: AppColors.textPrimary,
-                            fontSize: 12,
-                            fontWeight: FontWeight.w700,
+                  ...credit.items.map((item) {
+                    final rate = item.quantity > 0 ? (item.amount / item.quantity) : item.amount;
+                    return Padding(
+                      padding: const EdgeInsets.only(bottom: 6),
+                      child: Row(
+                        children: [
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  item.itemName,
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: const TextStyle(
+                                    color: AppColors.textPrimary,
+                                    fontSize: 12,
+                                    fontWeight: FontWeight.w700,
+                                  ),
+                                ),
+                                const SizedBox(height: 2),
+                                Text(
+                                  '${item.quantity.toStringAsFixed(item.quantity.truncateToDouble() == item.quantity ? 0 : 1)} ${item.unit} x ₹${rate.toStringAsFixed(2)}',
+                                  style: const TextStyle(
+                                    color: AppColors.textSecondary,
+                                    fontSize: 11,
+                                    fontWeight: FontWeight.w500,
+                                  ),
+                                ),
+                              ],
+                            ),
                           ),
-                        ),
+                          const SizedBox(width: 8),
+                          Text(
+                            '₹${item.amount.toStringAsFixed(2)}',
+                            style: const TextStyle(
+                              color: AppColors.primary,
+                              fontSize: 12,
+                              fontWeight: FontWeight.w800,
+                            ),
+                          ),
+                        ],
                       ),
-                      const SizedBox(width: 8),
+                    );
+                  }),
+                  const SizedBox(height: 10),
+                  const Divider(height: 1, color: AppColors.border),
+                  const SizedBox(height: 8),
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      const Icon(
+                        Icons.edit_rounded,
+                        size: 12,
+                        color: AppColors.textSecondary,
+                      ),
+                      const SizedBox(width: 4),
                       Text(
-                        '${item.quantity.toStringAsFixed(item.quantity.truncateToDouble() == item.quantity ? 0 : 1)} ${item.unit}',
+                        AppLang.tr(isEn, 'Tap card to edit credit items', 'क्रेडिट आइटम बदलने के लिए टैप करें'),
                         style: const TextStyle(
                           color: AppColors.textSecondary,
                           fontSize: 11,
-                          fontWeight: FontWeight.w600,
+                          fontWeight: FontWeight.w500,
                         ),
                       ),
-                      const SizedBox(width: 8),
-                      Text(
-                        'Rs ${item.amount.toStringAsFixed(0)}',
-                        style: const TextStyle(
-                          color: AppColors.primary,
-                          fontSize: 12,
-                          fontWeight: FontWeight.w800,
-                        ),
-                      ),
-                    ]),
-                  )),
+                    ],
+                  ),
                 ],
               ),
             ),
