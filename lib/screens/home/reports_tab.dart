@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../constants/app_colors.dart';
 import '../../globalVar.dart';
 import '../reports/daily_balances_screen.dart';
+import '../reports/outstanding_received_screen.dart';
 
 class ReportsTab extends ConsumerStatefulWidget {
   const ReportsTab({super.key});
@@ -38,6 +39,11 @@ class _ReportsTabState extends ConsumerState<ReportsTab> {
       title: 'Cash Received from Party',
       icon: Icons.payments_rounded,
       description: 'Payments received in Cash from parties',
+    ),
+    _ReportItem(
+      title: 'Outstanding Received',
+      icon: Icons.fact_check_rounded,
+      description: 'Credit payments received with receipts and balances',
     ),
     _ReportItem(
       title: 'Dump Stock',
@@ -119,6 +125,11 @@ class _ReportsTabState extends ConsumerState<ReportsTab> {
                       Navigator.push(
                         context,
                         MaterialPageRoute(builder: (_) => const DailyBalancesScreen()),
+                      );
+                    } else if (item.title == 'Outstanding Received') {
+                      Navigator.push(
+                        context,
+                        MaterialPageRoute(builder: (_) => const OutstandingReceivedScreen()),
                       );
                     } else {
                       ScaffoldMessenger.of(context).showSnackBar(
