@@ -1,5 +1,11 @@
+import 'dart:typed_data';
+
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:flutter_image_compress/flutter_image_compress.dart';
+import 'package:image_picker/image_picker.dart';
+import 'package:path/path.dart' as path;
 import '../../constants/app_colors.dart';
 import '../../providers/app_providers.dart';
 import '../../services/auth_service.dart';
@@ -109,9 +115,7 @@ class _UdharScreenState extends ConsumerState<UdharScreen> {
           icon: const Icon(Icons.more_vert_rounded, color: AppColors.textHint, size: 20),
           onSelected: (val) async {
             if (val == 'paid') {
-              await SupabaseService.markUdharPaid(customer.id);
-              ref.invalidate(udharCustomersProvider);
-              ref.invalidate(dashboardStatsProvider);
+              await _showPaymentSheet(context, isEn, customer);
             } else if (val == 'edit') {
               _showAddCustomerDialog(context, isEn, customerToEdit: customer);
             } else if (val == 'delete') {
@@ -127,6 +131,96 @@ class _UdharScreenState extends ConsumerState<UdharScreen> {
       ]),
       ),
     );
+  }
+
+  Future<void> _showPaymentSheet(
+    BuildContext context,
+    bool isEn,
+    UdharCustomerModel customer,
+  ) async {
+    final userId = AuthService.currentUserId;
+    final shop = await ref.read(shopProvider.future);
+    if (userId == null || shop == null) {
+      _showSnack(AppLang.tr(isEn, 'Shop not found', 'दुकान नहीं मिली'), true);
+      return;
+    }
+
+    final entries = await SupabaseService.getUdharEntriesForCustomer(customer.id);
+    final hasPartialPayment = entries.any((entry) {
+      final meta = UdharPaymentMeta.tryParseNote(entry.note);
+      return entry.entryType == 'debit' && meta != null && meta.isPartial;
+    });
+    final creditEntries = entries.where((entry) => entry.entryType == 'credit');
+    final appliedCreditEntryId =
+        creditEntries.isEmpty ? null : creditEntries.first.id;
+
+    if (!context.mounted) return;
+    final result = await showModalBottomSheet<_UdharPaymentDraft>(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: AppColors.surface,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(22)),
+      ),
+      builder: (_) => _UdharPaymentSheet(
+        customer: customer,
+        isEn: isEn,
+        hasPartialPayment: hasPartialPayment,
+      ),
+    );
+    if (result == null) return;
+
+    setState(() {});
+    try {
+      String receiptUrl = '';
+      if (result.receiptBytes != null) {
+        final compressed = await _compressImage(result.receiptBytes!);
+        receiptUrl = await SupabaseService.uploadCreditReceipt(
+          shop.id,
+          compressed ?? result.receiptBytes!,
+          result.receiptExtension,
+        );
+      }
+
+      await SupabaseService.recordUdharPayment(
+        shopId: shop.id,
+        userId: userId,
+        customer: customer,
+        amount: result.amount,
+        paymentMethod: result.paymentMethod,
+        receiptImageUrl: receiptUrl,
+        appliedCreditEntryId: appliedCreditEntryId,
+      );
+      ref.invalidate(udharCustomersProvider);
+      ref.invalidate(dashboardStatsProvider);
+      if (mounted) {
+        _showSnack(
+          AppLang.tr(isEn, 'Payment recorded', 'भुगतान सेव हुआ'),
+          false,
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        _showSnack('Payment failed: $e', true);
+      }
+    }
+  }
+
+  Future<Uint8List?> _compressImage(Uint8List list) async {
+    try {
+      return await FlutterImageCompress.compressWithList(
+        list,
+        minWidth: 800,
+        minHeight: 800,
+        quality: 70,
+      );
+    } catch (e) {
+      if (kIsWeb) {
+        debugPrint('Web compress failed, using original bytes: $e');
+        return list;
+      }
+      rethrow;
+    }
   }
 
   Future<void> _openNewCreditEntry(BuildContext context, bool isEn) async {
@@ -351,4 +445,267 @@ class _UdharScreenState extends ConsumerState<UdharScreen> {
     border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: const BorderSide(color: AppColors.borderBlue)),
     contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
   );
+}
+
+class _UdharPaymentDraft {
+  final double amount;
+  final String paymentMethod;
+  final Uint8List? receiptBytes;
+  final String receiptExtension;
+
+  const _UdharPaymentDraft({
+    required this.amount,
+    required this.paymentMethod,
+    this.receiptBytes,
+    this.receiptExtension = 'jpg',
+  });
+}
+
+class _UdharPaymentSheet extends StatefulWidget {
+  final UdharCustomerModel customer;
+  final bool isEn;
+  final bool hasPartialPayment;
+
+  const _UdharPaymentSheet({
+    required this.customer,
+    required this.isEn,
+    required this.hasPartialPayment,
+  });
+
+  @override
+  State<_UdharPaymentSheet> createState() => _UdharPaymentSheetState();
+}
+
+class _UdharPaymentSheetState extends State<_UdharPaymentSheet> {
+  final _amountCtrl = TextEditingController();
+  String _method = 'cash';
+  Uint8List? _receiptBytes;
+  String _receiptExtension = 'jpg';
+
+  bool get _needsReceipt => _method == 'upi' || _method == 'bank';
+
+  @override
+  void initState() {
+    super.initState();
+    _amountCtrl.text = widget.customer.totalDue.toStringAsFixed(0);
+  }
+
+  @override
+  void dispose() {
+    _amountCtrl.dispose();
+    super.dispose();
+  }
+
+  Future<void> _pickReceipt() async {
+    final pickedFile =
+        await ImagePicker().pickImage(source: ImageSource.gallery);
+    if (pickedFile == null) return;
+    final ext = path.extension(pickedFile.path).replaceAll('.', '');
+    final bytes = await pickedFile.readAsBytes();
+    setState(() {
+      _receiptBytes = bytes;
+      _receiptExtension = ext.isEmpty ? 'jpg' : ext;
+    });
+  }
+
+  void _submit() {
+    final amount = double.tryParse(_amountCtrl.text.trim()) ?? 0;
+    if (amount <= 0 || amount > widget.customer.totalDue) {
+      _showError(AppLang.tr(
+        widget.isEn,
+        'Enter amount up to pending balance',
+        'बाकी रकम तक राशि दर्ज करें',
+      ));
+      return;
+    }
+    if (widget.hasPartialPayment && amount < widget.customer.totalDue) {
+      _showError(AppLang.tr(
+        widget.isEn,
+        'Part payment already recorded. Receive full remaining balance.',
+        'पार्ट पेमेंट पहले हो चुका है. बची हुई पूरी राशि लें.',
+      ));
+      return;
+    }
+    Navigator.pop(
+      context,
+      _UdharPaymentDraft(
+        amount: amount,
+        paymentMethod: _method,
+        receiptBytes: _receiptBytes,
+        receiptExtension: _receiptExtension,
+      ),
+    );
+  }
+
+  void _showError(String message) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text(message), backgroundColor: AppColors.error),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final isPartial =
+        (double.tryParse(_amountCtrl.text.trim()) ?? 0) < widget.customer.totalDue;
+
+    return SafeArea(
+      child: Padding(
+        padding: EdgeInsets.only(
+          left: 18,
+          right: 18,
+          top: 16,
+          bottom: MediaQuery.of(context).viewInsets.bottom + 18,
+        ),
+        child: SingleChildScrollView(
+          child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            Text(
+              AppLang.tr(widget.isEn, 'Record Payment', 'भुगतान दर्ज करें'),
+              style: const TextStyle(
+                fontSize: 18,
+                fontWeight: FontWeight.w800,
+                color: AppColors.textPrimary,
+              ),
+            ),
+            const SizedBox(height: 14),
+            Text(
+              '${widget.customer.customerName} | Pending Rs ${widget.customer.totalDue.toStringAsFixed(0)}',
+              style: const TextStyle(
+                color: AppColors.textSecondary,
+                fontWeight: FontWeight.w700,
+              ),
+            ),
+            const SizedBox(height: 16),
+            TextField(
+              controller: _amountCtrl,
+              keyboardType:
+                  const TextInputType.numberWithOptions(decimal: true),
+              onChanged: (_) => setState(() {}),
+              decoration: _decoration(
+                AppLang.tr(widget.isEn, 'Amount Paid', 'भुगतान राशि'),
+                Icons.currency_rupee_rounded,
+              ),
+            ),
+            const SizedBox(height: 14),
+            Wrap(
+              spacing: 10,
+              runSpacing: 10,
+              children: [
+                _methodChip('upi', 'UPI', Icons.qr_code_rounded),
+                _methodChip('cash', AppLang.tr(widget.isEn, 'Cash', 'नकद'),
+                    Icons.payments_rounded),
+                _methodChip('bank', AppLang.tr(widget.isEn, 'Bank', 'बैंक'),
+                    Icons.account_balance_rounded),
+              ],
+            ),
+            if (_needsReceipt) ...[
+              const SizedBox(height: 14),
+              InkWell(
+                onTap: _pickReceipt,
+                borderRadius: BorderRadius.circular(12),
+                child: Container(
+                  width: double.infinity,
+                  padding: const EdgeInsets.all(14),
+                  decoration: BoxDecoration(
+                    color: AppColors.background,
+                    borderRadius: BorderRadius.circular(12),
+                    border: Border.all(color: AppColors.borderBlue),
+                  ),
+                  child: Row(children: [
+                    const Icon(Icons.receipt_long_rounded,
+                        color: AppColors.primary),
+                    const SizedBox(width: 10),
+                    Expanded(
+                      child: Text(
+                        _receiptBytes == null
+                            ? AppLang.tr(widget.isEn,
+                                'Upload receipt image (optional)',
+                                'रसीद फोटो अपलोड करें (वैकल्पिक)')
+                            : AppLang.tr(widget.isEn, 'Receipt selected',
+                                'रसीद चुनी गई'),
+                        style: const TextStyle(
+                          color: AppColors.textPrimary,
+                          fontWeight: FontWeight.w700,
+                        ),
+                      ),
+                    ),
+                  ]),
+                ),
+              ),
+            ],
+            const SizedBox(height: 14),
+            Container(
+              width: double.infinity,
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: isPartial
+                    ? AppColors.warning.withOpacity(0.12)
+                    : AppColors.success.withOpacity(0.12),
+                borderRadius: BorderRadius.circular(12),
+              ),
+              child: Text(
+                isPartial
+                    ? AppLang.tr(widget.isEn, 'Part Payment', 'पार्ट पेमेंट')
+                    : AppLang.tr(widget.isEn, 'Full Payment', 'पूरा भुगतान'),
+                style: TextStyle(
+                  color: isPartial ? AppColors.warning : AppColors.success,
+                  fontWeight: FontWeight.w800,
+                ),
+              ),
+            ),
+            const SizedBox(height: 18),
+            SizedBox(
+              width: double.infinity,
+              height: 50,
+              child: ElevatedButton.icon(
+                onPressed: _submit,
+                icon: const Icon(Icons.check_rounded),
+                label: Text(AppLang.tr(widget.isEn, 'Save Payment',
+                    'भुगतान सेव करें')),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: AppColors.primary,
+                  foregroundColor: Colors.white,
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                ),
+              ),
+            ),
+          ]),
+        ),
+      ),
+    );
+  }
+
+  Widget _methodChip(String value, String label, IconData icon) {
+    final selected = _method == value;
+    return ChoiceChip(
+      selected: selected,
+      avatar: Icon(
+        icon,
+        size: 18,
+        color: selected ? Colors.white : AppColors.textSecondary,
+      ),
+      label: Text(label),
+      selectedColor: AppColors.primary,
+      labelStyle: TextStyle(
+        color: selected ? Colors.white : AppColors.textPrimary,
+        fontWeight: FontWeight.w700,
+      ),
+      onSelected: (_) => setState(() => _method = value),
+    );
+  }
+
+  InputDecoration _decoration(String label, IconData icon) {
+    return InputDecoration(
+      labelText: label,
+      prefixIcon: Icon(icon, size: 20),
+      filled: true,
+      fillColor: AppColors.background,
+      border: OutlineInputBorder(
+        borderRadius: BorderRadius.circular(12),
+        borderSide: const BorderSide(color: AppColors.borderBlue),
+      ),
+      contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
+    );
+  }
 }
