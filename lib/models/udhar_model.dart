@@ -1,3 +1,5 @@
+import 'dart:convert';
+
 class UdharCustomerModel {
   final String id;
   final String shopId;
@@ -64,6 +66,67 @@ class UdharCustomerModel {
       createdAt: createdAt ?? this.createdAt,
       updatedAt: updatedAt ?? this.updatedAt,
     );
+  }
+}
+
+class UdharPaymentMeta {
+  static const noteMarker = '__saafhisaab_credit_payment_v1__';
+
+  final String paymentMethod;
+  final String receiptImageUrl;
+  final double paidAmount;
+  final double remainingAmount;
+  final String customerName;
+  final String customerPhone;
+  final String? appliedCreditEntryId;
+  final String? billId;
+
+  const UdharPaymentMeta({
+    required this.paymentMethod,
+    this.receiptImageUrl = '',
+    required this.paidAmount,
+    required this.remainingAmount,
+    this.customerName = '',
+    this.customerPhone = '',
+    this.appliedCreditEntryId,
+    this.billId,
+  });
+
+  bool get isPartial => remainingAmount > 0;
+
+  String toEntryNote() {
+    return '$noteMarker${jsonEncode({
+      'paymentMethod': paymentMethod,
+      'receiptImageUrl': receiptImageUrl,
+      'paidAmount': paidAmount,
+      'remainingAmount': remainingAmount,
+      'customerName': customerName,
+      'customerPhone': customerPhone,
+      'appliedCreditEntryId': appliedCreditEntryId,
+      'billId': billId,
+    })}';
+  }
+
+  static UdharPaymentMeta? tryParseNote(String note) {
+    final markerIndex = note.indexOf(noteMarker);
+    if (markerIndex < 0) return null;
+    final jsonText = note.substring(markerIndex + noteMarker.length).trim();
+    try {
+      final payload = jsonDecode(jsonText) as Map<String, dynamic>;
+      return UdharPaymentMeta(
+        paymentMethod: payload['paymentMethod'] ?? 'cash',
+        receiptImageUrl: payload['receiptImageUrl'] ?? '',
+        paidAmount: (payload['paidAmount'] as num?)?.toDouble() ?? 0,
+        remainingAmount:
+            (payload['remainingAmount'] as num?)?.toDouble() ?? 0,
+        customerName: payload['customerName'] ?? '',
+        customerPhone: payload['customerPhone'] ?? '',
+        appliedCreditEntryId: payload['appliedCreditEntryId'] as String?,
+        billId: payload['billId'] as String?,
+      );
+    } catch (_) {
+      return null;
+    }
   }
 }
 
