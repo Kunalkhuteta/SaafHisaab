@@ -337,6 +337,21 @@ static Future<double> getTodaySalesTotal(String shopId) async {
     return _client.storage.from('items').getPublicUrl(path);
   }
 
+  static Future<String> uploadCreditReceipt(
+      String shopId, Uint8List imageBytes, String extension) async {
+    final fileName =
+        'credit_receipt_${DateTime.now().millisecondsSinceEpoch}.$extension';
+    final path = '$shopId/credit_receipts/$fileName';
+
+    await _client.storage.from('items').uploadBinary(
+      path,
+      imageBytes,
+      fileOptions: const FileOptions(upsert: true),
+    );
+
+    return _client.storage.from('items').getPublicUrl(path);
+  }
+
   static Future<bool> addMasterStockById(String stockItemId, double quantity) async {
     try {
       final data = await _client
@@ -551,6 +566,18 @@ static Future<double> getTodaySalesTotal(String shopId) async {
         .toList();
   }
 
+  static Future<List<UdharCustomerModel>> getAllUdharCustomers(
+      String shopId) async {
+    final data = await _client
+        .from('udhar_customers')
+        .select()
+        .eq('shop_id', shopId)
+        .order('updated_at', ascending: false);
+    return (data as List)
+        .map((u) => UdharCustomerModel.fromJson(u))
+        .toList();
+  }
+
   static Future<List<UdharCustomerModel>> searchUdharCustomers(
       String shopId, String query) async {
     var request = _client
@@ -665,6 +692,40 @@ static Future<double> getTodaySalesTotal(String shopId) async {
         .select()
         .single();
     return UdharEntryModel.fromJson(data);
+  }
+
+  static Future<UdharEntryModel> recordUdharPayment({
+    required String shopId,
+    required String userId,
+    required UdharCustomerModel customer,
+    required double amount,
+    required String paymentMethod,
+    String receiptImageUrl = '',
+    String? appliedCreditEntryId,
+    String? billId,
+  }) async {
+    final currentDue = await getCustomerTotalDue(customer.id);
+    final paidAmount = amount.clamp(0, currentDue).toDouble();
+    final remainingAmount = (currentDue - paidAmount).clamp(0, double.infinity).toDouble();
+    final meta = UdharPaymentMeta(
+      paymentMethod: paymentMethod,
+      receiptImageUrl: receiptImageUrl,
+      paidAmount: paidAmount,
+      remainingAmount: remainingAmount,
+      customerName: customer.customerName,
+      customerPhone: customer.customerPhone,
+      appliedCreditEntryId: appliedCreditEntryId,
+      billId: billId,
+    );
+    final entry = await addDebitEntry(
+      shopId: shopId,
+      userId: userId,
+      customerId: customer.id,
+      amount: paidAmount,
+      note: meta.toEntryNote(),
+    );
+    await updateCustomerTotalDue(customer.id, remainingAmount);
+    return entry;
   }
 
   static Future<void> updateCustomerTotalDue(
@@ -877,6 +938,43 @@ static Future<double> getTotalUdhar(String shopId) async {
         cashOut: current.cashOut + cashOut,
         bankIn: current.bankIn + bankIn,
         bankOut: current.bankOut + bankOut,
+      );
+    }
+
+    final udharPaymentsData = await _client
+        .from('udhar_entries')
+        .select('amount, entry_date, note')
+        .eq('shop_id', shopId)
+        .eq('entry_type', 'debit')
+        .gte('entry_date', start)
+        .lte('entry_date', end);
+
+    for (final payment in udharPaymentsData) {
+      final dateStr = payment['entry_date'] as String;
+      final amount = (payment['amount'] as num?)?.toDouble() ?? 0.0;
+      final meta = UdharPaymentMeta.tryParseNote(payment['note'] ?? '');
+      final mode = (meta?.paymentMethod ?? 'cash').toLowerCase();
+
+      dailyMap.putIfAbsent(
+        dateStr,
+        () => DailyBalanceModel(
+          id: '',
+          shopId: shopId,
+          balanceDate: DateTime.parse(dateStr),
+        ),
+      );
+
+      final current = dailyMap[dateStr]!;
+      final cashIn = mode == 'cash' ? amount : 0.0;
+      final bankIn = mode == 'upi' || mode == 'bank' ? amount : 0.0;
+      dailyMap[dateStr] = DailyBalanceModel(
+        id: current.id,
+        shopId: shopId,
+        balanceDate: current.balanceDate,
+        cashIn: current.cashIn + cashIn,
+        cashOut: current.cashOut,
+        bankIn: current.bankIn + bankIn,
+        bankOut: current.bankOut,
       );
     }
 
