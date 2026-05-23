@@ -1,3 +1,5 @@
+import 'dart:convert';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../constants/app_colors.dart';
@@ -6,7 +8,9 @@ import '../../services/supabase_service.dart';
 import '../../services/share_service.dart';
 import '../../models/bill_model.dart';
 import '../../models/sale_model.dart';
+import '../../models/udhar_model.dart';
 import '../../globalVar.dart';
+import '../../widgets/credit_entry_sheet.dart';
 import 'sale_entry_screen.dart';
 
 class SaleDetailScreen extends ConsumerStatefulWidget {
@@ -18,6 +22,7 @@ class SaleDetailScreen extends ConsumerStatefulWidget {
 
 class _SaleDetailScreenState extends ConsumerState<SaleDetailScreen> {
   List<SaleModel> _saleItems = [];
+  _CreditBillStatus? _creditStatus;
   bool _isLoading = true;
 
   @override
@@ -36,6 +41,7 @@ class _SaleDetailScreenState extends ConsumerState<SaleDetailScreen> {
         final linkedSales = await SupabaseService.getSalesByBillId(widget.bill.id);
         if (linkedSales.isNotEmpty) {
           _saleItems = linkedSales;
+          await _loadCreditStatus(linkedSales);
           if (mounted) setState(() => _isLoading = false);
           return;
         }
@@ -48,10 +54,74 @@ class _SaleDetailScreenState extends ConsumerState<SaleDetailScreen> {
         widget.bill.billDate,
       );
       _saleItems = sales;
+      await _loadCreditStatus(sales);
     } catch (e) {
       debugPrint('Load sale items error: $e');
     }
     if (mounted) setState(() => _isLoading = false);
+  }
+
+  Future<void> _loadCreditStatus(List<SaleModel> sales) async {
+    if (sales.isEmpty ||
+        !sales.any((sale) =>
+            sale.paymentMode == 'credit' || sale.paymentMode == 'split')) {
+      return;
+    }
+
+    try {
+      final shop = await ref.read(shopProvider.future);
+      if (shop == null) return;
+      final customer =
+          await SupabaseService.findCustomerByName(shop.id, widget.bill.vendorName);
+      if (customer == null) return;
+      final entries = await SupabaseService.getUdharEntriesForCustomer(customer.id);
+      UdharEntryModel? creditEntry;
+      SavedCreditSale? creditSale;
+
+      for (final entry in entries.where((entry) => entry.entryType == 'credit')) {
+        final parsed = SavedCreditSale.tryParseNote(
+          entry.note,
+          customerId: customer.id,
+        );
+        if (parsed == null) continue;
+        final markerIndex = entry.note.indexOf(SavedCreditSale.noteMarker);
+        if (markerIndex >= 0) {
+          final jsonText =
+              entry.note.substring(markerIndex + SavedCreditSale.noteMarker.length).trim();
+          try {
+            final payload = jsonDecode(jsonText) as Map<String, dynamic>;
+            if (payload['billId'] == widget.bill.id) {
+              creditEntry = entry;
+              creditSale = parsed;
+              break;
+            }
+          } catch (_) {}
+        }
+        if ((parsed.totalAmount - widget.bill.amount).abs() < 1.0) {
+          creditEntry = entry;
+          creditSale = parsed;
+        }
+      }
+
+      if (creditSale == null) return;
+
+      final payments = entries.where((entry) {
+        final meta = UdharPaymentMeta.tryParseNote(entry.note);
+        if (entry.entryType != 'debit' || meta == null) return false;
+        return meta.appliedCreditEntryId == null ||
+            creditEntry == null ||
+            meta.appliedCreditEntryId == creditEntry.id;
+      }).toList();
+      final paid = payments.fold<double>(0, (sum, entry) => sum + entry.amount);
+      payments.sort((a, b) => b.entryDate.compareTo(a.entryDate));
+      _creditStatus = _CreditBillStatus(
+        totalCredit: creditSale.creditAmount,
+        paidAmount: paid.clamp(0, creditSale.creditAmount).toDouble(),
+        paymentDate: payments.isEmpty ? null : payments.first.entryDate,
+      );
+    } catch (e) {
+      debugPrint('Load credit status error: $e');
+    }
   }
 
   @override
@@ -197,6 +267,11 @@ class _SaleDetailScreenState extends ConsumerState<SaleDetailScreen> {
                 const SizedBox(height: 12),
               ],
 
+              if (_creditStatus != null) ...[
+                _creditStatusCard(_creditStatus!, isEn),
+                const SizedBox(height: 12),
+              ],
+
               // ── Sale Items Breakdown ──
               if (isSale) ...[
                 const SizedBox(height: 8),
@@ -320,6 +395,37 @@ class _SaleDetailScreenState extends ConsumerState<SaleDetailScreen> {
     );
   }
 
+  Widget _creditStatusCard(_CreditBillStatus status, bool isEn) {
+    final fullyPaid = status.remainingAmount <= 0;
+    final hasPartPayment = status.paidAmount > 0 && !fullyPaid;
+    final color = fullyPaid
+        ? AppColors.success
+        : hasPartPayment
+            ? AppColors.warning
+            : AppColors.error;
+    final title = fullyPaid
+        ? AppLang.tr(isEn, 'Paid', 'भुगतान')
+        : hasPartPayment
+            ? AppLang.tr(isEn, 'Part Payment', 'पार्ट पेमेंट')
+            : AppLang.tr(isEn, 'Credit', 'उधार');
+    final details = fullyPaid
+        ? '${AppLang.tr(isEn, 'Paid on', 'भुगतान तारीख')} ${_formatDate(status.paymentDate!)}'
+        : hasPartPayment
+            ? 'Rs ${status.paidAmount.toStringAsFixed(0)} ${AppLang.tr(isEn, 'paid on', 'भुगतान')} ${_formatDate(status.paymentDate!)} | ${AppLang.tr(isEn, 'Remaining', 'बाकी')} Rs ${status.remainingAmount.toStringAsFixed(0)}'
+            : AppLang.tr(isEn, 'Credit amount outstanding', 'उधार राशि बाकी है');
+
+    return _infoCard(
+      icon: fullyPaid
+          ? Icons.check_circle_outline_rounded
+          : hasPartPayment
+              ? Icons.paid_outlined
+              : Icons.schedule_rounded,
+      title: title,
+      value: details,
+      color: color,
+    );
+  }
+
   Widget _sectionHeader({required IconData icon, required String title}) {
     return Row(children: [
       Icon(icon, color: AppColors.primary, size: 18),
@@ -385,6 +491,10 @@ class _SaleDetailScreenState extends ConsumerState<SaleDetailScreen> {
     }
   }
 
+  String _formatDate(DateTime date) {
+    return '${date.day.toString().padLeft(2, '0')}-${date.month.toString().padLeft(2, '0')}-${date.year}';
+  }
+
   Widget _actionBtn({required IconData icon, required String label, required Color color, required VoidCallback onTap}) {
     return GestureDetector(
       onTap: onTap,
@@ -422,4 +532,19 @@ class _SaleDetailScreenState extends ConsumerState<SaleDetailScreen> {
       notes: itemsText.isNotEmpty ? '$itemsText\n${bill.notes}' : bill.notes,
     );
   }
+}
+
+class _CreditBillStatus {
+  final double totalCredit;
+  final double paidAmount;
+  final DateTime? paymentDate;
+
+  const _CreditBillStatus({
+    required this.totalCredit,
+    required this.paidAmount,
+    this.paymentDate,
+  });
+
+  double get remainingAmount =>
+      (totalCredit - paidAmount).clamp(0, double.infinity).toDouble();
 }
