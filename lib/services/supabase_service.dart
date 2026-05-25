@@ -22,7 +22,7 @@ class SupabaseService {
 
   // Use getter so it's always fresh
   static SupabaseClient get _client => Supabase.instance.client;
-  static const _creditSaleAdvanceNote = 'Advance payment on credit sale';
+  static const creditSaleAdvanceNote = 'Advance payment on credit sale';
 
   static double _creditAdvanceFromNotes(String notes) {
     final match = RegExp(r'__saafhisaab_credit_advance:([0-9.]+);credit:([0-9.]+)__')
@@ -974,7 +974,7 @@ static Future<double> getTotalUdhar(String shopId) async {
       final dateStr = payment['entry_date'] as String;
       final amount = (payment['amount'] as num?)?.toDouble() ?? 0.0;
       final note = payment['note'] ?? '';
-      if (note == _creditSaleAdvanceNote) {
+      if (note == creditSaleAdvanceNote) {
         continue;
       }
       final meta = UdharPaymentMeta.tryParseNote(note);

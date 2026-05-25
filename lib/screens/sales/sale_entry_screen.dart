@@ -387,7 +387,7 @@ class _SaleEntryScreenState extends ConsumerState<SaleEntryScreen> {
           userId: userId,
           customerId: customer.id,
           amount: credit.advancePaid,
-          note: 'Advance payment on credit sale',
+          note: SupabaseService.creditSaleAdvanceNote,
         );
       }
 
