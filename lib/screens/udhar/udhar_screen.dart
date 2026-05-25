@@ -146,10 +146,6 @@ class _UdharScreenState extends ConsumerState<UdharScreen> {
     }
 
     final entries = await SupabaseService.getUdharEntriesForCustomer(customer.id);
-    final hasPartialPayment = entries.any((entry) {
-      final meta = UdharPaymentMeta.tryParseNote(entry.note);
-      return entry.entryType == 'debit' && meta != null && meta.isPartial;
-    });
     final creditEntries = entries.where((entry) => entry.entryType == 'credit');
     final appliedCreditEntryId =
         creditEntries.isEmpty ? null : creditEntries.first.id;
@@ -165,7 +161,6 @@ class _UdharScreenState extends ConsumerState<UdharScreen> {
       builder: (_) => _UdharPaymentSheet(
         customer: customer,
         isEn: isEn,
-        hasPartialPayment: hasPartialPayment,
       ),
     );
     if (result == null) return;
@@ -464,12 +459,10 @@ class _UdharPaymentDraft {
 class _UdharPaymentSheet extends StatefulWidget {
   final UdharCustomerModel customer;
   final bool isEn;
-  final bool hasPartialPayment;
 
   const _UdharPaymentSheet({
     required this.customer,
     required this.isEn,
-    required this.hasPartialPayment,
   });
 
   @override
@@ -515,14 +508,6 @@ class _UdharPaymentSheetState extends State<_UdharPaymentSheet> {
         widget.isEn,
         'Enter amount up to pending balance',
         'बाकी रकम तक राशि दर्ज करें',
-      ));
-      return;
-    }
-    if (widget.hasPartialPayment && amount < widget.customer.totalDue) {
-      _showError(AppLang.tr(
-        widget.isEn,
-        'Part payment already recorded. Receive full remaining balance.',
-        'पार्ट पेमेंट पहले हो चुका है. बची हुई पूरी राशि लें.',
       ));
       return;
     }
