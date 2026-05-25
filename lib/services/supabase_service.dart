@@ -22,12 +22,24 @@ class SupabaseService {
 
   // Use getter so it's always fresh
   static SupabaseClient get _client => Supabase.instance.client;
+  static const _creditSaleAdvanceNote = 'Advance payment on credit sale';
 
   static double _creditAdvanceFromNotes(String notes) {
     final match = RegExp(r'__saafhisaab_credit_advance:([0-9.]+);credit:([0-9.]+)__')
         .firstMatch(notes);
     if (match == null) return 0;
     return double.tryParse(match.group(1) ?? '') ?? 0;
+  }
+
+  static Future<void> _trySyncDailyBalancesForDate(
+    String shopId,
+    DateTime date,
+  ) async {
+    try {
+      await syncAndGetDailyBalances(shopId, date.month, date.year);
+    } catch (e) {
+      debugPrint('Daily balance sync failed: $e');
+    }
   }
 
   // ─────────────────────────────────────────
@@ -725,6 +737,7 @@ static Future<double> getTodaySalesTotal(String shopId) async {
       note: meta.toEntryNote(),
     );
     await updateCustomerTotalDue(customer.id, remainingAmount);
+    await _trySyncDailyBalancesForDate(shopId, DateTime.now());
     return entry;
   }
 
@@ -882,18 +895,26 @@ static Future<double> getTotalUdhar(String shopId) async {
         .gte('bill_date', start)
         .lte('bill_date', end);
 
-    // 2. Fetch sales for the month to get payment mode distribution
-    final salesData = await _client
-        .from('sales')
-        .select('bill_id, payment_mode, notes')
-        .eq('shop_id', shopId)
-        .gte('sale_date', start)
-        .lte('sale_date', end);
+    final billIds = (billsData as List)
+        .map((b) => b['id'] as String?)
+        .whereType<String>()
+        .toSet();
+
+    // 2. Fetch sales by bill link to get payment mode distribution.
+    // Do not filter by sale_date here: edited invoices can rewrite sale rows
+    // later while the bill still belongs to its original bill_date.
+    final salesData = billIds.isEmpty
+        ? <dynamic>[]
+        : await _client
+            .from('sales')
+            .select('bill_id, payment_mode, notes')
+            .eq('shop_id', shopId);
 
     final Map<String, String> billPaymentModes = {};
     final Map<String, double> billCashPaid = {};
     for (var sale in salesData) {
-      final bId = sale['bill_id'];
+      final bId = sale['bill_id'] as String?;
+      if (bId == null || !billIds.contains(bId)) continue;
       if (bId != null && !billPaymentModes.containsKey(bId)) {
         billPaymentModes[bId] = sale['payment_mode'] ?? 'cash';
         billCashPaid[bId] = _creditAdvanceFromNotes(sale['notes'] ?? '');
@@ -952,7 +973,11 @@ static Future<double> getTotalUdhar(String shopId) async {
     for (final payment in udharPaymentsData) {
       final dateStr = payment['entry_date'] as String;
       final amount = (payment['amount'] as num?)?.toDouble() ?? 0.0;
-      final meta = UdharPaymentMeta.tryParseNote(payment['note'] ?? '');
+      final note = payment['note'] ?? '';
+      if (note == _creditSaleAdvanceNote) {
+        continue;
+      }
+      final meta = UdharPaymentMeta.tryParseNote(note);
       final mode = (meta?.paymentMethod ?? 'cash').toLowerCase();
 
       dailyMap.putIfAbsent(
@@ -992,6 +1017,13 @@ static Future<double> getTotalUdhar(String shopId) async {
         'updated_at': DateTime.now().toIso8601String(),
       };
     }).toList();
+
+    await _client
+        .from('daily_balances')
+        .delete()
+        .eq('shop_id', shopId)
+        .gte('balance_date', start)
+        .lte('balance_date', end);
 
     if (upsertList.isNotEmpty) {
       await _client.from('daily_balances').upsert(upsertList, onConflict: 'shop_id, balance_date');

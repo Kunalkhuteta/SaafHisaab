@@ -279,6 +279,50 @@ class _SaleEntryScreenState extends ConsumerState<SaleEntryScreen> {
         SnackBar(content: Text(msg), backgroundColor: AppColors.error));
   }
 
+  Future<void> _showMissingCustomerAlert(bool isEn) async {
+    await showDialog<void>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: Text(AppLang.tr(
+          isEn,
+          'Customer name required',
+          'ग्राहक का नाम आवश्यक है',
+        )),
+        content: Text(AppLang.tr(
+          isEn,
+          'Please enter the customer name before saving.',
+          'सेव करने से पहले ग्राहक का नाम दर्ज करें।',
+        )),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: Text(AppLang.tr(isEn, 'OK', 'ठीक है')),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Future<void> _syncDailyBalancesForBillDates(
+    String shopId,
+    Iterable<DateTime> dates,
+  ) async {
+    final seen = <String>{};
+    for (final date in dates) {
+      final key = '${date.year}-${date.month}';
+      if (!seen.add(key)) continue;
+      try {
+        await SupabaseService.syncAndGetDailyBalances(
+          shopId,
+          date.month,
+          date.year,
+        );
+      } catch (e) {
+        debugPrint('Daily balance sync failed: $e');
+      }
+    }
+  }
+
   String _saleNotesForPersistence() {
     final baseNotes = _notesCtrl.text.trim();
     if (_creditSale == null) return baseNotes;
@@ -452,7 +496,7 @@ class _SaleEntryScreenState extends ConsumerState<SaleEntryScreen> {
 
   Future<void> _saveSale(bool isEn) async {
     if (_customerCtrl.text.trim().isEmpty) {
-      _showError(AppLang.tr(isEn, 'Customer name is required', 'ग्राहक का नाम आवश्यक है'));
+      await _showMissingCustomerAlert(isEn);
       return;
     }
 
@@ -655,7 +699,7 @@ class _SaleEntryScreenState extends ConsumerState<SaleEntryScreen> {
           totalAmount: li.lineTotal,
           paymentMode: _paymentMode,
           billId: billId.isNotEmpty ? billId : null,
-          saleDate: DateTime.now(),
+          saleDate: widget.bill?.billDate ?? DateTime.now(),
           notes: _saleNotesForPersistence(),
           createdAt: DateTime.now(),
           stockItemId: li.stockItemId,
@@ -689,6 +733,11 @@ class _SaleEntryScreenState extends ConsumerState<SaleEntryScreen> {
       if (persistedCredit != null) {
         _creditSale = persistedCredit;
       }
+
+      await _syncDailyBalancesForBillDates(
+        shop.id,
+        [widget.bill?.billDate ?? DateTime.now(), DateTime.now()],
+      );
 
       ref.invalidate(todayBillsProvider);
       ref.invalidate(filteredBillsProvider);
@@ -761,6 +810,8 @@ class _SaleEntryScreenState extends ConsumerState<SaleEntryScreen> {
 
     setState(() => _isSaving = true);
     try {
+      final shop = await ref.read(shopProvider.future);
+      if (shop == null) throw Exception('Shop not found');
       final billId = widget.bill!.id;
       // 1. Reverse stock
       final oldSales = await SupabaseService.getSalesByBillId(billId);
@@ -792,6 +843,7 @@ class _SaleEntryScreenState extends ConsumerState<SaleEntryScreen> {
       // 2. Delete data
       await SupabaseService.deleteSalesByBillId(billId);
       await SupabaseService.deleteBill(billId);
+      await _syncDailyBalancesForBillDates(shop.id, [widget.bill!.billDate]);
 
       ref.invalidate(todayBillsProvider);
       ref.invalidate(filteredBillsProvider);
