@@ -13,6 +13,7 @@ import '../../models/udhar_model.dart';
 import '../../globalVar.dart';
 import '../../widgets/credit_entry_sheet.dart';
 import '../../widgets/party_name_field.dart';
+import '../../widgets/custom_alert.dart';
 
 /// Invoice type codes and utilities
 class InvType {
@@ -280,26 +281,20 @@ class _SaleEntryScreenState extends ConsumerState<SaleEntryScreen> {
   }
 
   Future<void> _showMissingCustomerAlert(bool isEn) async {
-    await showDialog<void>(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        title: Text(AppLang.tr(
-          isEn,
-          'Customer name required',
-          'ग्राहक का नाम आवश्यक है',
-        )),
-        content: Text(AppLang.tr(
-          isEn,
-          'Please enter the customer name before saving.',
-          'सेव करने से पहले ग्राहक का नाम दर्ज करें।',
-        )),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctx),
-            child: Text(AppLang.tr(isEn, 'OK', 'ठीक है')),
-          ),
-        ],
+    await CustomAlert.show<void>(
+      context,
+      title: AppLang.tr(
+        isEn,
+        'Customer name required',
+        'ग्राहक का नाम आवश्यक है',
       ),
+      content: AppLang.tr(
+        isEn,
+        'Please enter the customer name before saving.',
+        'सेव करने से पहले ग्राहक का नाम दर्ज करें।',
+      ),
+      type: CustomAlertType.warning,
+      confirmLabel: AppLang.tr(isEn, 'OK', 'ठीक है'),
     );
   }
 
