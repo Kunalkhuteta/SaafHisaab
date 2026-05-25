@@ -8,6 +8,7 @@ import '../models/item_master_model.dart';
 import '../models/udhar_model.dart';
 import 'credit_item_row.dart';
 import 'party_name_field.dart';
+import 'custom_alert.dart';
 
 class CreditSaleItem {
   final String? stockItemId;
@@ -279,7 +280,21 @@ class _CreditEntrySheetState extends State<CreditEntrySheet> {
     final advance = _advance;
 
     if (name.isEmpty) {
-      _showError(AppLang.tr(_isEn, 'Customer name is required', 'ग्राहक का नाम आवश्यक है'));
+      await CustomAlert.show<void>(
+        context,
+        title: AppLang.tr(
+          _isEn,
+          'Customer name required',
+          'ग्राहक का नाम आवश्यक है',
+        ),
+        content: AppLang.tr(
+          _isEn,
+          'Please enter the customer name before saving.',
+          'सेव करने से पहले ग्राहक का नाम दर्ज करें।',
+        ),
+        type: CustomAlertType.warning,
+        confirmLabel: AppLang.tr(_isEn, 'OK', 'ठीक है'),
+      );
       return;
     }
     if (total <= 0) {
