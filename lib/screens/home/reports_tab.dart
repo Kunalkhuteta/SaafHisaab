@@ -4,8 +4,9 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../constants/app_colors.dart';
 import '../../globalVar.dart';
 import '../reports/daily_balances_screen.dart';
-import '../reports/outstanding_received_screen.dart';
+import '../reports/outstanding_receivable_screen.dart';
 import '../reports/outstanding_payable_screen.dart';
+import '../reports/ledger_party_selection_page.dart';
 
 class ReportsTab extends ConsumerStatefulWidget {
   const ReportsTab({super.key});
@@ -42,9 +43,9 @@ class _ReportsTabState extends ConsumerState<ReportsTab> {
       description: 'Payments received in Cash from parties',
     ),
     _ReportItem(
-      title: 'Outstanding Received',
+      title: 'Outstanding Receivable',
       icon: Icons.fact_check_rounded,
-      description: 'Credit payments received with receipts and balances',
+      description: 'Credit payments to be received from customers',
     ),
     _ReportItem(
       title: 'Outstanding Payable',
@@ -132,15 +133,20 @@ class _ReportsTabState extends ConsumerState<ReportsTab> {
                         context,
                         MaterialPageRoute(builder: (_) => const DailyBalancesScreen()),
                       );
-                    } else if (item.title == 'Outstanding Received') {
+                    } else if (item.title == 'Outstanding Receivable') {
                       Navigator.push(
                         context,
-                        MaterialPageRoute(builder: (_) => const OutstandingReceivedScreen()),
+                        MaterialPageRoute(builder: (_) => const OutstandingReceivableScreen()),
                       );
                     } else if (item.title == 'Outstanding Payable') {
                       Navigator.push(
                         context,
                         MaterialPageRoute(builder: (_) => const OutstandingPayableScreen()),
+                      );
+                    } else if (item.title == 'Ledger Reports') {
+                      Navigator.push(
+                        context,
+                        MaterialPageRoute(builder: (_) => const LedgerPartySelectionPage()),
                       );
                     } else {
                       ScaffoldMessenger.of(context).showSnackBar(
