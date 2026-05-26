@@ -5,6 +5,7 @@ import '../../constants/app_colors.dart';
 import '../../globalVar.dart';
 import '../reports/daily_balances_screen.dart';
 import '../reports/outstanding_received_screen.dart';
+import '../reports/outstanding_payable_screen.dart';
 
 class ReportsTab extends ConsumerStatefulWidget {
   const ReportsTab({super.key});
@@ -44,6 +45,11 @@ class _ReportsTabState extends ConsumerState<ReportsTab> {
       title: 'Outstanding Received',
       icon: Icons.fact_check_rounded,
       description: 'Credit payments received with receipts and balances',
+    ),
+    _ReportItem(
+      title: 'Outstanding Payable',
+      icon: Icons.money_off_rounded,
+      description: 'Credit payments to suppliers and pending payables',
     ),
     _ReportItem(
       title: 'Dump Stock',
@@ -130,6 +136,11 @@ class _ReportsTabState extends ConsumerState<ReportsTab> {
                       Navigator.push(
                         context,
                         MaterialPageRoute(builder: (_) => const OutstandingReceivedScreen()),
+                      );
+                    } else if (item.title == 'Outstanding Payable') {
+                      Navigator.push(
+                        context,
+                        MaterialPageRoute(builder: (_) => const OutstandingPayableScreen()),
                       );
                     } else {
                       ScaffoldMessenger.of(context).showSnackBar(
