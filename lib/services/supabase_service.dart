@@ -7,6 +7,7 @@ import '../models/stock_model.dart';
 import '../models/item_master_model.dart';
 import '../models/udhar_model.dart';
 import '../models/daily_balance_model.dart';
+import '../models/ledger_row_model.dart';
 import 'dart:typed_data';
 
 class StockUnavailableException implements Exception {
@@ -836,6 +837,185 @@ static Future<double> getTotalUdhar(String shopId) async {
     }).eq('id', partyId);
   }
 
+  static Future<void> recordPurchasePartyPayment({
+    required String shopId,
+    required String userId,
+    required String partyId,
+    required String partyName,
+    required double amount,
+    required String paymentMethod,
+  }) async {
+    final currentPending = await getPurchasePartyPendingAmount(partyId);
+    final newPending = (currentPending - amount).clamp(0.0, double.infinity);
+    await updatePurchasePartyPendingAmount(partyId, newPending);
+
+    // Save payment as purchase bill
+    final billId = await saveBillGetId(BillModel(
+      id: '',
+      shopId: shopId,
+      userId: userId,
+      amount: amount,
+      billDate: DateTime.now(),
+      vendorName: partyName,
+      billType: 'purchase',
+      notes: 'Payment to Supplier',
+      createdAt: DateTime.now(),
+    ));
+
+    // Save a linked sale to record the payment mode
+    await saveSale(SaleModel(
+      id: '',
+      shopId: shopId,
+      userId: userId,
+      itemName: 'Payment to Supplier',
+      quantity: 1,
+      unit: 'piece',
+      sellingPrice: amount,
+      totalAmount: amount,
+      paymentMode: paymentMethod,
+      billId: billId.isNotEmpty ? billId : null,
+      saleDate: DateTime.now(),
+      notes: 'Payment to Supplier',
+      createdAt: DateTime.now(),
+    ));
+
+    // Force sync daily balances
+    await _trySyncDailyBalancesForDate(shopId, DateTime.now());
+  }
+
+  static Future<List<LedgerRow>> fetchLedgerMonthly({
+    required String accountId,
+    required bool isReceivable,
+    required String shopId,
+  }) async {
+    final now = DateTime.now();
+    final fyStart = now.month >= 4 ? now.year : now.year - 1;
+    final startOfFy = DateTime(fyStart, 4, 1);
+    final endOfFy = DateTime(fyStart + 1, 3, 31);
+
+    double openingBalance = 0.0;
+
+    // Initialize 12 months starting from April
+    final monthNames = [
+      'April', 'May', 'June', 'July', 'August', 'September',
+      'October', 'November', 'December', 'January', 'February', 'March'
+    ];
+
+    final Map<String, Map<String, double>> monthlySums = {};
+    for (final mName in monthNames) {
+      monthlySums[mName] = {'debit': 0.0, 'credit': 0.0};
+    }
+
+    if (isReceivable) {
+      // Fetch customer udhar entries
+      final entries = await getUdharEntriesForCustomer(accountId);
+      
+      double debitsBefore = 0.0;
+      double creditsBefore = 0.0;
+
+      for (final entry in entries) {
+        final entryDate = entry.entryDate;
+        final amount = entry.amount;
+        final isCreditEntry = entry.entryType == 'credit'; // udhar given = debit (owing us)
+
+        if (entryDate.isBefore(startOfFy)) {
+          if (isCreditEntry) {
+            debitsBefore += amount;
+          } else {
+            creditsBefore += amount;
+          }
+        } else if (!entryDate.isAfter(endOfFy)) {
+          int idx = entryDate.month - 4;
+          if (idx < 0) idx += 12;
+          final mName = monthNames[idx];
+          
+          if (isCreditEntry) {
+            monthlySums[mName]!['debit'] = (monthlySums[mName]!['debit'] ?? 0) + amount;
+          } else {
+            monthlySums[mName]!['credit'] = (monthlySums[mName]!['credit'] ?? 0) + amount;
+          }
+        }
+      }
+      openingBalance = -debitsBefore + creditsBefore;
+
+    } else {
+      // Fetch supplier bills
+      final partyData = await _client
+          .from('purchase_parties')
+          .select('name')
+          .eq('id', accountId)
+          .single();
+      final partyName = partyData['name'] as String? ?? '';
+
+      final bills = await getPurchaseBillsForParty(shopId, partyName);
+      
+      double debitsBefore = 0.0;
+      double creditsBefore = 0.0;
+
+      for (final bill in bills) {
+        final billDate = bill.billDate;
+        final amount = bill.amount;
+        final isPayment = bill.notes == 'Payment to Supplier';
+
+        if (billDate.isBefore(startOfFy)) {
+          if (isPayment) {
+            debitsBefore += amount; // payment reduces payable = debit
+          } else {
+            creditsBefore += amount; // purchase increases payable = credit
+          }
+        } else if (!billDate.isAfter(endOfFy)) {
+          int idx = billDate.month - 4;
+          if (idx < 0) idx += 12;
+          final mName = monthNames[idx];
+
+          if (isPayment) {
+            monthlySums[mName]!['debit'] = (monthlySums[mName]!['debit'] ?? 0) + amount;
+          } else {
+            monthlySums[mName]!['credit'] = (monthlySums[mName]!['credit'] ?? 0) + amount;
+          }
+        }
+      }
+      openingBalance = -debitsBefore + creditsBefore;
+    }
+
+    final List<LedgerRow> rows = [];
+    rows.add(LedgerRow(
+      particular: 'Opening Balance',
+      debit: 0.0,
+      credit: 0.0,
+      balance: openingBalance,
+    ));
+
+    double runningBalance = openingBalance;
+    double totalDebit = 0.0;
+    double totalCredit = 0.0;
+
+    for (final mName in monthNames) {
+      final deb = monthlySums[mName]!['debit']!;
+      final cred = monthlySums[mName]!['credit']!;
+      
+      runningBalance = runningBalance - deb + cred;
+      totalDebit += deb;
+      totalCredit += cred;
+
+      rows.add(LedgerRow(
+        particular: mName,
+        debit: deb,
+        credit: cred,
+        balance: runningBalance,
+      ));
+    }
+
+    rows.add(LedgerRow(
+      particular: '***** ALL MONTHS *****',
+      debit: totalDebit,
+      credit: totalCredit,
+      balance: runningBalance,
+    ));
+
+    return rows;
+  }
+
   static Future<double> getPurchasePartyPendingAmount(String partyId) async {
     final data = await _client
         .from('purchase_parties')
@@ -843,6 +1023,15 @@ static Future<double> getTotalUdhar(String shopId) async {
         .eq('id', partyId)
         .single();
     return (data['pending_amount'] as num?)?.toDouble() ?? 0.0;
+  }
+
+  static Future<String> getPurchasePartyName(String partyId) async {
+    final data = await _client
+        .from('purchase_parties')
+        .select('name')
+        .eq('id', partyId)
+        .single();
+    return data['name'] as String? ?? '';
   }
 
   static Future<List<Map<String, dynamic>>> getPurchasePartiesWithPending(
