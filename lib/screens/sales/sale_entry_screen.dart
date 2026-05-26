@@ -12,6 +12,7 @@ import '../../models/item_master_model.dart';
 import '../../models/udhar_model.dart';
 import '../../globalVar.dart';
 import '../../widgets/credit_entry_sheet.dart';
+import '../../widgets/purchase_credit_entry_sheet.dart';
 import '../../widgets/party_name_field.dart';
 import '../../widgets/custom_alert.dart';
 
@@ -551,35 +552,64 @@ class _SaleEntryScreenState extends ConsumerState<SaleEntryScreen> {
       return;
     }
 
-    final result = await showModalBottomSheet<SavedCreditSale>(
-      context: context,
-      isScrollControlled: true,
-      backgroundColor: AppColors.background,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(22)),
-      ),
-      builder: (_) => CreditEntrySheet(
-        shopId: shop.id,
-        userId: userId,
-        isEn: isEn,
-        initialCustomerName: _customerCtrl.text.trim(),
-        initialCustomerPhone: _customerPhoneCtrl.text.trim(),
-        initialTotal: _grandTotal,
-        stockItems: stockItems,
-        existingCredit: _creditSale,
-      ),
-    );
+    SavedCreditSale? result;
+
+    if (_billType == 'purchase') {
+      // Open Purchase Credit Entry Sheet for purchase bills
+      final parties = await ref.read(purchasePartiesProvider.future);
+      result = await showModalBottomSheet<SavedCreditSale>(
+        context: context,
+        isScrollControlled: true,
+        backgroundColor: AppColors.background,
+        shape: const RoundedRectangleBorder(
+          borderRadius: BorderRadius.vertical(top: Radius.circular(22)),
+        ),
+        builder: (_) => PurchaseCreditEntrySheet(
+          shopId: shop.id,
+          userId: userId,
+          isEn: isEn,
+          initialPartyName: _customerCtrl.text.trim(),
+          initialTotal: _grandTotal,
+          stockItems: stockItems,
+          purchaseParties: parties,
+          existingCredit: _creditSale,
+        ),
+      );
+    } else {
+      // Open regular Credit Entry Sheet for sale bills
+      result = await showModalBottomSheet<SavedCreditSale>(
+        context: context,
+        isScrollControlled: true,
+        backgroundColor: AppColors.background,
+        shape: const RoundedRectangleBorder(
+          borderRadius: BorderRadius.vertical(top: Radius.circular(22)),
+        ),
+        builder: (_) => CreditEntrySheet(
+          shopId: shop.id,
+          userId: userId,
+          isEn: isEn,
+          initialCustomerName: _customerCtrl.text.trim(),
+          initialCustomerPhone: _customerPhoneCtrl.text.trim(),
+          initialTotal: _grandTotal,
+          stockItems: stockItems,
+          existingCredit: _creditSale,
+        ),
+      );
+    }
 
     if (result == null) return;
     setState(() {
-      _creditSale = result.creditAmount > 0 ? result : null;
-      _customerCtrl.text = result.customerName;
-      _customerPhoneCtrl.text = result.customerPhone;
-      _paymentMode = result.creditAmount > 0
+      _creditSale = result!.creditAmount > 0 ? result : null;
+      _customerCtrl.text = result!.customerName;
+      if (_billType != 'purchase') {
+        _customerPhoneCtrl.text = result!.customerPhone;
+      }
+      _paymentMode = result!.creditAmount > 0
           ? (result.advancePaid > 0 ? 'split' : 'credit')
           : 'cash';
     });
     ref.invalidate(udharCustomersProvider);
+    ref.invalidate(purchasePartiesProvider);
     ref.invalidate(dashboardStatsProvider);
   }
 
@@ -878,6 +908,7 @@ class _SaleEntryScreenState extends ConsumerState<SaleEntryScreen> {
       ref.invalidate(itemMasterProvider);
       ref.invalidate(stockItemsProvider);
       ref.invalidate(udharCustomersProvider);
+      ref.invalidate(purchasePartiesProvider);
 
       if (mounted) {
         final msg = _creditSale != null ? AppLang.tr(isEn, 'Sale saved! Credit Rs ${_creditSale!.creditAmount.toStringAsFixed(0)} added for ${_creditSale!.customerName}', 'बिक्री सेव हुई! ${_creditSale!.customerName} के नाम Rs ${_creditSale!.creditAmount.toStringAsFixed(0)} उधार जोड़ा गया') : stockUpdated == itemsToSave.length
