@@ -172,7 +172,11 @@ class _SaleEntryScreenState extends ConsumerState<SaleEntryScreen> {
         });
 
         if (_paymentMode == 'credit' || _paymentMode == 'split') {
-          await _loadCreditSaleForExistingBill(widget.bill!.vendorName, '');
+          if (_billType == 'purchase') {
+            await _loadPurchaseCreditForExistingBill(widget.bill!.vendorName);
+          } else {
+            await _loadCreditSaleForExistingBill(widget.bill!.vendorName, '');
+          }
         }
       }
     } catch (e) {
@@ -324,6 +328,128 @@ class _SaleEntryScreenState extends ConsumerState<SaleEntryScreen> {
     final marker =
         '__saafhisaab_credit_advance:${_creditSale!.advancePaid};credit:${_creditSale!.creditAmount}__';
     return baseNotes.isEmpty ? marker : '$baseNotes\n$marker';
+  }
+
+  SavedCreditSale? _parsePurchaseCreditFromNotes(
+    String notes, {
+    required String partyId,
+    required String partyName,
+    required double totalAmount,
+  }) {
+    final startMarker = '__saafhisaab_credit_advance:';
+    final startIndex = notes.indexOf(startMarker);
+    if (startIndex < 0) return null;
+
+    try {
+      final endMarker = '__';
+      final endIndex = notes.indexOf(endMarker, startIndex + startMarker.length);
+      if (endIndex < 0) return null;
+
+      final sub = notes.substring(startIndex + startMarker.length, endIndex);
+      final parts = sub.split(';credit:');
+      if (parts.length != 2) return null;
+
+      final advance = double.tryParse(parts[0]) ?? 0.0;
+      final credit = double.tryParse(parts[1]) ?? 0.0;
+
+      return SavedCreditSale(
+        customerId: partyId,
+        customerName: partyName,
+        customerPhone: '',
+        creditAmount: credit,
+        advancePaid: advance,
+        totalAmount: totalAmount,
+        note: notes.substring(0, startIndex).trim(),
+      );
+    } catch (_) {
+      return null;
+    }
+  }
+
+  Future<void> _loadPurchaseCreditForExistingBill(String partyName) async {
+    try {
+      final shop = await ref.read(shopProvider.future);
+      if (shop == null) return;
+
+      final parties = await ref.read(purchasePartiesProvider.future);
+      final party = parties.firstWhere(
+        (p) => (p['name'] as String).toLowerCase() == partyName.toLowerCase(),
+        orElse: () => <String, dynamic>{},
+      );
+      if (party.isEmpty) return;
+
+      final partyId = party['id'] as String;
+      final sales = await SupabaseService.getSalesByBillId(widget.bill!.id);
+      if (sales.isEmpty) return;
+
+      String notes = '';
+      double creditAmount = 0.0;
+      double advancePaid = 0.0;
+      bool hasMarker = false;
+
+      for (var s in sales) {
+        final startMarker = '__saafhisaab_credit_advance:';
+        final startIndex = s.notes.indexOf(startMarker);
+        if (startIndex >= 0) {
+          final parsed = _parsePurchaseCreditFromNotes(
+            s.notes,
+            partyId: partyId,
+            partyName: partyName,
+            totalAmount: widget.bill!.amount,
+          );
+          if (parsed != null) {
+            creditAmount = parsed.creditAmount;
+            advancePaid = parsed.advancePaid;
+            notes = parsed.note;
+            hasMarker = true;
+            break;
+          }
+        }
+      }
+
+      if (!hasMarker) return;
+
+      final creditItems = sales.map((s) => CreditSaleItem(
+        stockItemId: s.stockItemId,
+        itemName: s.itemName,
+        quantity: s.quantity,
+        unit: s.unit,
+        amount: s.totalAmount,
+      )).toList();
+
+      final updatedCreditSale = SavedCreditSale(
+        customerId: partyId,
+        customerName: partyName,
+        customerPhone: '',
+        creditAmount: creditAmount,
+        advancePaid: advancePaid,
+        totalAmount: widget.bill!.amount,
+        note: notes,
+        items: creditItems,
+      );
+
+      setState(() {
+        _creditSale = updatedCreditSale;
+        _originalCreditSale = updatedCreditSale;
+      });
+    } catch (e) {
+      debugPrint('Error loading purchase credit for existing bill: $e');
+    }
+  }
+
+  Future<void> _persistPurchaseCreditOnBillSave({required bool isEn}) async {
+    final credit = _creditSale;
+    if (credit == null || credit.creditAmount <= 0) return;
+
+    try {
+      if (credit.customerId.isNotEmpty) {
+        final currentPending = await SupabaseService.getPurchasePartyPendingAmount(credit.customerId);
+        final newPending = currentPending + credit.creditAmount;
+        await SupabaseService.updatePurchasePartyPendingAmount(credit.customerId, newPending);
+      }
+    } catch (e) {
+      throw Exception(AppLang.tr(isEn, 'Purchase credit save failed', 'खरीद उधार सहेजना विफल रहा'));
+    }
   }
 
   Future<SavedCreditSale?> _persistCreditOnBillSave({
@@ -706,27 +832,39 @@ class _SaleEntryScreenState extends ConsumerState<SaleEntryScreen> {
       // Reverse previous credit entries if they existed (in Update Mode)
       if (widget.bill != null && _originalCreditSale != null) {
         final orig = _originalCreditSale!;
-        if (orig.creditEntryId != null) {
-          await SupabaseService.deleteUdharEntry(orig.creditEntryId!);
-        }
-        if (orig.debitEntryId != null) {
-          await SupabaseService.deleteUdharEntry(orig.debitEntryId!);
-        }
-        if (orig.customerId.isNotEmpty) {
-          final oldDue = await SupabaseService.getCustomerTotalDue(orig.customerId);
-          await SupabaseService.updateCustomerTotalDue(orig.customerId, oldDue - orig.creditAmount);
+        if (_billType == 'purchase') {
+          if (orig.customerId.isNotEmpty) {
+            final currentPending = await SupabaseService.getPurchasePartyPendingAmount(orig.customerId);
+            final newPending = (currentPending - orig.creditAmount).clamp(0.0, double.infinity);
+            await SupabaseService.updatePurchasePartyPendingAmount(orig.customerId, newPending);
+          }
+        } else {
+          if (orig.creditEntryId != null) {
+            await SupabaseService.deleteUdharEntry(orig.creditEntryId!);
+          }
+          if (orig.debitEntryId != null) {
+            await SupabaseService.deleteUdharEntry(orig.debitEntryId!);
+          }
+          if (orig.customerId.isNotEmpty) {
+            final oldDue = await SupabaseService.getCustomerTotalDue(orig.customerId);
+            await SupabaseService.updateCustomerTotalDue(orig.customerId, oldDue - orig.creditAmount);
+          }
         }
       }
 
       // Persist new credit entries if current payment mode is credit or split
-      final persistedCredit = await _persistCreditOnBillSave(
-        shopId: shop.id,
-        userId: userId,
-        isEn: isEn,
-        billId: billId,
-      );
-      if (persistedCredit != null) {
-        _creditSale = persistedCredit;
+      if (_billType == 'purchase') {
+        await _persistPurchaseCreditOnBillSave(isEn: isEn);
+      } else {
+        final persistedCredit = await _persistCreditOnBillSave(
+          shopId: shop.id,
+          userId: userId,
+          isEn: isEn,
+          billId: billId,
+        );
+        if (persistedCredit != null) {
+          _creditSale = persistedCredit;
+        }
       }
 
       await _syncDailyBalancesForBillDates(
