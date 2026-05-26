@@ -3,88 +3,35 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../constants/app_colors.dart';
 import '../../globalVar.dart';
-import '../../models/bill_model.dart';
+import '../../models/udhar_model.dart';
 import '../../providers/app_providers.dart';
-import '../../services/supabase_service.dart';
 import '../../services/auth_service.dart';
+import '../../services/supabase_service.dart';
 
-/// Provider that fetches purchase parties with pending amounts > 0
-final outstandingPayableProvider =
-    FutureProvider.autoDispose<List<OutstandingPayableItem>>((ref) async {
+final outstandingReceivableProvider =
+    FutureProvider.autoDispose<List<UdharCustomerModel>>((ref) async {
   final shop = await ref.watch(shopProvider.future);
   if (shop == null) return [];
 
-  final parties =
-      await SupabaseService.getPurchasePartiesWithPending(shop.id);
-  final items = <OutstandingPayableItem>[];
-
-  for (final party in parties) {
-    final partyName = party['name'] as String? ?? '';
-    final bills = await SupabaseService.getPurchaseBillsForParty(
-        shop.id, partyName);
-
-    // Filter to credit bills (bills where related sales have credit/split payment mode)
-    final creditBills = <BillModel>[];
-    for (final bill in bills) {
-      try {
-        final sales = await SupabaseService.getSalesByBillId(bill.id);
-        final isCreditBill = sales.any((s) =>
-            s.paymentMode == 'credit' || s.paymentMode == 'split');
-        if (isCreditBill) {
-          creditBills.add(bill);
-        }
-      } catch (_) {
-        // If no sales found, still include the bill
-      }
-    }
-
-    items.add(OutstandingPayableItem(
-      party: party,
-      creditBills: creditBills,
-      allBills: bills,
-    ));
-  }
-
-  return items;
+  final customers = await SupabaseService.getAllUdharCustomers(shop.id);
+  return customers.where((c) => c.totalDue > 0).toList();
 });
 
-class OutstandingPayableItem {
-  final Map<String, dynamic> party;
-  final List<BillModel> creditBills;
-  final List<BillModel> allBills;
-
-  OutstandingPayableItem({
-    required this.party,
-    required this.creditBills,
-    required this.allBills,
-  });
-
-  String get partyId => party['id'] as String? ?? '';
-  String get partyName => party['name'] as String? ?? '';
-  String get partyPhone => party['phone_number'] as String? ?? '';
-  String get partyStation => party['station'] as String? ?? '';
-  String get partyGst => party['gst_number'] as String? ?? '';
-  double get pendingAmount =>
-      (party['pending_amount'] as num?)?.toDouble() ?? 0;
-  double get totalPurchased =>
-      allBills.fold(0.0, (sum, bill) => sum + bill.amount);
-}
-
-class OutstandingPayableScreen extends ConsumerWidget {
-  const OutstandingPayableScreen({super.key});
+class OutstandingReceivableScreen extends ConsumerWidget {
+  const OutstandingReceivableScreen({super.key});
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final isEn = ref.watch(appLanguageProvider);
-    final reportAsync = ref.watch(outstandingPayableProvider);
+    final reportAsync = ref.watch(outstandingReceivableProvider);
 
     return Scaffold(
       backgroundColor: AppColors.background,
       appBar: AppBar(
         title: Text(AppLang.tr(
           isEn,
-          'Outstanding Payable',
-          'बकाया देय',
+          'Outstanding Receivable',
+          'बकाया प्राप्तव्य',
         )),
         backgroundColor: AppColors.primary,
         foregroundColor: Colors.white,
@@ -104,8 +51,8 @@ class OutstandingPayableScreen extends ConsumerWidget {
                       size: 64, color: AppColors.success.withOpacity(0.5)),
                   const SizedBox(height: 16),
                   Text(
-                    AppLang.tr(isEn, 'No outstanding payables',
-                        'कोई बकाया देय नहीं'),
+                    AppLang.tr(isEn, 'No outstanding receivables',
+                        'कोई बकाया प्राप्तव्य नहीं'),
                     style: const TextStyle(
                       fontSize: 16,
                       color: AppColors.textSecondary,
@@ -116,8 +63,8 @@ class OutstandingPayableScreen extends ConsumerWidget {
                   Text(
                     AppLang.tr(
                         isEn,
-                        'All supplier payments are cleared!',
-                        'सभी सप्लायर भुगतान चुकता हैं!'),
+                        'All customer payments are cleared!',
+                        'सभी ग्राहक भुगतान चुकता हैं!'),
                     style: const TextStyle(
                       color: AppColors.textHint,
                       fontSize: 13,
@@ -129,12 +76,12 @@ class OutstandingPayableScreen extends ConsumerWidget {
           }
 
           final totalOutstanding = items.fold(
-              0.0, (sum, item) => sum + item.pendingAmount);
+              0.0, (sum, item) => sum + item.totalDue);
 
           return RefreshIndicator(
             color: AppColors.primary,
             onRefresh: () async =>
-                ref.invalidate(outstandingPayableProvider),
+                ref.invalidate(outstandingReceivableProvider),
             child: ListView(
               padding: const EdgeInsets.all(16),
               children: [
@@ -145,16 +92,16 @@ class OutstandingPayableScreen extends ConsumerWidget {
                   decoration: BoxDecoration(
                     gradient: LinearGradient(
                       colors: [
-                        AppColors.error,
-                        AppColors.error.withOpacity(0.8),
+                        AppColors.warning,
+                        AppColors.warning.withOpacity(0.8),
                       ],
                     ),
                     borderRadius: BorderRadius.circular(16),
                   ),
                   child: Column(children: [
                     Text(
-                      AppLang.tr(isEn, 'Total Outstanding Payable',
-                          'कुल बकाया देय'),
+                      AppLang.tr(isEn, 'Total Outstanding Receivable',
+                          'कुल बकाया प्राप्तव्य'),
                       style: TextStyle(
                         color: Colors.white.withOpacity(0.85),
                         fontSize: 13,
@@ -172,7 +119,7 @@ class OutstandingPayableScreen extends ConsumerWidget {
                     ),
                     const SizedBox(height: 4),
                     Text(
-                      '${items.length} ${AppLang.tr(isEn, 'suppliers', 'सप्लायर')}',
+                      '${items.length} ${AppLang.tr(isEn, 'customers', 'ग्राहक')}',
                       style: TextStyle(
                         color: Colors.white.withOpacity(0.7),
                         fontSize: 12,
@@ -183,7 +130,7 @@ class OutstandingPayableScreen extends ConsumerWidget {
                 ),
                 const SizedBox(height: 16),
 
-                ...items.map((item) => _PayableCard(
+                ...items.map((item) => _ReceivableCard(
                       item: item,
                       isEn: isEn,
                       onRecordPayment: () =>
@@ -200,10 +147,10 @@ class OutstandingPayableScreen extends ConsumerWidget {
   void _showRecordPaymentSheet(
     BuildContext context,
     WidgetRef ref,
-    OutstandingPayableItem item,
+    UdharCustomerModel item,
     bool isEn,
   ) {
-    final amountCtrl = TextEditingController();
+    final amountCtrl = TextEditingController(text: item.totalDue.toStringAsFixed(0));
     String paymentMethod = 'cash';
 
     showModalBottomSheet(
@@ -239,8 +186,8 @@ class OutstandingPayableScreen extends ConsumerWidget {
                   ),
                   const SizedBox(height: 14),
                   Text(
-                    AppLang.tr(isEn, 'Record Payment to Supplier',
-                        'सप्लायर को भुगतान दर्ज करें'),
+                    AppLang.tr(isEn, 'Record Payment from Customer',
+                        'ग्राहक से भुगतान दर्ज करें'),
                     style: const TextStyle(
                       fontSize: 20,
                       fontWeight: FontWeight.w800,
@@ -262,18 +209,18 @@ class OutstandingPayableScreen extends ConsumerWidget {
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
                           Text(
-                            item.partyName,
+                            item.customerName,
                             style: const TextStyle(
                               fontSize: 16,
                               fontWeight: FontWeight.w800,
                               color: AppColors.textPrimary,
                             ),
                           ),
-                          if (item.partyPhone.isNotEmpty)
+                          if (item.customerPhone.isNotEmpty)
                             Padding(
                               padding: const EdgeInsets.only(top: 4),
                               child: Text(
-                                item.partyPhone,
+                                item.customerPhone,
                                 style: const TextStyle(
                                   color: AppColors.textSecondary,
                                   fontSize: 12,
@@ -286,15 +233,14 @@ class OutstandingPayableScreen extends ConsumerWidget {
                               AppLang.tr(isEn, 'Pending: ',
                                   'बकाया: '),
                               style: const TextStyle(
-                                color: AppColors.textSecondary,
-                                fontSize: 13,
-                                fontWeight: FontWeight.w600,
-                              ),
+                                  color: AppColors.textSecondary,
+                                  fontSize: 13,
+                                  fontWeight: FontWeight.w600),
                             ),
                             Text(
-                              'Rs ${item.pendingAmount.toStringAsFixed(0)}',
+                              'Rs ${item.totalDue.toStringAsFixed(0)}',
                               style: const TextStyle(
-                                color: AppColors.error,
+                                color: AppColors.warning,
                                 fontSize: 16,
                                 fontWeight: FontWeight.w900,
                               ),
@@ -311,7 +257,7 @@ class OutstandingPayableScreen extends ConsumerWidget {
                         decimal: true),
                     decoration: InputDecoration(
                       labelText: AppLang.tr(
-                          isEn, 'Payment Amount Rs', 'भुगतान राशि Rs'),
+                          isEn, 'Received Amount Rs', 'प्राप्त राशि Rs'),
                       prefixIcon: const Icon(Icons.currency_rupee_rounded,
                           size: 20),
                       filled: true,
@@ -357,34 +303,14 @@ class OutstandingPayableScreen extends ConsumerWidget {
                       setSheetState(() => paymentMethod = v);
                     }),
                     _methodChip(
-                        'card',
-                        AppLang.tr(isEn, 'Card', 'कार्ड'),
-                        Icons.credit_card,
+                        'bank',
+                        AppLang.tr(isEn, 'Bank', 'बैंक'),
+                        Icons.account_balance_rounded,
                         paymentMethod, (v) {
                       setSheetState(() => paymentMethod = v);
                     }),
                   ]),
                   const SizedBox(height: 20),
-
-                  // Pay full amount button
-                  Align(
-                    alignment: Alignment.centerRight,
-                    child: TextButton(
-                      onPressed: () {
-                        amountCtrl.text =
-                            item.pendingAmount.toStringAsFixed(0);
-                      },
-                      child: Text(
-                        AppLang.tr(isEn, 'Pay Full Amount',
-                            'पूरी रकम भरें'),
-                        style: const TextStyle(
-                          color: AppColors.primary,
-                          fontWeight: FontWeight.w700,
-                        ),
-                      ),
-                    ),
-                  ),
-                  const SizedBox(height: 8),
 
                   // Save button
                   SizedBox(
@@ -404,7 +330,7 @@ class OutstandingPayableScreen extends ConsumerWidget {
                           ));
                           return;
                         }
-                        if (amount > item.pendingAmount) {
+                        if (amount > item.totalDue) {
                           ScaffoldMessenger.of(ctx).showSnackBar(SnackBar(
                             content: Text(AppLang.tr(
                                 isEn,
@@ -422,17 +348,23 @@ class OutstandingPayableScreen extends ConsumerWidget {
                             throw Exception('Shop or user not found');
                           }
 
-                          await SupabaseService.recordPurchasePartyPayment(
+                          // Get first credit entry if exists to link it
+                          final entries = await SupabaseService.getUdharEntriesForCustomer(item.id);
+                          final creditEntries = entries.where((entry) => entry.entryType == 'credit');
+                          final appliedCreditEntryId =
+                              creditEntries.isEmpty ? null : creditEntries.first.id;
+
+                          await SupabaseService.recordUdharPayment(
                             shopId: shop.id,
                             userId: userId,
-                            partyId: item.partyId,
-                            partyName: item.partyName,
+                            customer: item,
                             amount: amount,
                             paymentMethod: paymentMethod,
+                            appliedCreditEntryId: appliedCreditEntryId,
                           );
 
-                          ref.invalidate(outstandingPayableProvider);
-                          ref.invalidate(purchasePartiesProvider);
+                          ref.invalidate(outstandingReceivableProvider);
+                          ref.invalidate(udharCustomersProvider);
                           ref.invalidate(dashboardStatsProvider);
                           ref.invalidate(todayBillsProvider);
 
@@ -442,8 +374,8 @@ class OutstandingPayableScreen extends ConsumerWidget {
                               SnackBar(
                                 content: Text(AppLang.tr(
                                   isEn,
-                                  'Payment of Rs ${amount.toStringAsFixed(0)} recorded for ${item.partyName}',
-                                  '${item.partyName} को Rs ${amount.toStringAsFixed(0)} भुगतान दर्ज',
+                                  'Payment of Rs ${amount.toStringAsFixed(0)} recorded from ${item.customerName}',
+                                  '${item.customerName} से Rs ${amount.toStringAsFixed(0)} भुगतान दर्ज',
                                 )),
                                 backgroundColor: AppColors.success,
                               ),
@@ -510,12 +442,12 @@ class OutstandingPayableScreen extends ConsumerWidget {
   }
 }
 
-class _PayableCard extends StatelessWidget {
-  final OutstandingPayableItem item;
+class _ReceivableCard extends StatelessWidget {
+  final UdharCustomerModel item;
   final bool isEn;
   final VoidCallback onRecordPayment;
 
-  const _PayableCard({
+  const _ReceivableCard({
     required this.item,
     required this.isEn,
     required this.onRecordPayment,
@@ -537,16 +469,16 @@ class _PayableCard extends StatelessWidget {
             width: 46,
             height: 46,
             decoration: BoxDecoration(
-              color: AppColors.error.withOpacity(0.1),
+              color: AppColors.warning.withOpacity(0.1),
               borderRadius: BorderRadius.circular(12),
             ),
             child: Center(
               child: Text(
-                item.partyName.isNotEmpty
-                    ? item.partyName[0].toUpperCase()
+                item.customerName.isNotEmpty
+                    ? item.customerName[0].toUpperCase()
                     : '?',
                 style: const TextStyle(
-                  color: AppColors.error,
+                  color: AppColors.warning,
                   fontSize: 20,
                   fontWeight: FontWeight.w900,
                 ),
@@ -559,64 +491,43 @@ class _PayableCard extends StatelessWidget {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Text(
-                    item.partyName,
+                    item.customerName,
                     style: const TextStyle(
                       fontSize: 15,
                       fontWeight: FontWeight.w800,
                       color: AppColors.textPrimary,
                     ),
                   ),
-                  if (item.partyPhone.isNotEmpty)
+                  if (item.customerPhone.isNotEmpty)
                     Text(
-                      item.partyPhone,
+                      item.customerPhone,
                       style: const TextStyle(
                         color: AppColors.textSecondary,
                         fontSize: 12,
                         fontWeight: FontWeight.w600,
                       ),
                     ),
-                  if (item.partyStation.isNotEmpty)
-                    Row(children: [
-                      const Icon(Icons.location_city_rounded,
-                          size: 12, color: AppColors.textHint),
-                      const SizedBox(width: 3),
-                      Text(
-                        item.partyStation,
-                        style: const TextStyle(
-                          color: AppColors.textHint,
-                          fontSize: 11,
-                        ),
-                      ),
-                    ]),
                 ]),
           ),
           Column(crossAxisAlignment: CrossAxisAlignment.end, children: [
             Text(
-              'Rs ${item.pendingAmount.toStringAsFixed(0)}',
+              'Rs ${item.totalDue.toStringAsFixed(0)}',
               style: const TextStyle(
-                color: AppColors.error,
+                color: AppColors.warning,
                 fontSize: 18,
                 fontWeight: FontWeight.w900,
               ),
             ),
             Text(
-              AppLang.tr(isEn, 'Payable', 'देय'),
+              AppLang.tr(isEn, 'Receivable', 'प्राप्तव्य'),
               style: const TextStyle(
-                color: AppColors.error,
+                color: AppColors.warning,
                 fontSize: 11,
                 fontWeight: FontWeight.w600,
               ),
             ),
           ]),
         ]),
-
-        if (item.partyGst.isNotEmpty) ...[
-          const SizedBox(height: 8),
-          _infoLine(
-            AppLang.tr(isEn, 'GST', 'GST'),
-            item.partyGst,
-          ),
-        ],
 
         const SizedBox(height: 12),
 
@@ -643,28 +554,5 @@ class _PayableCard extends StatelessWidget {
         ),
       ]),
     );
-  }
-
-  Widget _infoLine(String label, String value) {
-    return Row(children: [
-      Text(
-        '$label: ',
-        style: const TextStyle(
-          color: AppColors.textSecondary,
-          fontSize: 12,
-          fontWeight: FontWeight.w600,
-        ),
-      ),
-      Flexible(
-        child: Text(
-          value,
-          style: const TextStyle(
-            color: AppColors.textPrimary,
-            fontSize: 12,
-            fontWeight: FontWeight.w700,
-          ),
-        ),
-      ),
-    ]);
   }
 }
