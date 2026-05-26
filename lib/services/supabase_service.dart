@@ -826,6 +826,49 @@ static Future<double> getTotalUdhar(String shopId) async {
   }
 
   // ─────────────────────────────────────────
+  // PURCHASE CREDIT
+  // ─────────────────────────────────────────
+
+  static Future<void> updatePurchasePartyPendingAmount(
+      String partyId, double newAmount) async {
+    await _client.from('purchase_parties').update({
+      'pending_amount': newAmount < 0 ? 0 : newAmount,
+    }).eq('id', partyId);
+  }
+
+  static Future<double> getPurchasePartyPendingAmount(String partyId) async {
+    final data = await _client
+        .from('purchase_parties')
+        .select('pending_amount')
+        .eq('id', partyId)
+        .single();
+    return (data['pending_amount'] as num?)?.toDouble() ?? 0.0;
+  }
+
+  static Future<List<Map<String, dynamic>>> getPurchasePartiesWithPending(
+      String shopId) async {
+    final data = await _client
+        .from('purchase_parties')
+        .select()
+        .eq('shop_id', shopId)
+        .gt('pending_amount', 0)
+        .order('pending_amount', ascending: false);
+    return List<Map<String, dynamic>>.from(data);
+  }
+
+  static Future<List<BillModel>> getPurchaseBillsForParty(
+      String shopId, String partyName) async {
+    final data = await _client
+        .from('bills')
+        .select()
+        .eq('shop_id', shopId)
+        .eq('bill_type', 'purchase')
+        .ilike('vendor_name', partyName.trim())
+        .order('bill_date', ascending: false);
+    return (data as List).map((b) => BillModel.fromJson(b)).toList();
+  }
+
+  // ─────────────────────────────────────────
   // DASHBOARD
   // ─────────────────────────────────────────
 
