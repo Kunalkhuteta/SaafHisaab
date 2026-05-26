@@ -445,8 +445,26 @@ class _SaleEntryScreenState extends ConsumerState<SaleEntryScreen> {
     try {
       if (credit.customerId.isNotEmpty) {
         final currentPending = await SupabaseService.getPurchasePartyPendingAmount(credit.customerId);
-        final newPending = currentPending + credit.creditAmount;
-        await SupabaseService.updatePurchasePartyPendingAmount(credit.customerId, newPending);
+        // If updating, subtract old credit first to avoid double-counting
+        final oldCredit = (widget.bill != null && _originalCreditSale != null)
+            ? _originalCreditSale!.creditAmount
+            : 0.0;
+        // Also handle party change: reverse old party if different
+        if (widget.bill != null && _originalCreditSale != null &&
+            _originalCreditSale!.customerId.isNotEmpty &&
+            _originalCreditSale!.customerId != credit.customerId) {
+          // Different party - reverse on old party
+          final oldPartyPending = await SupabaseService.getPurchasePartyPendingAmount(_originalCreditSale!.customerId);
+          final newOldPartyPending = (oldPartyPending - _originalCreditSale!.creditAmount).clamp(0.0, double.infinity);
+          await SupabaseService.updatePurchasePartyPendingAmount(_originalCreditSale!.customerId, newOldPartyPending);
+          // Add full new credit to new party
+          final newPending = currentPending + credit.creditAmount;
+          await SupabaseService.updatePurchasePartyPendingAmount(credit.customerId, newPending);
+        } else {
+          // Same party or new bill - subtract old and add new
+          final newPending = (currentPending - oldCredit + credit.creditAmount).clamp(0.0, double.infinity);
+          await SupabaseService.updatePurchasePartyPendingAmount(credit.customerId, newPending);
+        }
       }
     } catch (e) {
       throw Exception(AppLang.tr(isEn, 'Purchase credit save failed', 'खरीद उधार सहेजना विफल रहा'));
@@ -863,11 +881,7 @@ class _SaleEntryScreenState extends ConsumerState<SaleEntryScreen> {
       if (widget.bill != null && _originalCreditSale != null) {
         final orig = _originalCreditSale!;
         if (_billType == 'purchase') {
-          if (orig.customerId.isNotEmpty) {
-            final currentPending = await SupabaseService.getPurchasePartyPendingAmount(orig.customerId);
-            final newPending = (currentPending - orig.creditAmount).clamp(0.0, double.infinity);
-            await SupabaseService.updatePurchasePartyPendingAmount(orig.customerId, newPending);
-          }
+          // Purchase credit reversal is handled inside _persistPurchaseCreditOnBillSave
         } else {
           if (orig.creditEntryId != null) {
             await SupabaseService.deleteUdharEntry(orig.creditEntryId!);
