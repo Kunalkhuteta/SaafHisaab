@@ -1187,14 +1187,14 @@ class _SaleEntryScreenState extends ConsumerState<SaleEntryScreen> {
               (i) => _lineItemCard(i, stockItems, isEn)),
         ],
 
-        if (_billType == 'sale') ...[
+        if (_billType == 'sale' || _billType == 'purchase') ...[
           const SizedBox(height: 10),
           Wrap(spacing: 8, runSpacing: 8, children: [
             _creditPayChip(isEn, stockItems),
           ]),
         ],
 
-        if (_billType == 'sale' && _customerCtrl.text.trim().isNotEmpty) ...[
+        if ((_billType == 'sale' || _billType == 'purchase') && _customerCtrl.text.trim().isNotEmpty) ...[
           const SizedBox(height: 10),
           _creditActionCard(isEn, stockItems),
         ],
