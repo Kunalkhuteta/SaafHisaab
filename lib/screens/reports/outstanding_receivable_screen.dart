@@ -7,6 +7,7 @@ import '../../models/udhar_model.dart';
 import '../../providers/app_providers.dart';
 import '../../services/auth_service.dart';
 import '../../services/supabase_service.dart';
+import 'receivable_party_detail_screen.dart';
 
 final outstandingReceivableProvider =
     FutureProvider.autoDispose<List<UdharCustomerModel>>((ref) async {
@@ -135,6 +136,15 @@ class OutstandingReceivableScreen extends ConsumerWidget {
                       isEn: isEn,
                       onRecordPayment: () =>
                           _showRecordPaymentSheet(context, ref, item, isEn),
+                      onOpenDetails: () {
+                        Navigator.push(
+                          context,
+                          MaterialPageRoute(
+                            builder: (_) =>
+                                ReceivablePartyDetailScreen(customer: item),
+                          ),
+                        );
+                      },
                     )),
               ],
             ),
@@ -446,24 +456,28 @@ class _ReceivableCard extends StatelessWidget {
   final UdharCustomerModel item;
   final bool isEn;
   final VoidCallback onRecordPayment;
+  final VoidCallback onOpenDetails;
 
   const _ReceivableCard({
     required this.item,
     required this.isEn,
     required this.onRecordPayment,
+    required this.onOpenDetails,
   });
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      margin: const EdgeInsets.only(bottom: 12),
-      padding: const EdgeInsets.all(14),
-      decoration: BoxDecoration(
-        color: AppColors.surface,
-        borderRadius: BorderRadius.circular(14),
-        border: Border.all(color: AppColors.border),
-      ),
-      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+    return GestureDetector(
+      onTap: onOpenDetails,
+      child: Container(
+        margin: const EdgeInsets.only(bottom: 12),
+        padding: const EdgeInsets.all(14),
+        decoration: BoxDecoration(
+          color: AppColors.surface,
+          borderRadius: BorderRadius.circular(14),
+          border: Border.all(color: AppColors.border),
+        ),
+        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
         Row(children: [
           Container(
             width: 46,
@@ -526,6 +540,12 @@ class _ReceivableCard extends StatelessWidget {
                 fontWeight: FontWeight.w600,
               ),
             ),
+            const SizedBox(height: 3),
+            const Icon(
+              Icons.chevron_right_rounded,
+              size: 18,
+              color: AppColors.textHint,
+            ),
           ]),
         ]),
 
@@ -552,7 +572,8 @@ class _ReceivableCard extends StatelessWidget {
             ),
           ),
         ),
-      ]),
+        ]),
+      ),
     );
   }
 }
