@@ -7,6 +7,7 @@ import '../../models/bill_model.dart';
 import '../../providers/app_providers.dart';
 import '../../services/supabase_service.dart';
 import '../../services/auth_service.dart';
+import 'payable_party_detail_screen.dart';
 
 /// Provider that fetches purchase parties with pending amounts > 0
 final outstandingPayableProvider =
@@ -523,15 +524,30 @@ class _PayableCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      margin: const EdgeInsets.only(bottom: 12),
-      padding: const EdgeInsets.all(14),
-      decoration: BoxDecoration(
-        color: AppColors.surface,
-        borderRadius: BorderRadius.circular(14),
-        border: Border.all(color: AppColors.border),
-      ),
-      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+    return GestureDetector(
+      onTap: () {
+        Navigator.push(
+          context,
+          MaterialPageRoute(
+            builder: (context) => PayablePartyDetailScreen(
+              partyId: item.partyId,
+              partyName: item.partyName,
+              partyPhone: item.partyPhone,
+              partyStation: item.partyStation,
+              pendingAmount: item.pendingAmount,
+            ),
+          ),
+        );
+      },
+      child: Container(
+        margin: const EdgeInsets.only(bottom: 12),
+        padding: const EdgeInsets.all(14),
+        decoration: BoxDecoration(
+          color: AppColors.surface,
+          borderRadius: BorderRadius.circular(14),
+          border: Border.all(color: AppColors.border),
+        ),
+        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
         Row(children: [
           Container(
             width: 46,
@@ -642,7 +658,8 @@ class _PayableCard extends StatelessWidget {
           ),
         ),
       ]),
-    );
+    ),
+   );
   }
 
   Widget _infoLine(String label, String value) {
