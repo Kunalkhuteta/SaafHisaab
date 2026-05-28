@@ -1,4 +1,8 @@
+import 'dart:typed_data';
+
 import 'package:flutter/material.dart';
+import 'package:image_picker/image_picker.dart';
+import 'package:path/path.dart' as path;
 
 import '../constants/app_colors.dart';
 import '../globalVar.dart';
@@ -44,6 +48,9 @@ class _PurchaseCreditEntrySheetState extends State<PurchaseCreditEntrySheet> {
   late final TextEditingController _noteCtrl;
   late final List<CreditItemDraft> _items;
   DateTime? _dueDate;
+  Uint8List? _billImageBytes;
+  String _billImageExtension = 'jpg';
+  late String _billImageUrl;
   bool _manualTotal = false;
 
   bool get _isEn => widget.isEn;
@@ -87,6 +94,7 @@ class _PurchaseCreditEntrySheetState extends State<PurchaseCreditEntrySheet> {
     );
     _noteCtrl = TextEditingController(text: existing?.note ?? '');
     _dueDate = existing?.dueDate;
+    _billImageUrl = existing?.billImageUrl ?? '';
     _items = existing?.items
             .map((item) => CreditItemDraft(
                   stockItemId: item.stockItemId,
@@ -102,6 +110,59 @@ class _PurchaseCreditEntrySheetState extends State<PurchaseCreditEntrySheet> {
         [CreditItemDraft()];
     _manualTotal = false;
     _syncTotalWithItems();
+  }
+
+  Future<void> _pickBillImage(ImageSource source) async {
+    final pickedFile = await ImagePicker().pickImage(source: source);
+    if (pickedFile == null) return;
+    final bytes = await pickedFile.readAsBytes();
+    var ext = path.extension(pickedFile.path).replaceAll('.', '');
+    if (ext.isEmpty && pickedFile.mimeType != null) {
+      ext = pickedFile.mimeType!.split('/').last;
+    }
+    setState(() {
+      _billImageBytes = bytes;
+      _billImageExtension = ext.isEmpty ? 'jpg' : ext;
+      _billImageUrl = '';
+    });
+  }
+
+  void _showBillImageSource() {
+    showModalBottomSheet<void>(
+      context: context,
+      backgroundColor: AppColors.surface,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(18)),
+      ),
+      builder: (ctx) => SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.all(16),
+          child: Row(children: [
+            Expanded(
+              child: _imageSourceButton(
+                Icons.photo_camera_rounded,
+                AppLang.tr(_isEn, 'Camera', 'Camera'),
+                () {
+                  Navigator.pop(ctx);
+                  _pickBillImage(ImageSource.camera);
+                },
+              ),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: _imageSourceButton(
+                Icons.photo_library_rounded,
+                AppLang.tr(_isEn, 'Gallery', 'Gallery'),
+                () {
+                  Navigator.pop(ctx);
+                  _pickBillImage(ImageSource.gallery);
+                },
+              ),
+            ),
+          ]),
+        ),
+      ),
+    );
   }
 
   @override
@@ -232,6 +293,10 @@ class _PurchaseCreditEntrySheetState extends State<PurchaseCreditEntrySheet> {
           dueDate: _dueDate,
           note: _noteCtrl.text.trim(),
           items: validItems,
+          billId: widget.existingCredit?.billId,
+          billImageUrl: _billImageUrl,
+          billImageBytes: _billImageBytes,
+          billImageExtension: _billImageExtension,
         ),
       );
     }
@@ -495,6 +560,8 @@ class _PurchaseCreditEntrySheetState extends State<PurchaseCreditEntrySheet> {
                       Icons.note_alt_outlined,
                     ),
                   ),
+                  const SizedBox(height: 12),
+                  _billImagePicker(),
                   const SizedBox(height: 18),
 
                   // ── Save ──
@@ -532,6 +599,96 @@ class _PurchaseCreditEntrySheetState extends State<PurchaseCreditEntrySheet> {
                 ]),
           ),
         ),
+      ),
+    );
+  }
+
+  Widget _billImagePicker() {
+    final hasImage = _billImageBytes != null || _billImageUrl.isNotEmpty;
+    return InkWell(
+      onTap: _showBillImageSource,
+      borderRadius: BorderRadius.circular(12),
+      child: Container(
+        width: double.infinity,
+        padding: const EdgeInsets.all(12),
+        decoration: BoxDecoration(
+          color: AppColors.surface,
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(color: AppColors.borderBlue),
+        ),
+        child: Row(children: [
+          Container(
+            width: 48,
+            height: 48,
+            decoration: BoxDecoration(
+              color: AppColors.primaryBg,
+              borderRadius: BorderRadius.circular(10),
+            ),
+            clipBehavior: Clip.antiAlias,
+            child: _billImageBytes != null
+                ? Image.memory(_billImageBytes!, fit: BoxFit.cover)
+                : _billImageUrl.isNotEmpty
+                    ? Image.network(_billImageUrl, fit: BoxFit.cover)
+                    : const Icon(Icons.receipt_long_rounded,
+                        color: AppColors.primary),
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child:
+                Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              Text(
+                hasImage
+                    ? AppLang.tr(_isEn, 'Bill image attached',
+                        'Bill image attached')
+                    : AppLang.tr(_isEn, 'Attach bill image',
+                        'Attach bill image'),
+                style: const TextStyle(
+                  color: AppColors.textPrimary,
+                  fontWeight: FontWeight.w800,
+                ),
+              ),
+              const SizedBox(height: 2),
+              Text(
+                AppLang.tr(_isEn, 'Camera or gallery, compressed on save',
+                    'Camera or gallery, compressed on save'),
+                style: const TextStyle(
+                  color: AppColors.textSecondary,
+                  fontSize: 11,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+            ]),
+          ),
+          Icon(
+            hasImage ? Icons.edit_rounded : Icons.add_a_photo_rounded,
+            color: AppColors.primary,
+            size: 20,
+          ),
+        ]),
+      ),
+    );
+  }
+
+  Widget _imageSourceButton(IconData icon, String label, VoidCallback onTap) {
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(12),
+      child: Container(
+        padding: const EdgeInsets.symmetric(vertical: 18),
+        decoration: BoxDecoration(
+          color: AppColors.primaryBg,
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(color: AppColors.primaryBorder),
+        ),
+        child: Column(mainAxisSize: MainAxisSize.min, children: [
+          Icon(icon, color: AppColors.primary),
+          const SizedBox(height: 8),
+          Text(label,
+              style: const TextStyle(
+                color: AppColors.primary,
+                fontWeight: FontWeight.w800,
+              )),
+        ]),
       ),
     );
   }
