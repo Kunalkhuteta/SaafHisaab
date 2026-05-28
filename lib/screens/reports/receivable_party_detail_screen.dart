@@ -4,9 +4,12 @@ import 'package:intl/intl.dart';
 
 import '../../constants/app_colors.dart';
 import '../../globalVar.dart';
+import '../../models/bill_model.dart';
 import '../../models/udhar_model.dart';
 import '../../providers/app_providers.dart';
 import '../../services/supabase_service.dart';
+import '../../widgets/credit_entry_sheet.dart';
+import 'bill_image_viewer_screen.dart';
 
 class ReceivablePartyDetailScreen extends ConsumerStatefulWidget {
   final UdharCustomerModel customer;
@@ -25,6 +28,7 @@ class _ReceivablePartyDetailScreenState
     extends ConsumerState<ReceivablePartyDetailScreen> {
   bool _loading = true;
   List<UdharEntryModel> _entries = [];
+  Map<String, BillModel> _billsById = {};
   double _totalCredit = 0;
   double _totalReceived = 0;
   DateTime? _lastPaymentDate;
@@ -67,9 +71,22 @@ class _ReceivablePartyDetailScreenState
         }
       }
 
+      final billIds = entries
+          .where((entry) => entry.entryType == 'credit')
+          .map((entry) => SavedCreditSale.tryParseNote(entry.note)?.billId)
+          .whereType<String>()
+          .where((id) => id.isNotEmpty)
+          .toSet();
+      final billsById = <String, BillModel>{};
+      for (final billId in billIds) {
+        final bill = await SupabaseService.getBillById(billId);
+        if (bill != null) billsById[billId] = bill;
+      }
+
       if (mounted) {
         setState(() {
           _entries = entries;
+          _billsById = billsById;
           _totalCredit = totalCredit;
           _totalReceived = totalReceived;
           _lastPaymentDate = lastPaymentDate;
@@ -475,6 +492,8 @@ class _ReceivablePartyDetailScreenState
   ) {
     final isCredit = entry.entryType == 'credit';
     final meta = UdharPaymentMeta.tryParseNote(entry.note);
+    final creditMeta = SavedCreditSale.tryParseNote(entry.note);
+    final bill = creditMeta?.billId == null ? null : _billsById[creditMeta!.billId!];
     final color = isCredit ? AppColors.warning : AppColors.success;
     final title = isCredit
         ? AppLang.tr(isEn, 'Credit Sale', 'उधार बिक्री')
@@ -583,6 +602,35 @@ class _ReceivablePartyDetailScreenState
               ),
             ],
             const Spacer(),
+            if (bill?.imageUrl.isNotEmpty == true) ...[
+              OutlinedButton.icon(
+                onPressed: () => Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (_) => BillImageViewerScreen(
+                      imageUrl: bill!.imageUrl,
+                      title: AppLang.tr(isEn, 'Bill Image', 'Bill Image'),
+                      isEn: isEn,
+                    ),
+                  ),
+                ),
+                icon: const Icon(Icons.image_rounded, size: 14),
+                label: Text(AppLang.tr(isEn, 'Show Bill', 'Show Bill')),
+                style: OutlinedButton.styleFrom(
+                  foregroundColor: AppColors.primary,
+                  side: const BorderSide(color: AppColors.primaryBorder),
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                  minimumSize: const Size(0, 30),
+                  tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                  textStyle: const TextStyle(
+                    fontSize: 10,
+                    fontWeight: FontWeight.w800,
+                  ),
+                ),
+              ),
+              const SizedBox(width: 8),
+            ],
             Text(
               '${AppLang.tr(isEn, 'Balance', 'बाकी')}: ${_currency.format(balanceAfter)}',
               style: const TextStyle(

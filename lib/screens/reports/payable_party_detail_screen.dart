@@ -7,6 +7,7 @@ import '../../globalVar.dart';
 import '../../models/bill_model.dart';
 import '../../providers/app_providers.dart';
 import '../../services/supabase_service.dart';
+import 'bill_image_viewer_screen.dart';
 
 /// Detail screen showing all purchase entries for a specific supplier party.
 class PayablePartyDetailScreen extends ConsumerStatefulWidget {
@@ -611,6 +612,36 @@ class _PayablePartyDetailScreenState
                       size: 14, color: AppColors.textHint),
                 ),
               ),
+
+            if (bill.imageUrl.isNotEmpty) ...[
+              const SizedBox(width: 6),
+              OutlinedButton.icon(
+                onPressed: () => Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (_) => BillImageViewerScreen(
+                      imageUrl: bill.imageUrl,
+                      title: AppLang.tr(isEn, 'Bill Image', 'Bill Image'),
+                      isEn: isEn,
+                    ),
+                  ),
+                ),
+                icon: const Icon(Icons.image_rounded, size: 14),
+                label: Text(AppLang.tr(isEn, 'Show Bill', 'Show Bill')),
+                style: OutlinedButton.styleFrom(
+                  foregroundColor: AppColors.primary,
+                  side: const BorderSide(color: AppColors.primaryBorder),
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                  minimumSize: const Size(0, 30),
+                  tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                  textStyle: const TextStyle(
+                    fontSize: 10,
+                    fontWeight: FontWeight.w800,
+                  ),
+                ),
+              ),
+            ],
 
             // GST badge
             if (bill.isGstBill) ...[
