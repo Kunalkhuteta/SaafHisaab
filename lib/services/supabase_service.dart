@@ -167,6 +167,17 @@ class SupabaseService {
     return (data as List).map((b) => BillModel.fromJson(b)).toList();
   }
 
+  static Future<BillModel?> getBillById(String billId) async {
+    final data = await _client
+        .from('bills')
+        .select()
+        .eq('id', billId)
+        .limit(1);
+    final rows = data as List;
+    if (rows.isEmpty) return null;
+    return BillModel.fromJson(rows.first);
+  }
+
   // ─────────────────────────────────────────
   // SALES
   // ─────────────────────────────────────────
@@ -180,6 +191,7 @@ class SupabaseService {
     double? amount,
     String? vendorName,
     String? notes,
+    String? imageUrl,
     bool? isGstBill,
     double? gstAmount,
     DateTime? billDate,
@@ -188,6 +200,7 @@ class SupabaseService {
     if (amount != null) updates['amount'] = amount;
     if (vendorName != null) updates['vendor_name'] = vendorName;
     if (notes != null) updates['notes'] = notes;
+    if (imageUrl != null) updates['image_url'] = imageUrl;
     if (isGstBill != null) updates['is_gst_bill'] = isGstBill;
     if (gstAmount != null) updates['gst_amount'] = gstAmount;
     if (billDate != null) updates['bill_date'] = billDate.toIso8601String().split('T')[0];
@@ -355,6 +368,21 @@ static Future<double> getTodaySalesTotal(String shopId) async {
     final fileName =
         'credit_receipt_${DateTime.now().millisecondsSinceEpoch}.$extension';
     final path = '$shopId/credit_receipts/$fileName';
+
+    await _client.storage.from('items').uploadBinary(
+      path,
+      imageBytes,
+      fileOptions: const FileOptions(upsert: true),
+    );
+
+    return _client.storage.from('items').getPublicUrl(path);
+  }
+
+  static Future<String> uploadBillImage(
+      String shopId, Uint8List imageBytes, String extension) async {
+    final fileName =
+        'bill_${DateTime.now().millisecondsSinceEpoch}.$extension';
+    final path = '$shopId/bills/$fileName';
 
     await _client.storage.from('items').uploadBinary(
       path,
