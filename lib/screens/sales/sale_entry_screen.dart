@@ -1,4 +1,7 @@
 import 'dart:convert';
+import 'dart:typed_data';
+import 'package:flutter/foundation.dart';
+import 'package:flutter_image_compress/flutter_image_compress.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../constants/app_colors.dart';
@@ -245,6 +248,8 @@ class _SaleEntryScreenState extends ConsumerState<SaleEntryScreen> {
                   items: parsed.items,
                   creditEntryId: entry.id,
                   debitEntryId: debitEntryId,
+                  billId: widget.bill!.id,
+                  billImageUrl: widget.bill!.imageUrl,
                 );
                 _creditSale = updatedCreditSale;
                 _originalCreditSale = updatedCreditSale;
@@ -321,6 +326,34 @@ class _SaleEntryScreenState extends ConsumerState<SaleEntryScreen> {
         debugPrint('Daily balance sync failed: $e');
       }
     }
+  }
+
+  Future<Uint8List> _compressBillImage(Uint8List bytes) async {
+    try {
+      return await FlutterImageCompress.compressWithList(
+        bytes,
+        minWidth: 1200,
+        minHeight: 1200,
+        quality: 72,
+      );
+    } catch (e) {
+      if (kDebugMode) {
+        debugPrint('Bill image compression failed, using original bytes: $e');
+      }
+      return bytes;
+    }
+  }
+
+  Future<String> _uploadCreditBillImageIfNeeded(String shopId) async {
+    final imageBytes = _creditSale?.billImageBytes;
+    if (imageBytes == null) return _creditSale?.billImageUrl ?? '';
+
+    final compressed = await _compressBillImage(imageBytes);
+    return SupabaseService.uploadBillImage(
+      shopId,
+      compressed,
+      _creditSale?.billImageExtension ?? 'jpg',
+    );
   }
 
   String _saleNotesForPersistence() {
@@ -427,6 +460,8 @@ class _SaleEntryScreenState extends ConsumerState<SaleEntryScreen> {
         totalAmount: widget.bill!.amount,
         note: notes,
         items: creditItems,
+        billId: widget.bill!.id,
+        billImageUrl: widget.bill!.imageUrl,
       );
 
       setState(() {
@@ -548,6 +583,8 @@ class _SaleEntryScreenState extends ConsumerState<SaleEntryScreen> {
         items: credit.items,
         creditEntryId: creditEntry.id,
         debitEntryId: debitEntry?.id,
+        billId: billId,
+        billImageUrl: credit.billImageUrl,
       );
     } catch (e) {
       if (creditEntry != null) await SupabaseService.deleteUdharEntry(creditEntry.id);
@@ -775,6 +812,27 @@ class _SaleEntryScreenState extends ConsumerState<SaleEntryScreen> {
       if (userId == null || shop == null) throw Exception('Not found');
 
       String billId;
+      final uploadedBillImageUrl =
+          isCreditSale ? await _uploadCreditBillImageIfNeeded(shop.id) : '';
+      if (isCreditSale && _creditSale != null) {
+        final credit = _creditSale!;
+        _creditSale = SavedCreditSale(
+          customerId: credit.customerId,
+          customerName: credit.customerName,
+          customerPhone: credit.customerPhone,
+          creditAmount: credit.creditAmount,
+          advancePaid: credit.advancePaid,
+          totalAmount: credit.totalAmount,
+          dueDate: credit.dueDate,
+          note: credit.note,
+          items: credit.items,
+          creditEntryId: credit.creditEntryId,
+          debitEntryId: credit.debitEntryId,
+          billId: credit.billId,
+          billImageUrl: uploadedBillImageUrl,
+          billImageExtension: credit.billImageExtension,
+        );
+      }
       if (widget.bill != null) {
         // UPDATE MODE
         billId = widget.bill!.id;
@@ -814,7 +872,8 @@ class _SaleEntryScreenState extends ConsumerState<SaleEntryScreen> {
         await SupabaseService.updateBill(billId, 
           amount: _grandTotal, 
           vendorName: _customerCtrl.text.trim(), 
-          notes: _notesCtrl.text.trim()
+          notes: _notesCtrl.text.trim(),
+          imageUrl: isCreditSale ? uploadedBillImageUrl : widget.bill!.imageUrl,
         );
 
         // 4. Delete old sale items
@@ -849,6 +908,7 @@ class _SaleEntryScreenState extends ConsumerState<SaleEntryScreen> {
           vendorName: _customerCtrl.text.trim(),
           billType: _billType,
           notes: _notesCtrl.text.trim(),
+          imageUrl: uploadedBillImageUrl,
           createdAt: DateTime.now(),
         ));
         createdBillId = billId;
