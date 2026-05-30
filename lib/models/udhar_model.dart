@@ -7,6 +7,7 @@ class UdharCustomerModel {
   final String customerName;
   final String customerPhone;
   final double totalDue;
+  final double tobeadjustAmount;
   final DateTime createdAt;
   final DateTime? updatedAt;
 
@@ -17,6 +18,7 @@ class UdharCustomerModel {
     required this.customerName,
     this.customerPhone = '',
     this.totalDue = 0,
+    this.tobeadjustAmount = 0,
     required this.createdAt,
     this.updatedAt,
   });
@@ -29,6 +31,10 @@ class UdharCustomerModel {
       customerName: json['customer_name'] ?? '',
       customerPhone: json['customer_phone'] ?? '',
       totalDue: (json['total_due'] as num?)?.toDouble() ?? 0,
+      tobeadjustAmount:
+          (json['tobeadjustAmount'] as num?)?.toDouble() ??
+              (json['tobeadjust_amount'] as num?)?.toDouble() ??
+              0,
       createdAt: DateTime.parse(json['created_at']),
       updatedAt: json['updated_at'] != null
           ? DateTime.parse(json['updated_at'])
@@ -53,6 +59,7 @@ class UdharCustomerModel {
     String? customerName,
     String? customerPhone,
     double? totalDue,
+    double? tobeadjustAmount,
     DateTime? createdAt,
     DateTime? updatedAt,
   }) {
@@ -63,6 +70,7 @@ class UdharCustomerModel {
       customerName: customerName ?? this.customerName,
       customerPhone: customerPhone ?? this.customerPhone,
       totalDue: totalDue ?? this.totalDue,
+      tobeadjustAmount: tobeadjustAmount ?? this.tobeadjustAmount,
       createdAt: createdAt ?? this.createdAt,
       updatedAt: updatedAt ?? this.updatedAt,
     );
