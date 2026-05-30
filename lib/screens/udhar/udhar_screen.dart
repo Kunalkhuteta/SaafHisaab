@@ -298,15 +298,6 @@ class _UdharScreenState extends ConsumerState<UdharScreen> {
         amount: credit.creditAmount,
         note: credit.toEntryNote(),
       );
-      if (credit.advancePaid > 0) {
-        debitEntry = await SupabaseService.addDebitEntry(
-          shopId: shopId,
-          userId: userId,
-          customerId: customer.id,
-          amount: credit.advancePaid,
-          note: 'Advance payment on credit sale',
-        );
-      }
       await SupabaseService.updateCustomerTotalDue(
         customer.id,
         oldDue + credit.creditAmount,
