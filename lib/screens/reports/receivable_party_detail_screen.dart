@@ -57,6 +57,7 @@ class _ReceivablePartyDetailScreenState
       DateTime? oldestDueDate;
 
       for (final entry in entries) {
+        if (_isAdvancePaymentEntry(entry)) continue;
         if (entry.entryType == 'credit') {
           totalCredit += entry.amount;
           if (oldestDueDate == null || entry.entryDate.isBefore(oldestDueDate)) {
@@ -424,7 +425,7 @@ class _ReceivablePartyDetailScreenState
           borderRadius: BorderRadius.circular(20),
         ),
         child: Text(
-          '${_entries.length}',
+          '${_timelineItemCount()}',
           style: const TextStyle(
             fontSize: 13,
             fontWeight: FontWeight.w800,
@@ -457,44 +458,101 @@ class _ReceivablePartyDetailScreenState
   }
 
   List<Widget> _buildTimeline(bool isEn) {
-    double runningBalance = 0;
-    final ascending = _entries.toList()
-      ..sort((a, b) {
-        final dateCompare = a.entryDate.compareTo(b.entryDate);
-        if (dateCompare != 0) return dateCompare;
-        return a.createdAt.compareTo(b.createdAt);
-      });
-    final balancesById = <String, double>{};
-    for (final entry in ascending) {
-      runningBalance +=
-          entry.entryType == 'credit' ? entry.amount : -entry.amount;
-      runningBalance = runningBalance.clamp(0, double.infinity).toDouble();
-      balancesById[entry.id] = runningBalance;
+    final visibleEntries =
+        _entries.where((entry) => !_isAdvancePaymentEntry(entry)).toList();
+
+    final paymentsByCreditId = <String, List<UdharEntryModel>>{};
+    final paymentsByBillId = <String, List<UdharEntryModel>>{};
+    final groupedPaymentIds = <String>{};
+
+    for (final entry
+        in visibleEntries.where((entry) => entry.entryType == 'debit')) {
+      final meta = UdharPaymentMeta.tryParseNote(entry.note);
+      final creditEntryId = meta?.appliedCreditEntryId;
+      final billId = meta?.billId;
+      if (creditEntryId?.isNotEmpty == true) {
+        paymentsByCreditId.putIfAbsent(creditEntryId!, () => []).add(entry);
+      }
+      if (billId?.isNotEmpty == true) {
+        paymentsByBillId.putIfAbsent(billId!, () => []).add(entry);
+      }
     }
 
-    return _entries
-        .asMap()
-        .entries
+    final cards = <_ReceivableTimelineCard>[];
+    for (final credit
+        in visibleEntries.where((entry) => entry.entryType == 'credit')) {
+      final creditMeta = SavedCreditSale.tryParseNote(credit.note);
+      final payments = <UdharEntryModel>[
+        ...?paymentsByCreditId[credit.id],
+        if (creditMeta?.billId?.isNotEmpty == true)
+          ...?paymentsByBillId[creditMeta!.billId!],
+      ];
+      final uniquePayments = <String, UdharEntryModel>{};
+      for (final payment in payments) {
+        uniquePayments[payment.id] = payment;
+        groupedPaymentIds.add(payment.id);
+      }
+      final sortedPayments = uniquePayments.values.toList()
+        ..sort((a, b) {
+          final dateCompare = a.entryDate.compareTo(b.entryDate);
+          if (dateCompare != 0) return dateCompare;
+          return a.createdAt.compareTo(b.createdAt);
+        });
+      final paid =
+          sortedPayments.fold<double>(0, (sum, entry) => sum + entry.amount);
+      cards.add(_ReceivableTimelineCard(
+        entry: credit,
+        payments: sortedPayments,
+        dueAmount: (credit.amount - paid).clamp(0, double.infinity).toDouble(),
+      ));
+    }
+
+    for (final payment in visibleEntries.where((entry) =>
+        entry.entryType == 'debit' && !groupedPaymentIds.contains(entry.id))) {
+      cards.add(_ReceivableTimelineCard(
+        entry: payment,
+        dueAmount: 0,
+      ));
+    }
+
+    cards.sort((a, b) {
+      final dateCompare = b.entry.entryDate.compareTo(a.entry.entryDate);
+      if (dateCompare != 0) return dateCompare;
+      return b.entry.createdAt.compareTo(a.entry.createdAt);
+    });
+
+    return cards
         .map((item) => _buildEntryCard(
-              item.value,
-              item.key,
-              balancesById[item.value.id] ?? 0,
+              item.entry,
               isEn,
+              payments: item.payments,
+              dueAmount: item.dueAmount,
             ))
         .toList();
   }
 
   Widget _buildEntryCard(
     UdharEntryModel entry,
-    int index,
-    double balanceAfter,
-    bool isEn,
-  ) {
+    bool isEn, {
+    List<UdharEntryModel> payments = const [],
+    double? dueAmount,
+  }) {
     final isCredit = entry.entryType == 'credit';
     final meta = UdharPaymentMeta.tryParseNote(entry.note);
     final creditMeta = SavedCreditSale.tryParseNote(entry.note);
     final bill = creditMeta?.billId == null ? null : _billsById[creditMeta!.billId!];
     final color = isCredit ? AppColors.warning : AppColors.success;
+    final paidAmount =
+        payments.fold<double>(0, (sum, payment) => sum + payment.amount);
+    final billTotal = creditMeta?.totalAmount ?? bill?.amount ?? entry.amount;
+    final advancePaid = creditMeta?.advancePaid ?? 0;
+    final billBalance = dueAmount ??
+        (entry.amount - paidAmount).clamp(0, double.infinity).toDouble();
+    final billImages = _billImageUrls(
+      bill: bill,
+      creditMeta: creditMeta,
+      payments: payments,
+    );
     final title = isCredit
         ? AppLang.tr(isEn, 'Credit Sale', 'उधार बिक्री')
         : AppLang.tr(isEn, 'Payment Received', 'भुगतान प्राप्त');
@@ -564,15 +622,21 @@ class _ReceivablePartyDetailScreenState
             ),
             Column(crossAxisAlignment: CrossAxisAlignment.end, children: [
               Text(
-                '${isCredit ? '+' : '-'}${_currency.format(entry.amount)}',
+                isCredit
+                    ? _currency.format(billBalance)
+                    : '-${_currency.format(entry.amount)}',
                 style: TextStyle(
                   fontSize: 16,
                   fontWeight: FontWeight.w900,
-                  color: color,
+                  color: isCredit
+                      ? (billBalance <= 0 ? AppColors.success : AppColors.error)
+                      : color,
                 ),
               ),
               Text(
-                _dateFmt.format(entry.entryDate),
+                isCredit
+                    ? AppLang.tr(isEn, 'Balance left', 'Balance left')
+                    : _dateFmt.format(entry.entryDate),
                 style: const TextStyle(
                   fontSize: 10,
                   color: AppColors.textHint,
@@ -585,7 +649,53 @@ class _ReceivablePartyDetailScreenState
         const Divider(height: 1, color: AppColors.border),
         Padding(
           padding: const EdgeInsets.fromLTRB(14, 9, 14, 11),
-          child: Row(children: [
+          child: isCredit
+              ? Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                  Wrap(
+                    spacing: 7,
+                    runSpacing: 7,
+                    children: [
+                      _smallBadge(
+                        _dateFmt.format(entry.entryDate),
+                        Icons.event_rounded,
+                        AppColors.primary,
+                      ),
+                      _smallBadge(
+                        '${AppLang.tr(isEn, 'Credit', 'Credit')}: ${_currency.format(entry.amount)}',
+                        Icons.trending_up_rounded,
+                        AppColors.warning,
+                      ),
+                      if (advancePaid > 0)
+                        _smallBadge(
+                          '${AppLang.tr(isEn, 'Paid at sale', 'Paid at sale')}: ${_currency.format(advancePaid)}',
+                          Icons.point_of_sale_rounded,
+                          AppColors.success,
+                        ),
+                      _smallBadge(
+                        '${AppLang.tr(isEn, 'Bill', 'Bill')}: ${_currency.format(billTotal)}',
+                        Icons.receipt_long_rounded,
+                        AppColors.textSecondary,
+                      ),
+                    ],
+                  ),
+                  if (creditMeta?.items.isNotEmpty == true) ...[
+                    const SizedBox(height: 10),
+                    ...creditMeta!.items.map((item) => _buildBillItemRow(item)),
+                  ],
+                  if (billImages.isNotEmpty) ...[
+                    const SizedBox(height: 10),
+                    _buildShowBillButton(billImages, isEn),
+                  ],
+                  const SizedBox(height: 12),
+                  _buildPaymentBreakdown(
+                    payments: payments,
+                    creditAmount: entry.amount,
+                    paidAmount: paidAmount,
+                    balance: billBalance,
+                    isEn: isEn,
+                  ),
+                ])
+              : Row(children: [
             _smallBadge(
               _timeFmt.format(entry.createdAt),
               Icons.schedule_rounded,
@@ -632,7 +742,7 @@ class _ReceivablePartyDetailScreenState
               const SizedBox(width: 8),
             ],
             Text(
-              '${AppLang.tr(isEn, 'Balance', 'बाकी')}: ${_currency.format(balanceAfter)}',
+              AppLang.tr(isEn, 'Unlinked payment', 'Unlinked payment'),
               style: const TextStyle(
                 fontSize: 11,
                 color: AppColors.textSecondary,
@@ -662,6 +772,231 @@ class _ReceivablePartyDetailScreenState
     );
   }
 
+  List<String> _billImageUrls({
+    required BillModel? bill,
+    required SavedCreditSale? creditMeta,
+    required List<UdharEntryModel> payments,
+  }) {
+    final urls = <String>[];
+
+    void addUrl(String? url) {
+      final clean = url?.trim() ?? '';
+      if (clean.isNotEmpty && !urls.contains(clean)) urls.add(clean);
+    }
+
+    addUrl(bill?.imageUrl);
+    addUrl(creditMeta?.billImageUrl);
+    for (final payment in payments) {
+      final paymentMeta = UdharPaymentMeta.tryParseNote(payment.note);
+      addUrl(paymentMeta?.receiptImageUrl);
+    }
+
+    return urls;
+  }
+
+  Widget _buildShowBillButton(List<String> imageUrls, bool isEn) {
+    return OutlinedButton.icon(
+      onPressed: () => Navigator.push(
+        context,
+        MaterialPageRoute(
+          builder: (_) => BillImageViewerScreen(
+            imageUrl: imageUrls.first,
+            imageUrls: imageUrls,
+            title: AppLang.tr(isEn, 'Bill Images', 'Bill Images'),
+            isEn: isEn,
+          ),
+        ),
+      ),
+      icon: const Icon(Icons.image_rounded, size: 14),
+      label: Text(
+        imageUrls.length > 1
+            ? '${AppLang.tr(isEn, 'Show Bills', 'Show Bills')} (${imageUrls.length})'
+            : AppLang.tr(isEn, 'Show Bill', 'Show Bill'),
+      ),
+      style: OutlinedButton.styleFrom(
+        foregroundColor: AppColors.primary,
+        side: const BorderSide(color: AppColors.primaryBorder),
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+        minimumSize: const Size(0, 32),
+        tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+        textStyle: const TextStyle(
+          fontSize: 11,
+          fontWeight: FontWeight.w800,
+        ),
+      ),
+    );
+  }
+
+  Widget _buildBillItemRow(CreditSaleItem item) {
+    final qtyText = item.quantity.toStringAsFixed(
+      item.quantity.truncateToDouble() == item.quantity ? 0 : 1,
+    );
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 7),
+      child: Row(children: [
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                item.itemName,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: const TextStyle(
+                  color: AppColors.textPrimary,
+                  fontSize: 12,
+                  fontWeight: FontWeight.w800,
+                ),
+              ),
+              Text(
+                '$qtyText ${item.unit}',
+                style: const TextStyle(
+                  color: AppColors.textHint,
+                  fontSize: 10,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+            ],
+          ),
+        ),
+        Text(
+          _currency.format(item.amount),
+          style: const TextStyle(
+            color: AppColors.textSecondary,
+            fontSize: 12,
+            fontWeight: FontWeight.w800,
+          ),
+        ),
+      ]),
+    );
+  }
+
+  Widget _buildPaymentBreakdown({
+    required List<UdharEntryModel> payments,
+    required double creditAmount,
+    required double paidAmount,
+    required double balance,
+    required bool isEn,
+  }) {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(10),
+      decoration: BoxDecoration(
+        color: AppColors.background,
+        borderRadius: BorderRadius.circular(10),
+        border: Border.all(color: AppColors.border),
+      ),
+      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        Row(children: [
+          Expanded(
+            child: Text(
+              AppLang.tr(isEn, 'Part payments', 'Part payments'),
+              style: const TextStyle(
+                color: AppColors.textPrimary,
+                fontSize: 12,
+                fontWeight: FontWeight.w900,
+              ),
+            ),
+          ),
+          Text(
+            _currency.format(paidAmount),
+            style: const TextStyle(
+              color: AppColors.success,
+              fontSize: 12,
+              fontWeight: FontWeight.w900,
+            ),
+          ),
+        ]),
+        const SizedBox(height: 8),
+        if (payments.isEmpty)
+          Text(
+            AppLang.tr(isEn, 'No part payment yet', 'No part payment yet'),
+            style: const TextStyle(
+              color: AppColors.textHint,
+              fontSize: 11,
+              fontWeight: FontWeight.w600,
+            ),
+          )
+        else
+          ...payments.map((payment) {
+            final paymentMeta = UdharPaymentMeta.tryParseNote(payment.note);
+            return Padding(
+              padding: const EdgeInsets.only(bottom: 8),
+              child: Row(children: [
+                Container(
+                  width: 26,
+                  height: 26,
+                  decoration: BoxDecoration(
+                    color: AppColors.success.withOpacity(0.1),
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: const Icon(
+                    Icons.payments_rounded,
+                    size: 15,
+                    color: AppColors.success,
+                  ),
+                ),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        _paymentMethodLabel(
+                            paymentMeta?.paymentMethod ?? 'cash', isEn),
+                        style: const TextStyle(
+                          color: AppColors.textPrimary,
+                          fontSize: 12,
+                          fontWeight: FontWeight.w800,
+                        ),
+                      ),
+                      Text(
+                        '${_dateFmt.format(payment.entryDate)}  ${_timeFmt.format(payment.createdAt)}',
+                        style: const TextStyle(
+                          color: AppColors.textHint,
+                          fontSize: 10,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                Text(
+                  '-${_currency.format(payment.amount)}',
+                  style: const TextStyle(
+                    color: AppColors.success,
+                    fontSize: 12,
+                    fontWeight: FontWeight.w900,
+                  ),
+                ),
+              ]),
+            );
+          }),
+        const Divider(height: 14, color: AppColors.border),
+        Row(children: [
+          Expanded(
+            child: Text(
+              '${AppLang.tr(isEn, 'Credit amount', 'Credit amount')}: ${_currency.format(creditAmount)}',
+              style: const TextStyle(
+                color: AppColors.textSecondary,
+                fontSize: 11,
+                fontWeight: FontWeight.w800,
+              ),
+            ),
+          ),
+          Text(
+            '${AppLang.tr(isEn, 'Left', 'Left')}: ${_currency.format(balance)}',
+            style: TextStyle(
+              color: balance <= 0 ? AppColors.success : AppColors.error,
+              fontSize: 12,
+              fontWeight: FontWeight.w900,
+            ),
+          ),
+        ]),
+      ]),
+    );
+  }
+
   Widget _smallBadge(String label, IconData icon, Color color) {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
@@ -685,6 +1020,32 @@ class _ReceivablePartyDetailScreenState
     );
   }
 
+  int _timelineItemCount() {
+    return _entries.where((entry) {
+      if (_isAdvancePaymentEntry(entry)) return false;
+      return entry.entryType == 'credit';
+    }).length;
+  }
+
+  bool _isAdvancePaymentEntry(UdharEntryModel entry) {
+    if (entry.entryType != 'debit') return false;
+    final note = entry.note.toLowerCase();
+    if (note.contains('advance payment on credit sale')) return true;
+
+    for (final credit in _entries.where((e) => e.entryType == 'credit')) {
+      final creditMeta = SavedCreditSale.tryParseNote(credit.note);
+      if (creditMeta == null || creditMeta.advancePaid <= 0) continue;
+      final sameAmount = (entry.amount - creditMeta.advancePaid).abs() < 0.01;
+      final sameDay =
+          entry.entryDate.difference(credit.entryDate).abs().inDays <= 1;
+      final sameBill = creditMeta.billId != null &&
+          note.contains(creditMeta.billId!.toLowerCase());
+      if (sameAmount && (sameDay || sameBill)) return true;
+    }
+
+    return false;
+  }
+
   String _paymentMethodLabel(String method, bool isEn) {
     switch (method.toLowerCase()) {
       case 'upi':
@@ -697,4 +1058,16 @@ class _ReceivablePartyDetailScreenState
         return AppLang.tr(isEn, 'Cash payment', 'नकद भुगतान');
     }
   }
+}
+
+class _ReceivableTimelineCard {
+  final UdharEntryModel entry;
+  final List<UdharEntryModel> payments;
+  final double dueAmount;
+
+  const _ReceivableTimelineCard({
+    required this.entry,
+    this.payments = const [],
+    required this.dueAmount,
+  });
 }
