@@ -556,16 +556,6 @@ class _SaleEntryScreenState extends ConsumerState<SaleEntryScreen> {
         note: credit.toEntryNote(billId: billId),
       );
 
-      if (credit.advancePaid > 0) {
-        debitEntry = await SupabaseService.addDebitEntry(
-          shopId: shopId,
-          userId: userId,
-          customerId: customer.id,
-          amount: credit.advancePaid,
-          note: SupabaseService.creditSaleAdvanceNote,
-        );
-      }
-
       await SupabaseService.updateCustomerTotalDue(
         customer.id,
         (oldDue ?? 0) + credit.creditAmount,
