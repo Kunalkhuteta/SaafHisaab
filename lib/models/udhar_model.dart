@@ -145,6 +145,8 @@ class UdharEntryModel {
   final String customerId;
   final String entryType; // 'credit' = gave udhar, 'debit' = received payment
   final double amount;
+  final bool isPaid;
+  final double partypaid;
   final String note;
   final DateTime entryDate;
   final DateTime createdAt;
@@ -156,6 +158,8 @@ class UdharEntryModel {
     required this.customerId,
     this.entryType = 'credit',
     required this.amount,
+    this.isPaid = false,
+    this.partypaid = 0,
     this.note = '',
     required this.entryDate,
     required this.createdAt,
@@ -169,6 +173,10 @@ class UdharEntryModel {
       customerId: json['customer_id'] ?? '',
       entryType: json['entry_type'] ?? 'credit',
       amount: (json['amount'] ?? 0).toDouble(),
+      isPaid: json['isPaid'] ?? json['is_paid'] ?? false,
+      partypaid: (json['partypaid'] as num?)?.toDouble() ??
+          (json['party_paid'] as num?)?.toDouble() ??
+          0,
       note: json['note'] ?? '',
       entryDate: DateTime.parse(json['entry_date']),
       createdAt: DateTime.parse(json['created_at']),
