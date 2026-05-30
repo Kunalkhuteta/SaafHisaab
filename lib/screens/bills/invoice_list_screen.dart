@@ -10,6 +10,7 @@ import '../../globalVar.dart';
 import '../../services/ai_ocr_service.dart';
 import 'bill_review_screen.dart';
 import '../sales/sale_entry_screen.dart';
+import '../sales/sale_return_screen.dart';
 
 class InvoiceListScreen extends ConsumerStatefulWidget {
   final String billType;
@@ -134,6 +135,18 @@ class _InvoiceListScreenState extends ConsumerState<InvoiceListScreen> {
   }
 
   void _openEntryForm(BuildContext context) async {
+    if (widget.billType == 'sale_return') {
+      final result = await Navigator.push<bool>(context, MaterialPageRoute(
+        builder: (_) => const SaleReturnScreen(),
+      ));
+      if (result == true) {
+        ref.invalidate(filteredBillsProvider);
+        ref.invalidate(dashboardStatsProvider);
+        ref.invalidate(itemMasterProvider);
+      }
+      return;
+    }
+
     final result = await Navigator.push<bool>(context, MaterialPageRoute(
       builder: (_) => SaleEntryScreen(billType: widget.billType),
     ));
