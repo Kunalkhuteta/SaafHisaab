@@ -112,6 +112,10 @@ class _SaleEntryScreenState extends ConsumerState<SaleEntryScreen> {
   bool _isSaving = false;
   SavedCreditSale? _creditSale;
   SavedCreditSale? _originalCreditSale;
+  double _availableAdjustmentAmount = 0;
+  double _adjustedAmount = 0;
+  String? _adjustmentCustomerId;
+  bool _loadingAdjustment = false;
 
   double get _grandTotal {
     if ((_paymentMode == 'credit' || _paymentMode == 'split') && _creditSale != null) {
@@ -119,6 +123,9 @@ class _SaleEntryScreenState extends ConsumerState<SaleEntryScreen> {
     }
     return _lineItems.fold(0.0, (sum, item) => sum + item.lineTotal);
   }
+
+  double get _payableTotal =>
+      (_grandTotal - _adjustedAmount).clamp(0.0, double.infinity).toDouble();
 
   String get _billType => widget.bill?.billType ?? widget.billType;
   bool get _deductsStock => InvType.deductsStock(_billType);
@@ -328,6 +335,206 @@ class _SaleEntryScreenState extends ConsumerState<SaleEntryScreen> {
     }
   }
 
+  Future<void> _loadAdjustmentForCustomer({
+    UdharCustomerModel? selectedCustomer,
+    bool clearApplied = false,
+  }) async {
+    if (_billType != 'sale') return;
+    final name = _customerCtrl.text.trim();
+    if (name.isEmpty && selectedCustomer == null) {
+      if (mounted) {
+        setState(() {
+          _availableAdjustmentAmount = 0;
+          _adjustedAmount = 0;
+          _adjustmentCustomerId = null;
+        });
+      }
+      return;
+    }
+
+    setState(() => _loadingAdjustment = true);
+    try {
+      final shop = await ref.read(shopProvider.future);
+      if (shop == null) return;
+      final customer =
+          selectedCustomer ?? await SupabaseService.findCustomerByName(shop.id, name);
+      if (customer == null) {
+        if (mounted) {
+          setState(() {
+            _availableAdjustmentAmount = 0;
+            _adjustedAmount = 0;
+            _adjustmentCustomerId = null;
+          });
+        }
+        return;
+      }
+
+      final available =
+          await SupabaseService.getCustomerAdjustmentAmount(customer.id);
+      if (mounted) {
+        setState(() {
+          _availableAdjustmentAmount = available;
+          _adjustmentCustomerId = customer.id;
+          if (clearApplied || _adjustedAmount > available) {
+            _adjustedAmount = 0;
+          }
+        });
+      }
+    } catch (e) {
+      debugPrint('Load adjustment failed: $e');
+    } finally {
+      if (mounted) setState(() => _loadingAdjustment = false);
+    }
+  }
+
+  Future<void> _applyAdjustment(bool isEn) async {
+    if (_availableAdjustmentAmount <= 0 || _grandTotal <= 0) return;
+    final ctrl = TextEditingController(
+      text: _availableAdjustmentAmount.clamp(0, _grandTotal).toStringAsFixed(0),
+    );
+    final value = await showDialog<double>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: Text(AppLang.tr(
+          isEn,
+          'Adjust return balance',
+          'वापसी राशि समायोजित करें',
+        )),
+        content: Column(mainAxisSize: MainAxisSize.min, children: [
+          Text(
+            AppLang.tr(
+              isEn,
+              'Available: Rs ${_availableAdjustmentAmount.toStringAsFixed(0)}',
+              'उपलब्ध: Rs ${_availableAdjustmentAmount.toStringAsFixed(0)}',
+            ),
+          ),
+          const SizedBox(height: 12),
+          TextField(
+            controller: ctrl,
+            keyboardType: const TextInputType.numberWithOptions(decimal: true),
+            decoration: InputDecoration(
+              labelText: AppLang.tr(isEn, 'Amount to adjust', 'समायोजित राशि'),
+              border: const OutlineInputBorder(),
+            ),
+          ),
+        ]),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: Text(AppLang.tr(isEn, 'Cancel', 'रद्द करें')),
+          ),
+          ElevatedButton(
+            onPressed: () {
+              final amount = double.tryParse(ctrl.text) ?? 0;
+              Navigator.pop(ctx, amount);
+            },
+            child: Text(AppLang.tr(isEn, 'Apply', 'लागू करें')),
+          ),
+        ],
+      ),
+    );
+    if (value == null) return;
+    final safeAmount =
+        value.clamp(0, _availableAdjustmentAmount).clamp(0, _grandTotal).toDouble();
+    setState(() {
+      _adjustedAmount = safeAmount;
+      if (_creditSale != null) {
+        _creditSale = null;
+        _paymentMode = 'cash';
+      }
+    });
+  }
+
+  Future<void> _showAdjustmentDetails(bool isEn) async {
+    final customerId = _adjustmentCustomerId;
+    if (customerId == null || customerId.isEmpty) return;
+    final entries = await SupabaseService.getAdjustmentEntriesForCustomer(customerId);
+    if (!mounted) return;
+    await showModalBottomSheet<void>(
+      context: context,
+      backgroundColor: AppColors.surface,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(22)),
+      ),
+      builder: (_) => SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.all(18),
+          child: Column(mainAxisSize: MainAxisSize.min, children: [
+            Row(children: [
+              Expanded(
+                child: Text(
+                  AppLang.tr(isEn, 'Adjustment Details', 'समायोजन विवरण'),
+                  style: const TextStyle(
+                    fontSize: 18,
+                    fontWeight: FontWeight.w900,
+                    color: AppColors.textPrimary,
+                  ),
+                ),
+              ),
+              Text(
+                'Rs ${_availableAdjustmentAmount.toStringAsFixed(0)}',
+                style: const TextStyle(
+                  fontSize: 18,
+                  fontWeight: FontWeight.w900,
+                  color: AppColors.warning,
+                ),
+              ),
+            ]),
+            const SizedBox(height: 12),
+            if (entries.isEmpty)
+              Padding(
+                padding: const EdgeInsets.all(24),
+                child: Text(
+                  AppLang.tr(isEn, 'No adjustment entries found.', 'कोई समायोजन एंट्री नहीं मिली।'),
+                  style: const TextStyle(color: AppColors.textSecondary),
+                ),
+              )
+            else
+              Flexible(
+                child: ListView.separated(
+                  shrinkWrap: true,
+                  itemCount: entries.length,
+                  separatorBuilder: (_, __) =>
+                      const Divider(height: 1, color: AppColors.border),
+                  itemBuilder: (_, index) {
+                    final entry = entries[index];
+                    final isUsed = entry.entryType == 'adjustment_used';
+                    return ListTile(
+                      contentPadding: EdgeInsets.zero,
+                      leading: Icon(
+                        isUsed
+                            ? Icons.remove_circle_outline_rounded
+                            : Icons.add_circle_outline_rounded,
+                        color: isUsed ? AppColors.error : AppColors.success,
+                      ),
+                      title: Text(
+                        isUsed
+                            ? AppLang.tr(isEn, 'Adjusted in sale', 'बिक्री में समायोजित')
+                            : AppLang.tr(isEn, 'Return credit added', 'वापसी क्रेडिट जुड़ा'),
+                        style: const TextStyle(fontWeight: FontWeight.w800),
+                      ),
+                      subtitle: Text(
+                        '${entry.entryDate.day}/${entry.entryDate.month}/${entry.entryDate.year}\n${entry.note}',
+                        maxLines: 3,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                      trailing: Text(
+                        '${isUsed ? '-' : '+'}Rs ${entry.amount.toStringAsFixed(0)}',
+                        style: TextStyle(
+                          color: isUsed ? AppColors.error : AppColors.success,
+                          fontWeight: FontWeight.w900,
+                        ),
+                      ),
+                    );
+                  },
+                ),
+              ),
+          ]),
+        ),
+      ),
+    );
+  }
+
   Future<Uint8List> _compressBillImage(Uint8List bytes) async {
     try {
       return await FlutterImageCompress.compressWithList(
@@ -357,11 +564,24 @@ class _SaleEntryScreenState extends ConsumerState<SaleEntryScreen> {
   }
 
   String _saleNotesForPersistence() {
+    final parts = <String>[];
     final baseNotes = _notesCtrl.text.trim();
-    if (_creditSale == null) return baseNotes;
-    final marker =
-        '__saafhisaab_credit_advance:${_creditSale!.advancePaid};credit:${_creditSale!.creditAmount}__';
-    return baseNotes.isEmpty ? marker : '$baseNotes\n$marker';
+    if (baseNotes.isNotEmpty) parts.add(baseNotes);
+    if (_creditSale != null) {
+      parts.add(
+        '__saafhisaab_credit_advance:${_creditSale!.advancePaid};credit:${_creditSale!.creditAmount}__',
+      );
+    }
+    if (_adjustedAmount > 0) {
+      parts.add(SupabaseService.saleAdjustmentNote(
+        adjustedAmount: _adjustedAmount,
+        grossAmount: _grandTotal,
+        paidAmount: _payableTotal,
+        remainingAdjustment:
+            (_availableAdjustmentAmount - _adjustedAmount).clamp(0, double.infinity).toDouble(),
+      ));
+    }
+    return parts.join('\n');
   }
 
   SavedCreditSale? _parsePurchaseCreditFromNotes(
@@ -614,7 +834,7 @@ class _SaleEntryScreenState extends ConsumerState<SaleEntryScreen> {
           userId: userId,
           isEn: isEn,
           initialPartyName: _customerCtrl.text.trim(),
-          initialTotal: _grandTotal,
+          initialTotal: _payableTotal,
           stockItems: stockItems,
           purchaseParties: parties,
           existingCredit: _creditSale,
@@ -635,7 +855,7 @@ class _SaleEntryScreenState extends ConsumerState<SaleEntryScreen> {
           isEn: isEn,
           initialCustomerName: _customerCtrl.text.trim(),
           initialCustomerPhone: _customerPhoneCtrl.text.trim(),
-          initialTotal: _grandTotal,
+          initialTotal: _payableTotal,
           stockItems: stockItems,
           existingCredit: _creditSale,
         ),
@@ -694,6 +914,9 @@ class _SaleEntryScreenState extends ConsumerState<SaleEntryScreen> {
     if (_customerCtrl.text.trim().isEmpty) {
       await _showMissingCustomerAlert(isEn);
       return;
+    }
+    if (_adjustedAmount > _grandTotal) {
+      setState(() => _adjustedAmount = _grandTotal);
     }
 
     final bool isCreditSale = (_paymentMode == 'credit' || _paymentMode == 'split') && _creditSale != null;
@@ -958,6 +1181,24 @@ class _SaleEntryScreenState extends ConsumerState<SaleEntryScreen> {
         );
         if (persistedCredit != null) {
           _creditSale = persistedCredit;
+        }
+      }
+
+      if (_billType == 'sale' && _adjustedAmount > 0) {
+        final customerId = _adjustmentCustomerId;
+        if (customerId != null && customerId.isNotEmpty) {
+          final remaining = await SupabaseService.deductCustomerAdjustmentAmount(
+            customerId,
+            _adjustedAmount,
+          );
+          await SupabaseService.addAdjustmentUsedEntry(
+            shopId: shop.id,
+            userId: userId,
+            customerId: customerId,
+            amount: _adjustedAmount,
+            note:
+                'Adjusted in sale bill $billId. Remaining adjustment: Rs ${remaining.toStringAsFixed(0)}',
+          );
         }
       }
 
@@ -1243,11 +1484,34 @@ class _SaleEntryScreenState extends ConsumerState<SaleEntryScreen> {
           label: AppLang.tr(isEn, 'Customer Name', 'ग्राहक का नाम'),
           hint: AppLang.tr(isEn, 'e.g. Ramesh Ji', 'जैसे रमेश जी'),
           required: true,
-          onCustomerSelected: (_) => setState(() {}),
-          onChanged: (_) => setState(() {}),
+          onCustomerSelected: (customer) {
+            setState(() {});
+            if (customer != null) {
+              _loadAdjustmentForCustomer(
+                selectedCustomer: customer,
+                clearApplied: true,
+              );
+            }
+          },
+          onChanged: (_) {
+            setState(() {
+              _availableAdjustmentAmount = 0;
+              _adjustedAmount = 0;
+              _adjustmentCustomerId = null;
+            });
+            _loadAdjustmentForCustomer(clearApplied: true);
+          },
         ),
 
         const SizedBox(height: 20),
+
+        if (_billType == 'sale' &&
+            (_availableAdjustmentAmount > 0 ||
+                _adjustedAmount > 0 ||
+                _loadingAdjustment)) ...[
+          _adjustmentCard(isEn),
+          const SizedBox(height: 16),
+        ],
 
         if (_creditSale == null) ...[
           // ── Line Items ──
@@ -1349,6 +1613,31 @@ class _SaleEntryScreenState extends ConsumerState<SaleEntryScreen> {
           ]),
         ),
 
+        if (_adjustedAmount > 0) ...[
+          const SizedBox(height: 8),
+          Container(
+            width: double.infinity,
+            padding: const EdgeInsets.all(12),
+            decoration: BoxDecoration(
+              color: AppColors.warning.withOpacity(0.08),
+              borderRadius: BorderRadius.circular(12),
+              border: Border.all(color: AppColors.warning.withOpacity(0.22)),
+            ),
+            child: Column(children: [
+              _adjustmentAmountRow(
+                AppLang.tr(isEn, 'Return adjusted', 'वापसी समायोजित'),
+                -_adjustedAmount,
+                AppColors.warning,
+              ),
+              _adjustmentAmountRow(
+                AppLang.tr(isEn, 'Payable now', 'अब देय'),
+                _payableTotal,
+                AppColors.success,
+              ),
+            ]),
+          ),
+        ],
+
         const SizedBox(height: 16),
 
         if (widget.bill != null) ...[
@@ -1395,6 +1684,158 @@ class _SaleEntryScreenState extends ConsumerState<SaleEntryScreen> {
           ),
         ),
         const SizedBox(height: 24),
+      ]),
+    );
+  }
+
+  Widget _adjustmentCard(bool isEn) {
+    final remaining =
+        (_availableAdjustmentAmount - _adjustedAmount).clamp(0, double.infinity).toDouble();
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: AppColors.warning.withOpacity(0.08),
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: AppColors.warning.withOpacity(0.24)),
+      ),
+      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        Row(children: [
+          Container(
+            width: 36,
+            height: 36,
+            decoration: BoxDecoration(
+              color: AppColors.warning.withOpacity(0.12),
+              borderRadius: BorderRadius.circular(10),
+            ),
+            child: const Icon(
+              Icons.assignment_return_rounded,
+              color: AppColors.warning,
+              size: 19,
+            ),
+          ),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              Text(
+                AppLang.tr(isEn, 'Return adjustment available', 'वापसी समायोजन उपलब्ध'),
+                style: const TextStyle(
+                  color: AppColors.textPrimary,
+                  fontSize: 13,
+                  fontWeight: FontWeight.w900,
+                ),
+              ),
+              Text(
+                _loadingAdjustment
+                    ? AppLang.tr(isEn, 'Checking...', 'जांच हो रही है...')
+                    : AppLang.tr(
+                        isEn,
+                        'Available Rs ${_availableAdjustmentAmount.toStringAsFixed(0)}',
+                        'उपलब्ध Rs ${_availableAdjustmentAmount.toStringAsFixed(0)}',
+                      ),
+                style: const TextStyle(
+                  color: AppColors.textSecondary,
+                  fontSize: 11,
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+            ]),
+          ),
+          TextButton(
+            onPressed: _adjustmentCustomerId == null
+                ? null
+                : () => _showAdjustmentDetails(isEn),
+            child: Text(AppLang.tr(isEn, 'Details', 'विवरण')),
+          ),
+        ]),
+        if (_adjustedAmount > 0) ...[
+          const SizedBox(height: 10),
+          Container(
+            padding: const EdgeInsets.all(10),
+            decoration: BoxDecoration(
+              color: AppColors.surface,
+              borderRadius: BorderRadius.circular(10),
+              border: Border.all(color: AppColors.border),
+            ),
+            child: Column(children: [
+              _adjustmentAmountRow(
+                AppLang.tr(isEn, 'Bill total', 'बिल कुल'),
+                _grandTotal,
+                AppColors.textPrimary,
+              ),
+              _adjustmentAmountRow(
+                AppLang.tr(isEn, 'Adjusted', 'समायोजित'),
+                -_adjustedAmount,
+                AppColors.warning,
+              ),
+              _adjustmentAmountRow(
+                AppLang.tr(isEn, 'Payable now', 'अब देय'),
+                _payableTotal,
+                AppColors.success,
+              ),
+              _adjustmentAmountRow(
+                AppLang.tr(isEn, 'Remaining adjustment', 'बाकी समायोजन'),
+                remaining,
+                AppColors.textSecondary,
+              ),
+            ]),
+          ),
+        ],
+        const SizedBox(height: 10),
+        Row(children: [
+          Expanded(
+            child: OutlinedButton.icon(
+              onPressed: _availableAdjustmentAmount <= 0 || _grandTotal <= 0
+                  ? null
+                  : () => _applyAdjustment(isEn),
+              icon: const Icon(Icons.tune_rounded, size: 18),
+              label: Text(
+                _adjustedAmount > 0
+                    ? AppLang.tr(isEn, 'Change amount', 'राशि बदलें')
+                    : AppLang.tr(isEn, 'Adjust', 'समायोजित करें'),
+              ),
+              style: OutlinedButton.styleFrom(
+                foregroundColor: AppColors.warning,
+                side: const BorderSide(color: AppColors.warning),
+              ),
+            ),
+          ),
+          if (_adjustedAmount > 0) ...[
+            const SizedBox(width: 8),
+            IconButton(
+              onPressed: () => setState(() => _adjustedAmount = 0),
+              icon: const Icon(Icons.close_rounded),
+              color: AppColors.error,
+              tooltip: AppLang.tr(isEn, 'Remove adjustment', 'समायोजन हटाएं'),
+            ),
+          ],
+        ]),
+      ]),
+    );
+  }
+
+  Widget _adjustmentAmountRow(String label, double value, Color color) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 5),
+      child: Row(children: [
+        Expanded(
+          child: Text(
+            label,
+            style: const TextStyle(
+              color: AppColors.textSecondary,
+              fontSize: 11,
+              fontWeight: FontWeight.w700,
+            ),
+          ),
+        ),
+        Text(
+          '${value < 0 ? '-' : ''}Rs ${value.abs().toStringAsFixed(0)}',
+          style: TextStyle(
+            color: color,
+            fontSize: 12,
+            fontWeight: FontWeight.w900,
+          ),
+        ),
       ]),
     );
   }
