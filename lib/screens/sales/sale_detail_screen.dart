@@ -12,6 +12,7 @@ import '../../models/udhar_model.dart';
 import '../../globalVar.dart';
 import '../../widgets/credit_entry_sheet.dart';
 import 'sale_entry_screen.dart';
+import 'sale_return_screen.dart';
 
 class SaleDetailScreen extends ConsumerStatefulWidget {
   final BillModel bill;
@@ -317,6 +318,26 @@ class _SaleDetailScreenState extends ConsumerState<SaleDetailScreen> {
                 ),
                 const SizedBox(height: 10),
                 Row(children: [
+                  Expanded(child: _actionBtn(
+                    icon: Icons.assignment_return_rounded,
+                    label: AppLang.tr(isEn, 'Return', 'Wapsi'),
+                    color: AppColors.warning,
+                    onTap: () async {
+                      final result = await Navigator.push<bool>(
+                        context,
+                        MaterialPageRoute(
+                          builder: (_) => SaleReturnScreen(initialBill: bill),
+                        ),
+                      );
+                      if (result == true && mounted) {
+                        ref.invalidate(filteredBillsProvider);
+                        ref.invalidate(dashboardStatsProvider);
+                        ref.invalidate(itemMasterProvider);
+                        Navigator.pop(context, true);
+                      }
+                    },
+                  )),
+                  const SizedBox(width: 10),
                   Expanded(child: _actionBtn(
                     icon: Icons.add_shopping_cart_rounded,
                     label: AppLang.tr(isEn, 'New Sale', 'नई बिक्री'),
