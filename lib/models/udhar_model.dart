@@ -192,6 +192,36 @@ class UdharEntryModel {
       'amount': amount,
       'note': note,
       'entry_date': entryDate.toIso8601String().split('T')[0],
+      'is_paid': isPaid,
+      'party_paid': partypaid,
     };
+  }
+
+  UdharEntryModel copyWith({
+    String? id,
+    String? shopId,
+    String? userId,
+    String? customerId,
+    String? entryType,
+    double? amount,
+    bool? isPaid,
+    double? partypaid,
+    String? note,
+    DateTime? entryDate,
+    DateTime? createdAt,
+  }) {
+    return UdharEntryModel(
+      id: id ?? this.id,
+      shopId: shopId ?? this.shopId,
+      userId: userId ?? this.userId,
+      customerId: customerId ?? this.customerId,
+      entryType: entryType ?? this.entryType,
+      amount: amount ?? this.amount,
+      isPaid: isPaid ?? this.isPaid,
+      partypaid: partypaid ?? this.partypaid,
+      note: note ?? this.note,
+      entryDate: entryDate ?? this.entryDate,
+      createdAt: createdAt ?? this.createdAt,
+    );
   }
 }
