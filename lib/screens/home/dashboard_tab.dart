@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:fl_chart/fl_chart.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 import 'dart:math' as math;
 import 'dart:async';
 
@@ -113,11 +114,58 @@ class _DashboardTabState extends ConsumerState<DashboardTab> {
     // Filter bills for grid cards (Month)
     final gridBills = allBills.where((b) => !b.billDate.isBefore(gridStart) && !b.billDate.isAfter(gridEnd)).toList();
     
+    final gridBillIds = gridBills
+        .where((b) => b.billType == 'sale' || b.billType == 'purchase')
+        .map((b) => b.id)
+        .where((id) => id.isNotEmpty)
+        .toList();
+
+    final Map<String, String> billPaymentModes = {};
+    if (gridBillIds.isNotEmpty) {
+      try {
+        final salesData = await Supabase.instance.client
+            .from('sales')
+            .select('bill_id, payment_mode')
+            .eq('shop_id', shopId)
+            .inFilter('bill_id', gridBillIds);
+        
+        for (var row in salesData as List) {
+          final bId = row['bill_id'] as String?;
+          if (bId != null) {
+            billPaymentModes[bId] = row['payment_mode'] ?? 'cash';
+          }
+        }
+      } catch (e) {
+        debugPrint('Error loading bill payment modes for dashboard: $e');
+      }
+    }
+
     double totalSales = 0;
     double totalPurchase = 0;
+    double cashSales = 0;
+    double creditSales = 0;
+    double cashPurchase = 0;
+    double creditPurchase = 0;
+
     for (final b in gridBills) {
-      if (b.billType == 'sale') totalSales += b.amount;
-      if (b.billType == 'purchase') totalPurchase += b.amount;
+      if (b.billType == 'sale') {
+        totalSales += b.amount;
+        final mode = billPaymentModes[b.id] ?? 'cash';
+        if (mode == 'credit' || mode == 'split') {
+          creditSales += b.amount;
+        } else {
+          cashSales += b.amount;
+        }
+      }
+      if (b.billType == 'purchase') {
+        totalPurchase += b.amount;
+        final mode = billPaymentModes[b.id] ?? 'cash';
+        if (mode == 'credit' || mode == 'split') {
+          creditPurchase += b.amount;
+        } else {
+          cashPurchase += b.amount;
+        }
+      }
     }
     double totalCredit = receivables.fold(0.0, (s, r) => s + r.totalDue);
 
@@ -140,6 +188,10 @@ class _DashboardTabState extends ConsumerState<DashboardTab> {
     return _DashboardData(
       totalSales: totalSales,
       totalPurchase: totalPurchase,
+      cashSales: cashSales,
+      creditSales: creditSales,
+      cashPurchase: cashPurchase,
+      creditPurchase: creditPurchase,
       totalCredit: totalCredit,
       lowStockCount: lowStock,
       charts: charts,
@@ -233,7 +285,7 @@ class _DashboardTabState extends ConsumerState<DashboardTab> {
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
-                            // 1/3 Space: 2x2 Grid
+                            // 1/3 Space: 2x3 Grid
                             GridView.count(
                               crossAxisCount: 2,
                               shrinkWrap: true,
@@ -243,21 +295,35 @@ class _DashboardTabState extends ConsumerState<DashboardTab> {
                               childAspectRatio: 2.3,
                               children: [
                                 _gridCard(
-                                  title: AppLang.tr(isEn, 'Sales', 'बिक्री'),
-                                  amount: data.totalSales,
+                                  title: AppLang.tr(isEn, 'Cash Sales', 'नकद बिक्री'),
+                                  amount: data.cashSales,
                                   color: AppColors.success,
                                   icon: Icons.trending_up_rounded,
                                   onTap: () => _gotoInvoice('sale', isEn),
                                 ),
                                 _gridCard(
-                                  title: AppLang.tr(isEn, 'Purchase', 'खरीद'),
-                                  amount: data.totalPurchase,
+                                  title: AppLang.tr(isEn, 'Credit Sales', 'उधार बिक्री'),
+                                  amount: data.creditSales,
+                                  color: AppColors.warning,
+                                  icon: Icons.assignment_turned_in_rounded,
+                                  onTap: () => _gotoInvoice('sale', isEn),
+                                ),
+                                _gridCard(
+                                  title: AppLang.tr(isEn, 'Cash Purchase', 'नकद खरीद'),
+                                  amount: data.cashPurchase,
                                   color: AppColors.primary,
                                   icon: Icons.shopping_bag_rounded,
                                   onTap: () => _gotoInvoice('purchase', isEn),
                                 ),
                                 _gridCard(
-                                  title: AppLang.tr(isEn, 'Credit', 'उधार'),
+                                  title: AppLang.tr(isEn, 'Credit Purchase', 'उधार खरीद'),
+                                  amount: data.creditPurchase,
+                                  color: AppColors.primaryLight,
+                                  icon: Icons.assignment_rounded,
+                                  onTap: () => _gotoInvoice('purchase', isEn),
+                                ),
+                                _gridCard(
+                                  title: AppLang.tr(isEn, 'Total Udhar', 'कुल उधार'),
                                   amount: data.totalCredit,
                                   color: AppColors.purple,
                                   icon: Icons.account_balance_wallet_rounded,
@@ -622,6 +688,10 @@ class _DashboardAppBar extends StatelessWidget {
 class _DashboardData {
   final double totalSales;
   final double totalPurchase;
+  final double cashSales;
+  final double creditSales;
+  final double cashPurchase;
+  final double creditPurchase;
   final double totalCredit;
   final int lowStockCount;
   final ChartsData charts;
@@ -631,6 +701,10 @@ class _DashboardData {
   const _DashboardData({
     required this.totalSales,
     required this.totalPurchase,
+    required this.cashSales,
+    required this.creditSales,
+    required this.cashPurchase,
+    required this.creditPurchase,
     required this.totalCredit,
     required this.lowStockCount,
     required this.charts,
@@ -641,6 +715,10 @@ class _DashboardData {
   factory _DashboardData.empty() => _DashboardData(
         totalSales: 0,
         totalPurchase: 0,
+        cashSales: 0,
+        creditSales: 0,
+        cashPurchase: 0,
+        creditPurchase: 0,
         totalCredit: 0,
         lowStockCount: 0,
         charts: ChartsData.empty(),
