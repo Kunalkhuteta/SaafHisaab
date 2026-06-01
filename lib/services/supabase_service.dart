@@ -24,12 +24,32 @@ class SupabaseService {
   // Use getter so it's always fresh
   static SupabaseClient get _client => Supabase.instance.client;
   static const creditSaleAdvanceNote = 'Advance payment on credit sale';
+  static const adjustmentAmountColumn = 'tobeadjustAmount';
+  static const adjustmentAmountFallbackColumn = 'tobeadjust_amount';
+  static const saleAdjustmentNoteMarker = '__saafhisaab_sale_adjustment_v1__';
 
   static double _creditAdvanceFromNotes(String notes) {
     final match = RegExp(r'__saafhisaab_credit_advance:([0-9.]+);credit:([0-9.]+)__')
         .firstMatch(notes);
     if (match == null) return 0;
     return double.tryParse(match.group(1) ?? '') ?? 0;
+  }
+
+  static double saleAdjustmentFromNotes(String notes) {
+    final markerIndex = notes.indexOf(saleAdjustmentNoteMarker);
+    if (markerIndex < 0) return 0;
+    final raw = notes.substring(markerIndex + saleAdjustmentNoteMarker.length).trim();
+    final match = RegExp(r'"adjustedAmount"\s*:\s*([0-9.]+)').firstMatch(raw);
+    return double.tryParse(match?.group(1) ?? '') ?? 0;
+  }
+
+  static String saleAdjustmentNote({
+    required double adjustedAmount,
+    required double grossAmount,
+    required double paidAmount,
+    required double remainingAdjustment,
+  }) {
+    return '$saleAdjustmentNoteMarker{"adjustedAmount":$adjustedAmount,"grossAmount":$grossAmount,"paidAmount":$paidAmount,"remainingAdjustment":$remainingAdjustment}';
   }
 
   static Future<void> _trySyncDailyBalancesForDate(
@@ -140,6 +160,75 @@ class SupabaseService {
         .from('sales')
         .select()
         .eq('bill_id', billId)
+        .order('created_at');
+    return (data as List).map((s) => SaleModel.fromJson(s)).toList();
+  }
+
+  static Future<List<BillModel>> getSaleBillsForCustomer(
+    String shopId,
+    String customerName, {
+    DateTime? from,
+    DateTime? to,
+  }) async {
+    var request = _client
+        .from('bills')
+        .select()
+        .eq('shop_id', shopId)
+        .eq('bill_type', 'sale')
+        .ilike('vendor_name', '%${customerName.trim()}%');
+
+    if (from != null) {
+      request = request.gte('bill_date', from.toIso8601String().split('T')[0]);
+    }
+    if (to != null) {
+      request = request.lte('bill_date', to.toIso8601String().split('T')[0]);
+    }
+
+    final data = await request
+        .order('bill_date', ascending: false)
+        .order('created_at', ascending: false);
+    return (data as List).map((b) => BillModel.fromJson(b)).toList();
+  }
+
+  static Future<List<Map<String, dynamic>>> searchSaleCustomers(
+    String shopId,
+    String query,
+  ) async {
+    final trimmed = query.trim();
+    var request = _client
+        .from('bills')
+        .select('vendor_name')
+        .eq('shop_id', shopId)
+        .eq('bill_type', 'sale')
+        .neq('vendor_name', '');
+
+    final data = trimmed.isEmpty
+        ? await request.order('vendor_name').limit(50)
+        : await request
+            .ilike('vendor_name', '%$trimmed%')
+            .order('vendor_name')
+            .limit(50);
+
+    final names = <String, Map<String, dynamic>>{};
+    for (final row in data as List) {
+      final name = (row['vendor_name'] as String? ?? '').trim();
+      if (name.isEmpty) continue;
+      names.putIfAbsent(name.toLowerCase(), () => {
+            'name': name,
+            'phone': '',
+            'total_due': 0.0,
+            'source': 'cash',
+          });
+    }
+    return names.values.toList();
+  }
+
+  static Future<List<SaleModel>> getReturnSalesForBill(String referenceBillId) async {
+    final data = await _client
+        .from('sales')
+        .select()
+        .lt('quantity', 0)
+        .ilike('notes', '%__saafhisaab_return_ref:$referenceBillId%')
         .order('created_at');
     return (data as List).map((s) => SaleModel.fromJson(s)).toList();
   }
@@ -696,20 +785,44 @@ static Future<double> getTodaySalesTotal(String shopId) async {
     required double amount,
     String note = '',
   }) async {
-    final data = await _client
-        .from('udhar_entries')
-        .insert({
-          'shop_id': shopId,
-          'user_id': userId,
-          'customer_id': customerId,
-          'entry_type': 'credit',
-          'amount': amount,
-          'note': note,
-          'entry_date': DateTime.now().toIso8601String().split('T')[0],
-        })
-        .select()
-        .single();
-    return UdharEntryModel.fromJson(data);
+    try {
+      final data = await _client
+          .from('udhar_entries')
+          .insert({
+            'shop_id': shopId,
+            'user_id': userId,
+            'customer_id': customerId,
+            'entry_type': 'credit',
+            'amount': amount,
+            'note': note,
+            'entry_date': DateTime.now().toIso8601String().split('T')[0],
+            'is_paid': false,
+            'party_paid': 0.0,
+          })
+          .select()
+          .single();
+      final model = UdharEntryModel.fromJson(data);
+      await syncCustomerCreditEntriesPaidStatus(customerId);
+      return model;
+    } catch (e) {
+      if (e.toString().contains('column') || e.toString().contains('is_paid') || e.toString().contains('party_paid')) {
+        final data = await _client
+            .from('udhar_entries')
+            .insert({
+              'shop_id': shopId,
+              'user_id': userId,
+              'customer_id': customerId,
+              'entry_type': 'credit',
+              'amount': amount,
+              'note': note,
+              'entry_date': DateTime.now().toIso8601String().split('T')[0],
+            })
+            .select()
+            .single();
+        return UdharEntryModel.fromJson(data);
+      }
+      rethrow;
+    }
   }
 
   static Future<UdharEntryModel> addDebitEntry({
@@ -719,20 +832,91 @@ static Future<double> getTodaySalesTotal(String shopId) async {
     required double amount,
     String note = '',
   }) async {
-    final data = await _client
-        .from('udhar_entries')
-        .insert({
-          'shop_id': shopId,
-          'user_id': userId,
-          'customer_id': customerId,
-          'entry_type': 'debit',
-          'amount': amount,
-          'note': note,
-          'entry_date': DateTime.now().toIso8601String().split('T')[0],
-        })
-        .select()
-        .single();
-    return UdharEntryModel.fromJson(data);
+    try {
+      final data = await _client
+          .from('udhar_entries')
+          .insert({
+            'shop_id': shopId,
+            'user_id': userId,
+            'customer_id': customerId,
+            'entry_type': 'debit',
+            'amount': amount,
+            'note': note,
+            'entry_date': DateTime.now().toIso8601String().split('T')[0],
+            'is_paid': false,
+            'party_paid': 0.0,
+          })
+          .select()
+          .single();
+      final model = UdharEntryModel.fromJson(data);
+      await syncCustomerCreditEntriesPaidStatus(customerId);
+      return model;
+    } catch (e) {
+      if (e.toString().contains('column') || e.toString().contains('is_paid') || e.toString().contains('party_paid')) {
+        final data = await _client
+            .from('udhar_entries')
+            .insert({
+              'shop_id': shopId,
+              'user_id': userId,
+              'customer_id': customerId,
+              'entry_type': 'debit',
+              'amount': amount,
+              'note': note,
+              'entry_date': DateTime.now().toIso8601String().split('T')[0],
+            })
+            .select()
+            .single();
+        return UdharEntryModel.fromJson(data);
+      }
+      rethrow;
+    }
+  }
+
+  static Future<UdharEntryModel> addAdjustmentCreditEntry({
+    required String shopId,
+    required String userId,
+    required String customerId,
+    required double amount,
+    String note = '',
+  }) async {
+    try {
+      final data = await _client
+          .from('udhar_entries')
+          .insert({
+            'shop_id': shopId,
+            'user_id': userId,
+            'customer_id': customerId,
+            'entry_type': 'credit_adjustment',
+            'amount': amount,
+            'note': note,
+            'entry_date': DateTime.now().toIso8601String().split('T')[0],
+            'is_paid': false,
+            'party_paid': 0.0,
+          })
+          .select()
+          .single();
+      final model = UdharEntryModel.fromJson(data);
+      await syncCustomerCreditEntriesPaidStatus(customerId);
+      return model;
+    } catch (e) {
+      if (e.toString().contains('column') || e.toString().contains('is_paid') || e.toString().contains('party_paid')) {
+        final data = await _client
+            .from('udhar_entries')
+            .insert({
+              'shop_id': shopId,
+              'user_id': userId,
+              'customer_id': customerId,
+              'entry_type': 'credit_adjustment',
+              'amount': amount,
+              'note': note,
+              'entry_date': DateTime.now().toIso8601String().split('T')[0],
+            })
+            .select()
+            .single();
+        return UdharEntryModel.fromJson(data);
+      }
+      rethrow;
+    }
   }
 
   static Future<UdharEntryModel> recordUdharPayment({
@@ -770,6 +954,46 @@ static Future<double> getTodaySalesTotal(String shopId) async {
     return entry;
   }
 
+  static Future<void> syncCustomerCreditEntriesPaidStatus(String customerId) async {
+    try {
+      final entries = await getUdharEntriesForCustomer(customerId);
+      final credits = entries
+          .where((e) => e.entryType == 'credit')
+          .toList()
+          .reversed
+          .toList();
+
+      final debits = entries.where((e) => e.entryType == 'debit').toList();
+      double totalDebit = debits.fold<double>(0, (sum, entry) => sum + entry.amount);
+
+      for (final credit in credits) {
+        double paidForThis = 0.0;
+        if (totalDebit >= credit.amount) {
+          paidForThis = credit.amount;
+          totalDebit -= credit.amount;
+        } else if (totalDebit > 0) {
+          paidForThis = totalDebit;
+          totalDebit = 0.0;
+        }
+
+        final isPaid = paidForThis >= credit.amount;
+        if (credit.isPaid != isPaid || credit.partypaid != paidForThis) {
+          try {
+            await _client.from('udhar_entries').update({
+              'is_paid': isPaid,
+              'party_paid': paidForThis,
+            }).eq('id', credit.id);
+          } catch (e) {
+            // Gracefully ignore if columns do not exist in schema yet
+            debugPrint('Failed to update is_paid/party_paid column (possibly schema doesn\'t exist yet): $e');
+          }
+        }
+      }
+    } catch (e) {
+      debugPrint('Error syncing credit entries paid status: $e');
+    }
+  }
+
   static Future<void> updateCustomerTotalDue(
       String customerId, double newTotalDue) async {
     await _client
@@ -790,8 +1014,117 @@ static Future<double> getTodaySalesTotal(String shopId) async {
     return (data['total_due'] as num?)?.toDouble() ?? 0.0;
   }
 
+  static Future<double> getCustomerAdjustmentAmount(String customerId) async {
+    try {
+      final data = await _client
+          .from('udhar_customers')
+          .select(adjustmentAmountColumn)
+          .eq('id', customerId)
+          .single();
+      return (data[adjustmentAmountColumn] as num?)?.toDouble() ?? 0.0;
+    } catch (_) {
+      final data = await _client
+          .from('udhar_customers')
+          .select(adjustmentAmountFallbackColumn)
+          .eq('id', customerId)
+          .single();
+      return (data[adjustmentAmountFallbackColumn] as num?)?.toDouble() ?? 0.0;
+    }
+  }
+
+  static Future<void> updateCustomerAdjustmentAmount(
+    String customerId,
+    double newAmount,
+  ) async {
+    final safeAmount = newAmount < 0 ? 0.0 : newAmount;
+    try {
+      await _client
+          .from('udhar_customers')
+          .update({
+            adjustmentAmountColumn: safeAmount,
+            'updated_at': DateTime.now().toIso8601String(),
+          })
+          .eq('id', customerId);
+    } catch (_) {
+      await _client
+          .from('udhar_customers')
+          .update({
+            adjustmentAmountFallbackColumn: safeAmount,
+            'updated_at': DateTime.now().toIso8601String(),
+          })
+          .eq('id', customerId);
+    }
+  }
+
+  static Future<double> addCustomerAdjustmentAmount(
+    String customerId,
+    double amount,
+  ) async {
+    final current = await getCustomerAdjustmentAmount(customerId);
+    final next = current + amount;
+    await updateCustomerAdjustmentAmount(customerId, next);
+    return next;
+  }
+
+  static Future<double> deductCustomerAdjustmentAmount(
+    String customerId,
+    double amount,
+  ) async {
+    final current = await getCustomerAdjustmentAmount(customerId);
+    final next = (current - amount).clamp(0.0, double.infinity).toDouble();
+    await updateCustomerAdjustmentAmount(customerId, next);
+    return next;
+  }
+
+  static Future<List<UdharEntryModel>> getAdjustmentEntriesForCustomer(
+    String customerId,
+  ) async {
+    final data = await _client
+        .from('udhar_entries')
+        .select()
+        .eq('customer_id', customerId)
+        .inFilter('entry_type', ['credit_adjustment', 'adjustment_used'])
+        .order('entry_date', ascending: false)
+        .order('created_at', ascending: false);
+    return (data as List).map((e) => UdharEntryModel.fromJson(e)).toList();
+  }
+
+  static Future<UdharEntryModel> addAdjustmentUsedEntry({
+    required String shopId,
+    required String userId,
+    required String customerId,
+    required double amount,
+    String note = '',
+  }) async {
+    final data = await _client
+        .from('udhar_entries')
+        .insert({
+          'shop_id': shopId,
+          'user_id': userId,
+          'customer_id': customerId,
+          'entry_type': 'adjustment_used',
+          'amount': amount,
+          'note': note,
+          'entry_date': DateTime.now().toIso8601String().split('T')[0],
+        })
+        .select()
+        .single();
+    return UdharEntryModel.fromJson(data);
+  }
+
   static Future<void> deleteUdharEntry(String entryId) async {
-    await _client.from('udhar_entries').delete().eq('id', entryId);
+    try {
+      final entryData = await _client.from('udhar_entries').select('customer_id').eq('id', entryId).maybeSingle();
+      await _client.from('udhar_entries').delete().eq('id', entryId);
+      if (entryData != null) {
+        final customerId = entryData['customer_id'] as String?;
+        if (customerId != null) {
+          await syncCustomerCreditEntriesPaidStatus(customerId);
+        }
+      }
+    } catch (e) {
+      debugPrint('Error deleting udhar entry: $e');
+    }
   }
 
   static Future<List<UdharEntryModel>> getUdharEntriesForCustomer(
@@ -820,7 +1153,20 @@ static Future<double> getTotalUdhar(String shopId) async {
 }
   static Future<void> addUdharEntry(
       UdharEntryModel entry, String customerId) async {
-    await _client.from('udhar_entries').insert(entry.toJson());
+    try {
+      await _client.from('udhar_entries').insert(entry.toJson());
+    } catch (e) {
+      if (e.toString().contains('column') || e.toString().contains('is_paid') || e.toString().contains('party_paid')) {
+        final map = entry.toJson();
+        map.remove('is_paid');
+        map.remove('party_paid');
+        map.remove('isPaid');
+        map.remove('partypaid');
+        await _client.from('udhar_entries').insert(map);
+      } else {
+        rethrow;
+      }
+    }
 
     final customer = await _client
         .from('udhar_customers')
@@ -842,6 +1188,8 @@ static Future<double> getTotalUdhar(String shopId) async {
           'updated_at': DateTime.now().toIso8601String(),
         })
         .eq('id', customerId);
+        
+    await syncCustomerCreditEntriesPaidStatus(customerId);
   }
 
   static Future<void> markUdharPaid(String customerId) async {
@@ -1172,12 +1520,14 @@ static Future<double> getTotalUdhar(String shopId) async {
 
     final Map<String, String> billPaymentModes = {};
     final Map<String, double> billCashPaid = {};
+    final Map<String, double> billAdjustedAmount = {};
     for (var sale in salesData) {
       final bId = sale['bill_id'] as String?;
       if (bId == null || !billIds.contains(bId)) continue;
       if (bId != null && !billPaymentModes.containsKey(bId)) {
         billPaymentModes[bId] = sale['payment_mode'] ?? 'cash';
         billCashPaid[bId] = _creditAdvanceFromNotes(sale['notes'] ?? '');
+        billAdjustedAmount[bId] = saleAdjustmentFromNotes(sale['notes'] ?? '');
       }
     }
 
@@ -1197,19 +1547,24 @@ static Future<double> getTotalUdhar(String shopId) async {
 
       double cashIn = 0, cashOut = 0, bankIn = 0, bankOut = 0;
       final mode = billPaymentModes[billId] ?? 'cash';
+      final adjustedAmount =
+          (billAdjustedAmount[billId] ?? 0).clamp(0, amount).toDouble();
+      final paidAmount = (amount - adjustedAmount).clamp(0, amount).toDouble();
 
-      if (mode == 'upi' || mode == 'card') {
-        if (billType == 'sale' || billType == 'purchase_return') bankIn += amount;
-        else bankOut += amount;
+      if (mode == 'adjustment') {
+        // Return amount is kept as customer adjustment credit, so no cash/bank flow.
+      } else if (mode == 'upi' || mode == 'card') {
+        if (billType == 'sale' || billType == 'purchase_return') bankIn += paidAmount;
+        else bankOut += paidAmount;
       } else if (mode == 'credit') {
         // Credit sales do not add cash or bank balance on invoice day.
       } else if (mode == 'split') {
-        final cashPaid = (billCashPaid[billId] ?? 0).clamp(0, amount).toDouble();
+        final cashPaid = (billCashPaid[billId] ?? 0).clamp(0, paidAmount).toDouble();
         if (billType == 'sale' || billType == 'purchase_return') cashIn += cashPaid;
         else cashOut += cashPaid;
       } else {
-        if (billType == 'sale' || billType == 'purchase_return') cashIn += amount;
-        else cashOut += amount;
+        if (billType == 'sale' || billType == 'purchase_return') cashIn += paidAmount;
+        else cashOut += paidAmount;
       }
 
       final current = dailyMap[dateStr]!;
