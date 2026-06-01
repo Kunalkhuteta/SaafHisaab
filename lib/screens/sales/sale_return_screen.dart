@@ -1405,7 +1405,7 @@ class _SaleReturnScreenState extends ConsumerState<SaleReturnScreen> {
           customerId: customer.id,
           amount: reduceBy,
           note:
-              'Sale return - udhar reduced. Bill ref: ${sourceBill?.id ?? 'none'}',
+              '${SupabaseService.saleReturnUdharReductionNote}. Bill ref: ${sourceBill?.id ?? 'none'}',
         );
         await SupabaseService.updateCustomerTotalDue(customer.id, currentDue - reduceBy);
       }
@@ -1447,7 +1447,8 @@ class _SaleReturnScreenState extends ConsumerState<SaleReturnScreen> {
           userId: userId,
           customerId: customer.id,
           amount: reducedBy,
-          note: 'Sale return - udhar reduced. Bill ref: ${sourceBill?.id ?? 'none'}',
+          note:
+              '${SupabaseService.saleReturnUdharReductionNote}. Bill ref: ${sourceBill?.id ?? 'none'}',
         );
       }
       await SupabaseService.updateCustomerTotalDue(customer.id, currentDue - reducedBy);

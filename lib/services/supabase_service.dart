@@ -24,6 +24,7 @@ class SupabaseService {
   // Use getter so it's always fresh
   static SupabaseClient get _client => Supabase.instance.client;
   static const creditSaleAdvanceNote = 'Advance payment on credit sale';
+  static const saleReturnUdharReductionNote = 'Sale return - udhar reduced';
   static const adjustmentAmountColumn = 'tobeadjustAmount';
   static const adjustmentAmountFallbackColumn = 'tobeadjust_amount';
   static const saleAdjustmentNoteMarker = '__saafhisaab_sale_adjustment_v1__';
@@ -1589,7 +1590,8 @@ static Future<double> getTotalUdhar(String shopId) async {
       final dateStr = payment['entry_date'] as String;
       final amount = (payment['amount'] as num?)?.toDouble() ?? 0.0;
       final note = payment['note'] ?? '';
-      if (note == creditSaleAdvanceNote) {
+      if (note == creditSaleAdvanceNote ||
+          note.toString().startsWith(saleReturnUdharReductionNote)) {
         continue;
       }
       final meta = UdharPaymentMeta.tryParseNote(note);
