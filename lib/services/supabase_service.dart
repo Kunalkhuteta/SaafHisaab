@@ -1560,7 +1560,9 @@ static Future<double> getTotalUdhar(String shopId) async {
       } else if (mode == 'credit') {
         // Credit sales do not add cash or bank balance on invoice day.
       } else if (mode == 'split') {
-        final cashPaid = (billCashPaid[billId] ?? 0).clamp(0, paidAmount).toDouble();
+        final cashPaid = (billType == 'sale_return' || billType == 'purchase_return')
+            ? paidAmount
+            : (billCashPaid[billId] ?? 0).clamp(0, paidAmount).toDouble();
         if (billType == 'sale' || billType == 'purchase_return') cashIn += cashPaid;
         else cashOut += cashPaid;
       } else {

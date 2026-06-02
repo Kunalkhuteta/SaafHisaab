@@ -642,6 +642,16 @@ class _SaleReturnScreenState extends ConsumerState<SaleReturnScreen> {
 
         final showSaveSalesReturnOnly = (bundle.paymentMode == 'credit' || bundle.paymentMode == 'split') && paidReturnAmount <= 0;
 
+        final origMode = bundle.paymentMode.toLowerCase();
+        final isUpi = origMode == 'upi';
+        final isCard = origMode == 'card';
+        final refundMode = isUpi ? 'upi' : (isCard ? 'card' : 'cash');
+        final refundLabel = isUpi
+            ? AppLang.tr(isEn, 'Refund ${_currency.format(paidReturnAmount)} UPI', '${_currency.format(paidReturnAmount)} UPI वापस करें')
+            : (isCard
+                ? AppLang.tr(isEn, 'Refund ${_currency.format(paidReturnAmount)} Card', '${_currency.format(paidReturnAmount)} कार्ड वापस करें')
+                : AppLang.tr(isEn, 'Refund ${_currency.format(paidReturnAmount)} Cash', '${_currency.format(paidReturnAmount)} नकद वापस करें'));
+
         return _sheetFrame(
           child: Column(mainAxisSize: MainAxisSize.min, children: [
             _sheetHandle(),
@@ -723,18 +733,12 @@ class _SaleReturnScreenState extends ConsumerState<SaleReturnScreen> {
                             sourceBill: bundle.bill,
                             drafts: items,
                             settlement: _ReturnSettlement.cashRefund,
-                            paymentMode: 'cash',
+                            paymentMode: refundMode,
                             isEn: isEn,
                           );
                         },
                   icon: const Icon(Icons.currency_rupee_rounded),
-                  label: Text(
-                    AppLang.tr(
-                      isEn,
-                      'Refund ${_currency.format(paidReturnAmount)} Cash',
-                      '${_currency.format(paidReturnAmount)} नकद वापस करें',
-                    ),
-                  ),
+                  label: Text(refundLabel),
                   style: ElevatedButton.styleFrom(
                     backgroundColor: AppColors.warning,
                     foregroundColor: Colors.white,
@@ -1248,6 +1252,16 @@ class _SaleReturnScreenState extends ConsumerState<SaleReturnScreen> {
         sourceBill: sourceBill,
         selectedDrafts: selected,
       );
+
+      try {
+        await SupabaseService.syncAndGetDailyBalances(
+          shop.id,
+          DateTime.now().month,
+          DateTime.now().year,
+        );
+      } catch (e) {
+        debugPrint('Daily balance sync failed: $e');
+      }
 
       ref.invalidate(todayBillsProvider);
       ref.invalidate(filteredBillsProvider);
