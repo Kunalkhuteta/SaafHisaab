@@ -609,8 +609,6 @@ class _SaleReturnScreenState extends ConsumerState<SaleReturnScreen> {
 
     double paidAfterSale = 0.0;
     double originalCreditAmount = 0.0;
-    double originalPaidAmount = bundle.bill.amount;
-
     if (customer != null && (bundle.paymentMode == 'credit' || bundle.paymentMode == 'split')) {
       paidAfterSale = await _paidAfterSaleForBill(
         customerId: customer.id,
@@ -623,8 +621,6 @@ class _SaleReturnScreenState extends ConsumerState<SaleReturnScreen> {
         billAmount: bundle.bill.amount,
         drafts: items,
       );
-      originalPaidAmount =
-          (bundle.bill.amount - originalCreditAmount).clamp(0, bundle.bill.amount).toDouble();
     }
 
     if (!mounted) return;
@@ -1446,8 +1442,7 @@ class _SaleReturnScreenState extends ConsumerState<SaleReturnScreen> {
       billAmount: sourceBill.amount,
       drafts: selectedDrafts,
     );
-    final originalPaidAmount =
-        (sourceBill.amount - originalCreditAmount).clamp(0, sourceBill.amount).toDouble();
+
     final paidAfterSale = await _paidAfterSaleForBill(
       customerId: customer.id,
       billId: sourceBill.id,
