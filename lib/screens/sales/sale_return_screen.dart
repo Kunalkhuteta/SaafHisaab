@@ -616,9 +616,13 @@ class _SaleReturnScreenState extends ConsumerState<SaleReturnScreen> {
         customerId: customer.id,
         billId: bundle.bill.id,
       );
-      final creditMeta = _creditMetaForBill(items, bundle.bill.id);
-      originalCreditAmount = creditMeta?.creditAmount ??
-          (bundle.paymentMode == 'credit' ? bundle.bill.amount : 0.0);
+      originalCreditAmount = await _getOriginalCreditAmount(
+        customer: customer,
+        billId: bundle.bill.id,
+        paymentMode: bundle.paymentMode,
+        billAmount: bundle.bill.amount,
+        drafts: items,
+      );
       originalPaidAmount =
           (bundle.bill.amount - originalCreditAmount).clamp(0, bundle.bill.amount).toDouble();
     }
@@ -695,55 +699,79 @@ class _SaleReturnScreenState extends ConsumerState<SaleReturnScreen> {
                 ),
               ),
             ] else ...[
-              if (udharReduction > 0) ...[
-                _infoBox(
-                  AppLang.tr(
-                    isEn,
-                    'Outstanding credit will reduce by ${_currency.format(udharReduction)}. Refund to customer: ${_currency.format(paidReturnAmount)}.',
-                    'बकाया उधार ${_currency.format(udharReduction)} कम होगा। ग्राहक को वापसी: ${_currency.format(paidReturnAmount)}।',
-                  ),
+              // Show clear breakdown and direct action buttons (Refund Cash + Adjust Next)
+              _infoBox(
+                AppLang.tr(
+                  isEn,
+                  udharReduction > 0
+                      ? 'Credit ${_currency.format(udharReduction)} will be cancelled. Cash refund: ${_currency.format(paidReturnAmount)}.'
+                      : 'Cash refund: ${_currency.format(paidReturnAmount)}.',
+                  udharReduction > 0
+                      ? 'उधार ${_currency.format(udharReduction)} रद्द होगा। नकद वापसी: ${_currency.format(paidReturnAmount)}।'
+                      : 'नकद वापसी: ${_currency.format(paidReturnAmount)}।',
                 ),
-                const SizedBox(height: 12),
-              ],
-              Row(children: [
-                Expanded(
-                  child: ElevatedButton(
-                    onPressed: total <= 0 || _saving
-                        ? null
-                        : () async {
-                            Navigator.pop(ctx);
-                            await _saveReturn(
-                              sourceBill: bundle.bill,
-                              drafts: items,
-                              settlement: _ReturnSettlement.adjustment,
-                              paymentMode: 'adjustment',
-                              isEn: isEn,
-                            );
-                          },
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: AppColors.primary,
-                      foregroundColor: Colors.white,
+              ),
+              const SizedBox(height: 14),
+              SizedBox(
+                width: double.infinity,
+                child: ElevatedButton.icon(
+                  onPressed: total <= 0 || _saving
+                      ? null
+                      : () async {
+                          Navigator.pop(ctx);
+                          await _saveReturn(
+                            sourceBill: bundle.bill,
+                            drafts: items,
+                            settlement: _ReturnSettlement.cashRefund,
+                            paymentMode: 'cash',
+                            isEn: isEn,
+                          );
+                        },
+                  icon: const Icon(Icons.currency_rupee_rounded),
+                  label: Text(
+                    AppLang.tr(
+                      isEn,
+                      'Refund ${_currency.format(paidReturnAmount)} Cash',
+                      '${_currency.format(paidReturnAmount)} नकद वापस करें',
                     ),
-                    child: Text(AppLang.tr(isEn, 'Adjust Next', 'अगली बार समायोजित')),
                   ),
-                ),
-                const SizedBox(width: 10),
-                Expanded(
-                  child: ElevatedButton(
-                    onPressed: total <= 0 || _saving
-                        ? null
-                        : () {
-                            Navigator.pop(ctx);
-                            _showRefundSheet(bundle, items, isEn);
-                          },
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: AppColors.warning,
-                      foregroundColor: Colors.white,
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: AppColors.warning,
+                    foregroundColor: Colors.white,
+                    padding: const EdgeInsets.symmetric(vertical: 12),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(10),
                     ),
-                    child: Text(AppLang.tr(isEn, 'Return Money', 'पैसे वापस करें')),
                   ),
                 ),
-              ]),
+              ),
+              const SizedBox(height: 8),
+              SizedBox(
+                width: double.infinity,
+                child: OutlinedButton(
+                  onPressed: total <= 0 || _saving
+                      ? null
+                      : () async {
+                          Navigator.pop(ctx);
+                          await _saveReturn(
+                            sourceBill: bundle.bill,
+                            drafts: items,
+                            settlement: _ReturnSettlement.adjustment,
+                            paymentMode: 'adjustment',
+                            isEn: isEn,
+                          );
+                        },
+                  style: OutlinedButton.styleFrom(
+                    foregroundColor: AppColors.primary,
+                    side: const BorderSide(color: AppColors.primary),
+                    padding: const EdgeInsets.symmetric(vertical: 12),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(10),
+                    ),
+                  ),
+                  child: Text(AppLang.tr(isEn, 'Adjust in Next Bill', 'अगले बिल में समायोजित')),
+                ),
+              ),
             ],
             TextButton(
               onPressed: () => Navigator.pop(ctx),
@@ -820,163 +848,7 @@ class _SaleReturnScreenState extends ConsumerState<SaleReturnScreen> {
     );
   }
 
-  Future<void> _showRefundSheet(
-    _PurchaseBundle bundle,
-    List<_ReturnLineDraft> drafts,
-    bool isEn,
-  ) async {
-    var method = _defaultRefundMethod(bundle.paymentMode);
 
-    // Compute credit plan to show correct refund amount for split/credit bills
-    final customer = _selectedCustomer?.udharCustomer ??
-        await SupabaseService.findCustomerByName(bundle.bill.shopId, bundle.bill.vendorName);
-
-    double paidAfterSale = 0.0;
-    double originalCreditAmount = 0.0;
-
-    if (customer != null && (bundle.paymentMode == 'credit' || bundle.paymentMode == 'split')) {
-      paidAfterSale = await _paidAfterSaleForBill(
-        customerId: customer.id,
-        billId: bundle.bill.id,
-      );
-      final creditMeta = _creditMetaForBill(drafts, bundle.bill.id);
-      originalCreditAmount = creditMeta?.creditAmount ??
-          (bundle.paymentMode == 'credit' ? bundle.bill.amount : 0.0);
-    }
-
-    final isCreditOrSplit = bundle.paymentMode == 'credit' || bundle.paymentMode == 'split';
-
-    if (!mounted) return;
-
-    await showModalBottomSheet<void>(
-      context: context,
-      isScrollControlled: true,
-      backgroundColor: Colors.transparent,
-      builder: (ctx) => StatefulBuilder(builder: (ctx, setSheetState) {
-        final total = drafts.fold<double>(0, (sum, item) => sum + item.amount);
-
-        // For split/credit bills, compute how much is credit vs paid
-        final currentCreditForBill = isCreditOrSplit
-            ? (originalCreditAmount - paidAfterSale).clamp(0.0, double.infinity)
-            : 0.0;
-        final udharReduction = isCreditOrSplit
-            ? total.clamp(0.0, currentCreditForBill)
-            : 0.0;
-        final paidReturnAmount = isCreditOrSplit
-            ? (total - udharReduction).clamp(0.0, double.infinity)
-            : total;
-
-        final options = _refundOptions(bundle.paymentMode, isEn);
-        return _sheetFrame(
-          child: Column(mainAxisSize: MainAxisSize.min, children: [
-            _sheetHandle(),
-            _sheetTitle(
-              AppLang.tr(isEn, 'Refund Method', 'भुगतान वापसी तरीका'),
-              // For split/credit, show only the actual refund amount
-              method == 'reduce_udhar'
-                  ? _currency.format(total)
-                  : _currency.format(paidReturnAmount),
-            ),
-            const SizedBox(height: 12),
-            Wrap(
-              spacing: 8,
-              runSpacing: 8,
-              children: options.map((option) {
-                final selected = method == option.value;
-                return ChoiceChip(
-                  selected: selected,
-                  label: Text(option.label),
-                  selectedColor: AppColors.warning.withOpacity(0.16),
-                  side: BorderSide(
-                    color: selected ? AppColors.warning : AppColors.border,
-                  ),
-                  onSelected: (_) => setSheetState(() => method = option.value),
-                );
-              }).toList(),
-            ),
-            if (method == 'reduce_udhar') ...[
-              const SizedBox(height: 12),
-              _infoBox(
-                AppLang.tr(
-                  isEn,
-                  '${_selectedCustomer?.name ?? bundle.bill.vendorName} credit will change from ${_currency.format(_selectedCustomer?.totalDue ?? 0)} to ${_currency.format((((_selectedCustomer?.totalDue ?? 0) - total).clamp(0, double.infinity)))}.',
-                  '${_selectedCustomer?.name ?? bundle.bill.vendorName} का उधार ${_currency.format(_selectedCustomer?.totalDue ?? 0)} से ${_currency.format((((_selectedCustomer?.totalDue ?? 0) - total).clamp(0, double.infinity)))} हो जाएगा।',
-                ),
-              ),
-            ] else if (isCreditOrSplit && udharReduction > 0) ...[
-              const SizedBox(height: 12),
-              _infoBox(
-                AppLang.tr(
-                  isEn,
-                  'Return total: ${_currency.format(total)}. Outstanding credit will reduce by ${_currency.format(udharReduction)}. Refund to customer: ${_currency.format(paidReturnAmount)}.',
-                  'कुल वापसी: ${_currency.format(total)}। बकाया उधार ${_currency.format(udharReduction)} कम होगा। ग्राहक को वापसी: ${_currency.format(paidReturnAmount)}।',
-                ),
-              ),
-            ],
-            const SizedBox(height: 16),
-            SizedBox(
-              width: double.infinity,
-              child: ElevatedButton.icon(
-                onPressed: _saving
-                    ? null
-                    : () async {
-                        Navigator.pop(ctx);
-                        await _saveReturn(
-                          sourceBill: bundle.bill,
-                          drafts: drafts,
-                          settlement: method == 'reduce_udhar'
-                              ? _ReturnSettlement.reduceUdhar
-                              : _ReturnSettlement.cashRefund,
-                          paymentMode: method,
-                          isEn: isEn,
-                        );
-                      },
-                icon: const Icon(Icons.check_rounded),
-                label: Text(AppLang.tr(isEn, 'Refund Done', 'वापसी पूरी')),
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: AppColors.warning,
-                  foregroundColor: Colors.white,
-                ),
-              ),
-            ),
-          ]),
-        );
-      }),
-    );
-  }
-
-  List<_RefundOption> _refundOptions(String paymentMode, bool isEn) {
-    switch (paymentMode) {
-      case 'upi':
-        return [
-          _RefundOption('upi', 'UPI'),
-          _RefundOption('cash', AppLang.tr(isEn, 'Cash', 'नकद')),
-        ];
-      case 'card':
-        return [
-          _RefundOption('cash', AppLang.tr(isEn, 'Cash', 'नकद')),
-          _RefundOption('card_note', AppLang.tr(isEn, 'Card note', 'कार्ड नोट')),
-        ];
-      case 'credit':
-        return [
-          _RefundOption('reduce_udhar', AppLang.tr(isEn, 'Reduce Credit', 'उधार कम करें')),
-          _RefundOption('cash', AppLang.tr(isEn, 'Cash Refund', 'नकद वापसी')),
-        ];
-      case 'split':
-        return [
-          _RefundOption('reduce_udhar', AppLang.tr(isEn, 'Reduce Credit', 'उधार कम करें')),
-          _RefundOption('cash', AppLang.tr(isEn, 'Cash', 'नकद')),
-        ];
-      default:
-        return [_RefundOption('cash', AppLang.tr(isEn, 'Cash', 'नकद'))];
-    }
-  }
-
-  String _defaultRefundMethod(String paymentMode) {
-    if (paymentMode == 'upi') return 'upi';
-    if (paymentMode == 'credit' || paymentMode == 'split') return 'reduce_udhar';
-    return 'cash';
-  }
 
   Future<void> _showFreshReturnSheet(bool isEn) async {
     _manualItemCtrl.clear();
@@ -1341,6 +1213,14 @@ class _SaleReturnScreenState extends ConsumerState<SaleReturnScreen> {
           stockAddedIds.add(_StockRollback(stockItemId, draft.qty));
         }
 
+        // For split/credit bills, use original sale's payment mode so
+        // cash reports don't incorrectly deduct the full amount.
+        final originalMode = sale.paymentMode.toLowerCase();
+        final entryPaymentMode =
+            (originalMode == 'split' || originalMode == 'credit')
+                ? originalMode
+                : paymentMode;
+
         await SupabaseService.saveSale(SaleModel(
           id: '',
           shopId: shop.id,
@@ -1350,7 +1230,7 @@ class _SaleReturnScreenState extends ConsumerState<SaleReturnScreen> {
           unit: sale.unit,
           sellingPrice: sale.sellingPrice,
           totalAmount: -draft.amount,
-          paymentMode: paymentMode,
+          paymentMode: entryPaymentMode,
           billId: billId,
           stockItemId: stockItemId,
           saleDate: DateTime.now(),
@@ -1545,9 +1425,13 @@ class _SaleReturnScreenState extends ConsumerState<SaleReturnScreen> {
       );
     }
 
-    final creditMeta = _creditMetaForBill(selectedDrafts, sourceBill.id);
-    final originalCreditAmount = creditMeta?.creditAmount ??
-        (paymentMode == 'credit' ? sourceBill.amount : 0.0);
+    final originalCreditAmount = await _getOriginalCreditAmount(
+      customer: customer,
+      billId: sourceBill.id,
+      paymentMode: paymentMode,
+      billAmount: sourceBill.amount,
+      drafts: selectedDrafts,
+    );
     final originalPaidAmount =
         (sourceBill.amount - originalCreditAmount).clamp(0, sourceBill.amount).toDouble();
     final paidAfterSale = await _paidAfterSaleForBill(
@@ -1570,11 +1454,68 @@ class _SaleReturnScreenState extends ConsumerState<SaleReturnScreen> {
     String billId,
   ) {
     for (final draft in selectedDrafts) {
-      final parsed = SavedCreditSale.tryParseNote(draft.line.sale.notes);
-      if (parsed == null) continue;
-      if (parsed.billId == null || parsed.billId == billId) return parsed;
+      final notes = draft.line.sale.notes;
+      final parsed = SavedCreditSale.tryParseNote(notes);
+      if (parsed != null) {
+        if (parsed.billId == null || parsed.billId == billId) return parsed;
+      }
+      
+      // Fallback: parse the custom __saafhisaab_credit_advance marker in sale notes
+      final startMarker = '__saafhisaab_credit_advance:';
+      final startIndex = notes.indexOf(startMarker);
+      if (startIndex >= 0) {
+        final endMarker = '__';
+        final endIndex = notes.indexOf(endMarker, startIndex + startMarker.length);
+        if (endIndex >= 0) {
+          final sub = notes.substring(startIndex + startMarker.length, endIndex);
+          final parts = sub.split(';credit:');
+          if (parts.length == 2) {
+            final advance = double.tryParse(parts[0]) ?? 0.0;
+            final credit = double.tryParse(parts[1]) ?? 0.0;
+            return SavedCreditSale(
+              customerId: '',
+              customerName: '',
+              customerPhone: '',
+              creditAmount: credit,
+              advancePaid: advance,
+              totalAmount: credit + advance,
+              billId: billId,
+            );
+          }
+        }
+      }
     }
     return null;
+  }
+
+  Future<double> _getOriginalCreditAmount({
+    required UdharCustomerModel? customer,
+    required String billId,
+    required String paymentMode,
+    required double billAmount,
+    required List<_ReturnLineDraft> drafts,
+  }) async {
+    final creditMeta = _creditMetaForBill(drafts, billId);
+    double originalCredit = creditMeta?.creditAmount ?? 0.0;
+    
+    if (originalCredit == 0.0 && customer != null && (paymentMode == 'credit' || paymentMode == 'split')) {
+      try {
+        final entries = await SupabaseService.getUdharEntriesForCustomer(customer.id);
+        for (final entry in entries.where((entry) => entry.entryType == 'credit')) {
+          final credit = SavedCreditSale.tryParseNote(entry.note);
+          if (credit?.billId == billId) {
+            originalCredit = credit?.creditAmount ?? 0.0;
+            break;
+          }
+        }
+      } catch (_) {}
+    }
+    
+    if (originalCredit == 0.0 && paymentMode == 'credit') {
+      originalCredit = billAmount;
+    }
+    
+    return originalCredit;
   }
 
   Future<double> _paidAfterSaleForBill({
@@ -1701,12 +1642,7 @@ class _ReturnLineDraft {
   double get amount => qty * line.sale.sellingPrice;
 }
 
-class _RefundOption {
-  final String value;
-  final String label;
 
-  const _RefundOption(this.value, this.label);
-}
 
 class _StockRollback {
   final String stockItemId;
