@@ -1213,13 +1213,9 @@ class _SaleReturnScreenState extends ConsumerState<SaleReturnScreen> {
           stockAddedIds.add(_StockRollback(stockItemId, draft.qty));
         }
 
-        // For split/credit bills, use original sale's payment mode so
-        // cash reports don't incorrectly deduct the full amount.
-        final originalMode = sale.paymentMode.toLowerCase();
-        final entryPaymentMode =
-            (originalMode == 'split' || originalMode == 'credit')
-                ? originalMode
-                : paymentMode;
+        // Use the selected return settlement payment mode (e.g. 'adjustment', 'credit', 'cash', 'upi')
+        // so that daily cash/bank flow calculations reflect the actual money movement.
+        final entryPaymentMode = paymentMode;
 
         await SupabaseService.saveSale(SaleModel(
           id: '',

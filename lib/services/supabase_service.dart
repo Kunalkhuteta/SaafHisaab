@@ -1555,7 +1555,7 @@ static Future<double> getTotalUdhar(String shopId) async {
         : await _client
             .from('sales')
             .select('bill_id, payment_mode, notes')
-            .eq('shop_id', shopId);
+            .inFilter('bill_id', billIds.toList());
 
     final Map<String, String> billPaymentModes = {};
     final Map<String, double> billCashPaid = {};
