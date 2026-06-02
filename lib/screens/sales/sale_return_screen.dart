@@ -826,19 +826,56 @@ class _SaleReturnScreenState extends ConsumerState<SaleReturnScreen> {
     bool isEn,
   ) async {
     var method = _defaultRefundMethod(bundle.paymentMode);
+
+    // Compute credit plan to show correct refund amount for split/credit bills
+    final customer = _selectedCustomer?.udharCustomer ??
+        await SupabaseService.findCustomerByName(bundle.bill.shopId, bundle.bill.vendorName);
+
+    double paidAfterSale = 0.0;
+    double originalCreditAmount = 0.0;
+
+    if (customer != null && (bundle.paymentMode == 'credit' || bundle.paymentMode == 'split')) {
+      paidAfterSale = await _paidAfterSaleForBill(
+        customerId: customer.id,
+        billId: bundle.bill.id,
+      );
+      final creditMeta = _creditMetaForBill(drafts, bundle.bill.id);
+      originalCreditAmount = creditMeta?.creditAmount ??
+          (bundle.paymentMode == 'credit' ? bundle.bill.amount : 0.0);
+    }
+
+    final isCreditOrSplit = bundle.paymentMode == 'credit' || bundle.paymentMode == 'split';
+
+    if (!mounted) return;
+
     await showModalBottomSheet<void>(
       context: context,
       isScrollControlled: true,
       backgroundColor: Colors.transparent,
       builder: (ctx) => StatefulBuilder(builder: (ctx, setSheetState) {
         final total = drafts.fold<double>(0, (sum, item) => sum + item.amount);
+
+        // For split/credit bills, compute how much is credit vs paid
+        final currentCreditForBill = isCreditOrSplit
+            ? (originalCreditAmount - paidAfterSale).clamp(0.0, double.infinity)
+            : 0.0;
+        final udharReduction = isCreditOrSplit
+            ? total.clamp(0.0, currentCreditForBill)
+            : 0.0;
+        final paidReturnAmount = isCreditOrSplit
+            ? (total - udharReduction).clamp(0.0, double.infinity)
+            : total;
+
         final options = _refundOptions(bundle.paymentMode, isEn);
         return _sheetFrame(
           child: Column(mainAxisSize: MainAxisSize.min, children: [
             _sheetHandle(),
             _sheetTitle(
               AppLang.tr(isEn, 'Refund Method', 'भुगतान वापसी तरीका'),
-              _currency.format(total),
+              // For split/credit, show only the actual refund amount
+              method == 'reduce_udhar'
+                  ? _currency.format(total)
+                  : _currency.format(paidReturnAmount),
             ),
             const SizedBox(height: 12),
             Wrap(
@@ -862,8 +899,17 @@ class _SaleReturnScreenState extends ConsumerState<SaleReturnScreen> {
               _infoBox(
                 AppLang.tr(
                   isEn,
-                  '${_selectedCustomer?.name ?? bundle.bill.vendorName} credit will change from ${_currency.format(_selectedCustomer?.totalDue ?? 0)} to ${_currency.format(((_selectedCustomer?.totalDue ?? 0) - total).clamp(0, double.infinity))}.',
-                  '${_selectedCustomer?.name ?? bundle.bill.vendorName} का उधार ${_currency.format(_selectedCustomer?.totalDue ?? 0)} से ${_currency.format(((_selectedCustomer?.totalDue ?? 0) - total).clamp(0, double.infinity))} हो जाएगा।',
+                  '${_selectedCustomer?.name ?? bundle.bill.vendorName} credit will change from ${_currency.format(_selectedCustomer?.totalDue ?? 0)} to ${_currency.format((((_selectedCustomer?.totalDue ?? 0) - total).clamp(0, double.infinity)))}.',
+                  '${_selectedCustomer?.name ?? bundle.bill.vendorName} का उधार ${_currency.format(_selectedCustomer?.totalDue ?? 0)} से ${_currency.format((((_selectedCustomer?.totalDue ?? 0) - total).clamp(0, double.infinity)))} हो जाएगा।',
+                ),
+              ),
+            ] else if (isCreditOrSplit && udharReduction > 0) ...[
+              const SizedBox(height: 12),
+              _infoBox(
+                AppLang.tr(
+                  isEn,
+                  'Return total: ${_currency.format(total)}. Outstanding credit will reduce by ${_currency.format(udharReduction)}. Refund to customer: ${_currency.format(paidReturnAmount)}.',
+                  'कुल वापसी: ${_currency.format(total)}। बकाया उधार ${_currency.format(udharReduction)} कम होगा। ग्राहक को वापसी: ${_currency.format(paidReturnAmount)}।',
                 ),
               ),
             ],
@@ -1334,21 +1380,40 @@ class _SaleReturnScreenState extends ConsumerState<SaleReturnScreen> {
       await _loadPurchases();
 
       if (mounted) {
+        String snackMessage;
+        if (settlement == _ReturnSettlement.adjustment) {
+          snackMessage = AppLang.tr(
+            isEn,
+            'Return noted. ${_currency.format(total)} will adjust in the next purchase.',
+            'वापसी दर्ज हो गई। ${_currency.format(total)} अगली खरीद में समायोजित होगा।',
+          );
+        } else {
+          // Show correct refund amount for split/credit bills
+          final paidRefund = creditPlan.customerPaidReturnAmount;
+          final udharReduced = creditPlan.reduceUdharAmount;
+          if (udharReduced > 0 && paidRefund > 0) {
+            snackMessage = AppLang.tr(
+              isEn,
+              '${_currency.format(paidRefund)} refunded to $customerName. Credit reduced by ${_currency.format(udharReduced)}. Stock updated.',
+              '$customerName को ${_currency.format(paidRefund)} वापस किए। उधार ${_currency.format(udharReduced)} कम हुआ। स्टॉक अपडेट हो गया।',
+            );
+          } else if (udharReduced > 0) {
+            snackMessage = AppLang.tr(
+              isEn,
+              'Credit reduced by ${_currency.format(udharReduced)} for $customerName. Stock updated.',
+              '$customerName का उधार ${_currency.format(udharReduced)} कम हुआ। स्टॉक अपडेट हो गया।',
+            );
+          } else {
+            snackMessage = AppLang.tr(
+              isEn,
+              '${_currency.format(total)} returned to $customerName. Stock updated.',
+              '$customerName को ${_currency.format(total)} वापस किए। स्टॉक अपडेट हो गया।',
+            );
+          }
+        }
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text(
-              settlement == _ReturnSettlement.adjustment
-                  ? AppLang.tr(
-                      isEn,
-                      'Return noted. ${_currency.format(total)} will adjust in the next purchase.',
-                      'वापसी दर्ज हो गई। ${_currency.format(total)} अगली खरीद में समायोजित होगा।',
-                    )
-                  : AppLang.tr(
-                      isEn,
-                      '${_currency.format(total)} returned to $customerName. Stock updated.',
-                      '$customerName को ${_currency.format(total)} वापस किए। स्टॉक अपडेट हो गया।',
-                    ),
-            ),
+            content: Text(snackMessage),
             backgroundColor: AppColors.success,
           ),
         );
