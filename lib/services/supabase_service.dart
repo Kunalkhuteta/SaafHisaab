@@ -1015,6 +1015,26 @@ static Future<double> getTodaySalesTotal(String shopId) async {
     return (data['total_due'] as num?)?.toDouble() ?? 0.0;
   }
 
+  /// Computes available adjustment balance from udhar_entries.
+  /// This is the source of truth — column is just a cache.
+  static Future<double> _computeAdjustmentFromEntries(String customerId) async {
+    try {
+      final entries = await getAdjustmentEntriesForCustomer(customerId);
+      double total = 0;
+      for (final entry in entries) {
+        if (entry.entryType == 'credit_adjustment') {
+          total += entry.amount;
+        } else if (entry.entryType == 'adjustment_used') {
+          total -= entry.amount;
+        }
+      }
+      return total.clamp(0, double.infinity).toDouble();
+    } catch (e) {
+      debugPrint('_computeAdjustmentFromEntries error: $e');
+      return 0.0;
+    }
+  }
+
   static Future<double> getCustomerAdjustmentAmount(String customerId) async {
     try {
       final data = await _client
@@ -1024,12 +1044,17 @@ static Future<double> getTodaySalesTotal(String shopId) async {
           .single();
       return (data[adjustmentAmountColumn] as num?)?.toDouble() ?? 0.0;
     } catch (_) {
-      final data = await _client
-          .from('udhar_customers')
-          .select(adjustmentAmountFallbackColumn)
-          .eq('id', customerId)
-          .single();
-      return (data[adjustmentAmountFallbackColumn] as num?)?.toDouble() ?? 0.0;
+      try {
+        final data = await _client
+            .from('udhar_customers')
+            .select(adjustmentAmountFallbackColumn)
+            .eq('id', customerId)
+            .single();
+        return (data[adjustmentAmountFallbackColumn] as num?)?.toDouble() ?? 0.0;
+      } catch (_) {
+        // Column doesn't exist — compute from entries (source of truth)
+        return _computeAdjustmentFromEntries(customerId);
+      }
     }
   }
 
@@ -1047,13 +1072,18 @@ static Future<double> getTodaySalesTotal(String shopId) async {
           })
           .eq('id', customerId);
     } catch (_) {
-      await _client
-          .from('udhar_customers')
-          .update({
-            adjustmentAmountFallbackColumn: safeAmount,
-            'updated_at': DateTime.now().toIso8601String(),
-          })
-          .eq('id', customerId);
+      try {
+        await _client
+            .from('udhar_customers')
+            .update({
+              adjustmentAmountFallbackColumn: safeAmount,
+              'updated_at': DateTime.now().toIso8601String(),
+            })
+            .eq('id', customerId);
+      } catch (_) {
+        // Column doesn't exist — silently skip; entries are the source of truth
+        debugPrint('Adjustment column not found on udhar_customers, skipping cache update');
+      }
     }
   }
 
@@ -1063,7 +1093,11 @@ static Future<double> getTodaySalesTotal(String shopId) async {
   ) async {
     final current = await getCustomerAdjustmentAmount(customerId);
     final next = current + amount;
-    await updateCustomerAdjustmentAmount(customerId, next);
+    try {
+      await updateCustomerAdjustmentAmount(customerId, next);
+    } catch (_) {
+      // Cache update failed — entries still hold the truth
+    }
     return next;
   }
 
@@ -1073,7 +1107,11 @@ static Future<double> getTodaySalesTotal(String shopId) async {
   ) async {
     final current = await getCustomerAdjustmentAmount(customerId);
     final next = (current - amount).clamp(0.0, double.infinity).toDouble();
-    await updateCustomerAdjustmentAmount(customerId, next);
+    try {
+      await updateCustomerAdjustmentAmount(customerId, next);
+    } catch (_) {
+      // Cache update failed — entries still hold the truth
+    }
     return next;
   }
 
