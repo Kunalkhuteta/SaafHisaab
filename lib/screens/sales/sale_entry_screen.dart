@@ -115,6 +115,7 @@ class _SaleEntryScreenState extends ConsumerState<SaleEntryScreen> {
   double _availableAdjustmentAmount = 0;
   double _adjustedAmount = 0;
   String? _adjustmentCustomerId;
+  String? _adjustmentPartyId;
   bool _loadingAdjustment = false;
 
   double get _grandTotal {
@@ -332,6 +333,48 @@ class _SaleEntryScreenState extends ConsumerState<SaleEntryScreen> {
       } catch (e) {
         debugPrint('Daily balance sync failed: $e');
       }
+    }
+  }
+
+  Future<void> _loadAdjustmentForPurchaseParty(
+    String partyName, {
+    required List<Map<String, dynamic>> parties,
+    bool clearApplied = false,
+  }) async {
+    if (_billType != 'purchase') return;
+    final party = parties.firstWhere(
+      (p) => p['name'] == partyName,
+      orElse: () => {},
+    );
+    final partyId = party['id'] as String?;
+    if (partyId == null || partyId.isEmpty) {
+      if (mounted) {
+        setState(() {
+          _availableAdjustmentAmount = 0;
+          _adjustedAmount = 0;
+          _adjustmentPartyId = null;
+        });
+      }
+      return;
+    }
+
+    setState(() => _loadingAdjustment = true);
+    try {
+      final available =
+          await SupabaseService.getPurchasePartyAdjustmentAmount(partyId);
+      if (mounted) {
+        setState(() {
+          _availableAdjustmentAmount = available;
+          _adjustmentPartyId = partyId;
+          if (clearApplied || _adjustedAmount > available) {
+            _adjustedAmount = 0;
+          }
+        });
+      }
+    } catch (e) {
+      debugPrint('Load purchase adjustment failed: $e');
+    } finally {
+      if (mounted) setState(() => _loadingAdjustment = false);
     }
   }
 
@@ -1202,6 +1245,16 @@ class _SaleEntryScreenState extends ConsumerState<SaleEntryScreen> {
         }
       }
 
+      if (_billType == 'purchase' && _adjustedAmount > 0) {
+        final partyId = _adjustmentPartyId;
+        if (partyId != null && partyId.isNotEmpty) {
+          await SupabaseService.deductPurchasePartyAdjustmentAmount(
+            partyId,
+            _adjustedAmount,
+          );
+        }
+      }
+
       await _syncDailyBalancesForBillDates(
         shop.id,
         [widget.bill?.billDate ?? DateTime.now(), DateTime.now()],
@@ -1467,7 +1520,13 @@ class _SaleEntryScreenState extends ConsumerState<SaleEntryScreen> {
               )).toList(),
               onChanged: (val) {
                 if (val != null) {
-                  setState(() => _customerCtrl.text = val);
+                  setState(() {
+                    _customerCtrl.text = val;
+                    _availableAdjustmentAmount = 0;
+                    _adjustedAmount = 0;
+                    _adjustmentPartyId = null;
+                  });
+                  _loadAdjustmentForPurchaseParty(val, parties: parties, clearApplied: true);
                 }
               },
             ),
@@ -1505,7 +1564,7 @@ class _SaleEntryScreenState extends ConsumerState<SaleEntryScreen> {
 
         const SizedBox(height: 20),
 
-        if (_billType == 'sale' &&
+        if ((_billType == 'sale' || _billType == 'purchase') &&
             (_availableAdjustmentAmount > 0 ||
                 _adjustedAmount > 0 ||
                 _loadingAdjustment)) ...[
@@ -1741,12 +1800,13 @@ class _SaleEntryScreenState extends ConsumerState<SaleEntryScreen> {
               ),
             ]),
           ),
-          TextButton(
-            onPressed: _adjustmentCustomerId == null
-                ? null
-                : () => _showAdjustmentDetails(isEn),
-            child: Text(AppLang.tr(isEn, 'Details', 'विवरण')),
-          ),
+          if (_billType == 'sale')
+            TextButton(
+              onPressed: _adjustmentCustomerId == null
+                  ? null
+                  : () => _showAdjustmentDetails(isEn),
+              child: Text(AppLang.tr(isEn, 'Details', 'विवरण')),
+            ),
         ]),
         if (_adjustedAmount > 0) ...[
           const SizedBox(height: 10),
