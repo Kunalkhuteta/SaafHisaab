@@ -11,6 +11,7 @@ import '../../services/ai_ocr_service.dart';
 import 'bill_review_screen.dart';
 import '../sales/sale_entry_screen.dart';
 import '../sales/sale_return_screen.dart';
+import '../purchase/purchase_return_screen.dart';
 
 class InvoiceListScreen extends ConsumerStatefulWidget {
   final String billType;
@@ -143,6 +144,19 @@ class _InvoiceListScreenState extends ConsumerState<InvoiceListScreen> {
         ref.invalidate(filteredBillsProvider);
         ref.invalidate(dashboardStatsProvider);
         ref.invalidate(itemMasterProvider);
+      }
+      return;
+    }
+
+    if (widget.billType == 'purchase_return') {
+      final result = await Navigator.push<bool>(context, MaterialPageRoute(
+        builder: (_) => const PurchaseReturnScreen(),
+      ));
+      if (result == true) {
+        ref.invalidate(filteredBillsProvider);
+        ref.invalidate(dashboardStatsProvider);
+        ref.invalidate(itemMasterProvider);
+        ref.invalidate(stockItemsProvider);
       }
       return;
     }
