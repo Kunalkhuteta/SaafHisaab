@@ -1252,6 +1252,89 @@ static Future<double> getTotalUdhar(String shopId) async {
     }).eq('id', partyId);
   }
 
+  static Future<Map<String, dynamic>?> findPurchasePartyByName(
+      String shopId, String name) async {
+    final data = await _client
+        .from('purchase_parties')
+        .select()
+        .eq('shop_id', shopId)
+        .ilike('name', name.trim())
+        .order('created_at', ascending: false)
+        .limit(1)
+        .maybeSingle();
+    return data;
+  }
+
+  static Future<Map<String, dynamic>> createPurchaseParty({
+    required String shopId,
+    required String userId,
+    required String name,
+  }) async {
+    final data = await _client
+        .from('purchase_parties')
+        .insert({
+          'shop_id': shopId,
+          'name': name.trim(),
+        })
+        .select()
+        .single();
+    return data;
+  }
+
+  static Future<double> getPurchasePartyAdjustmentAmount(String partyId) async {
+    try {
+      final data = await _client
+          .from('purchase_parties')
+          .select('tobeadjust_amount')
+          .eq('id', partyId)
+          .single();
+      return (data['tobeadjust_amount'] as num?)?.toDouble() ?? 0.0;
+    } catch (_) {
+      return 0.0;
+    }
+  }
+
+  static Future<void> updatePurchasePartyAdjustmentAmount(
+      String partyId, double amount) async {
+    await _client.from('purchase_parties').update({
+      'tobeadjust_amount': amount < 0 ? 0.0 : amount,
+    }).eq('id', partyId);
+  }
+
+  static Future<double> addPurchasePartyAdjustmentAmount(
+      String partyId, double amount) async {
+    final current = await getPurchasePartyAdjustmentAmount(partyId);
+    final next = current + amount;
+    await updatePurchasePartyAdjustmentAmount(partyId, next);
+    return next;
+  }
+
+  static Future<double> deductPurchasePartyAdjustmentAmount(
+      String partyId, double amount) async {
+    final current = await getPurchasePartyAdjustmentAmount(partyId);
+    final next = (current - amount).clamp(0.0, double.infinity).toDouble();
+    await updatePurchasePartyAdjustmentAmount(partyId, next);
+    return next;
+  }
+
+  static Future<List<Map<String, dynamic>>> searchPurchaseParties(
+      String shopId, String query) async {
+    var request = _client
+        .from('purchase_parties')
+        .select()
+        .eq('shop_id', shopId);
+
+    final trimmed = query.trim();
+    final data = trimmed.isEmpty
+        ? await request.order('name').limit(25)
+        : await request
+            .ilike('name', '%$trimmed%')
+            .order('name')
+            .limit(25);
+
+    return List<Map<String, dynamic>>.from(data);
+  }
+
   static Future<double> recalculatePurchasePartyPendingAmount({
     required String shopId,
     required String partyId,
