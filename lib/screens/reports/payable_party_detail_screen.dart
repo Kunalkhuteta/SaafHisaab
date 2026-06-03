@@ -37,6 +37,7 @@ class _PayablePartyDetailScreenState
   List<_PurchaseEntry> _entries = [];
   double _totalPurchased = 0;
   double _totalPaid = 0;
+  double _pendingAmount = 0;
 
   final DateFormat _dateFmt = DateFormat('dd MMM yyyy');
   final NumberFormat _currency =
@@ -45,6 +46,7 @@ class _PayablePartyDetailScreenState
   @override
   void initState() {
     super.initState();
+    _pendingAmount = widget.pendingAmount;
     _loadEntries();
   }
 
@@ -123,11 +125,18 @@ class _PayablePartyDetailScreenState
         ));
       }
 
+      final recalculatedPending = await SupabaseService.recalculatePurchasePartyPendingAmount(
+        shopId: shop.id,
+        partyId: widget.partyId,
+        partyName: widget.partyName,
+      );
+
       if (mounted) {
         setState(() {
           _entries = entries;
           _totalPurchased = totalPurchased;
           _totalPaid = totalPaid;
+          _pendingAmount = recalculatedPending;
           _loading = false;
         });
       }
@@ -318,7 +327,7 @@ class _PayablePartyDetailScreenState
         // Pending amount
         Column(crossAxisAlignment: CrossAxisAlignment.end, children: [
           Text(
-            _currency.format(widget.pendingAmount),
+            _currency.format(_pendingAmount),
             style: const TextStyle(
               color: Colors.white,
               fontSize: 22,
@@ -356,7 +365,7 @@ class _PayablePartyDetailScreenState
       const SizedBox(width: 10),
       Expanded(child: _summaryTile(
         AppLang.tr(isEn, 'Pending', 'बकाया'),
-        _currency.format(widget.pendingAmount),
+        _currency.format(_pendingAmount),
         Icons.warning_rounded,
         AppColors.error,
       )),
