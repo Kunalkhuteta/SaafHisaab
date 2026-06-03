@@ -1252,6 +1252,66 @@ static Future<double> getTotalUdhar(String shopId) async {
     }).eq('id', partyId);
   }
 
+  static Future<double> recalculatePurchasePartyPendingAmount({
+    required String shopId,
+    required String partyId,
+    required String partyName,
+  }) async {
+    try {
+      final bills = await getPurchaseBillsForParty(shopId, partyName);
+      double totalPending = 0.0;
+
+      for (final bill in bills) {
+        if (bill.notes == 'Payment to Supplier') {
+          totalPending -= bill.amount;
+          continue;
+        }
+
+        double creditAmount = 0.0;
+        try {
+          final sales = await getSalesByBillId(bill.id);
+          if (sales.isNotEmpty) {
+            final paymentMode = sales.first.paymentMode.toLowerCase();
+            bool hasCreditDetails = false;
+
+            for (final s in sales) {
+              final notesStr = s.notes;
+              final startMarker = '__saafhisaab_credit_advance:';
+              final startIndex = notesStr.indexOf(startMarker);
+              if (startIndex >= 0) {
+                final endMarker = '__';
+                final endIndex = notesStr.indexOf(endMarker, startIndex + startMarker.length);
+                if (endIndex >= 0) {
+                  final sub = notesStr.substring(startIndex + startMarker.length, endIndex);
+                  final parts = sub.split(';credit:');
+                  if (parts.length == 2) {
+                    creditAmount = double.tryParse(parts[1]) ?? 0.0;
+                    hasCreditDetails = true;
+                    break;
+                  }
+                }
+              }
+            }
+
+            if (!hasCreditDetails) {
+              if (paymentMode == 'credit' || paymentMode == 'split') {
+                creditAmount = bill.amount;
+              }
+            }
+          }
+        } catch (_) {}
+        totalPending += creditAmount;
+      }
+
+      final finalPending = totalPending < 0 ? 0.0 : totalPending;
+      await updatePurchasePartyPendingAmount(partyId, finalPending);
+      return finalPending;
+    } catch (e) {
+      debugPrint('Error recalculating pending amount: $e');
+      return 0.0;
+    }
+  }
+
   static Future<void> recordPurchasePartyPayment({
     required String shopId,
     required String userId,
