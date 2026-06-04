@@ -1047,7 +1047,34 @@ class _PurchaseReturnScreenState extends ConsumerState<PurchaseReturnScreen> {
       final partyName = (_selectedParty?.name ?? _partyCtrl.text).trim();
       final total = selected.fold<double>(0, (sum, d) => sum + d.amount);
 
-      final note = [
+      // Calculate how much of the return is udhar reduction vs actual cash/bank refund
+      double currentPending = 0.0;
+      if (settlement == _ReturnSettlement.cashRefund) {
+        if (_selectedParty != null) {
+          currentPending = _selectedParty!.pendingAmount;
+        } else {
+          final dbParty = await SupabaseService.findPurchasePartyByName(shop.id, partyName);
+          if (dbParty != null) {
+            currentPending = (dbParty['pending_amount'] as num?)?.toDouble() ?? 0.0;
+          }
+        }
+      }
+      final udharReduction = settlement == _ReturnSettlement.cashRefund
+          ? total.clamp(0.0, currentPending)
+          : 0.0;
+      final paidReturnAmount = (total - udharReduction).clamp(0.0, double.infinity);
+
+      // Determine effective payment mode for daily balance accuracy
+      String effectivePaymentMode;
+      if (settlement == _ReturnSettlement.cashRefund && udharReduction > 0 && paidReturnAmount > 0) {
+        effectivePaymentMode = 'split';
+      } else if (settlement == _ReturnSettlement.cashRefund && udharReduction > 0 && paidReturnAmount <= 0) {
+        effectivePaymentMode = 'credit';
+      } else {
+        effectivePaymentMode = paymentMode;
+      }
+
+      final noteLines = [
         '__saafhisaab_return_ref:${sourceBill?.id ?? 'none'}__',
         'settlement: ${settlement.name}',
         if (settlement == _ReturnSettlement.adjustment)
@@ -1057,7 +1084,11 @@ class _PurchaseReturnScreenState extends ConsumerState<PurchaseReturnScreen> {
             paidAmount: 0,
             remainingAdjustment: total,
           ),
-      ].join('\n');
+        // Embed credit_advance marker so daily balance sync can parse the split correctly
+        if (effectivePaymentMode == 'split')
+          '__saafhisaab_credit_advance:${paidReturnAmount.toStringAsFixed(2)};credit:${udharReduction.toStringAsFixed(2)}__',
+      ];
+      final note = noteLines.join('\n');
 
       billId = await SupabaseService.saveBillGetId(BillModel(
         id: '',
@@ -1114,7 +1145,7 @@ class _PurchaseReturnScreenState extends ConsumerState<PurchaseReturnScreen> {
           unit: sale.unit,
           sellingPrice: sale.sellingPrice,
           totalAmount: -draft.amount,
-          paymentMode: paymentMode,
+          paymentMode: effectivePaymentMode,
           billId: billId,
           stockItemId: stockItemId,
           saleDate: DateTime.now(),
