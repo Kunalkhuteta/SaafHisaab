@@ -552,7 +552,7 @@ class _PurchaseReturnScreenState extends ConsumerState<PurchaseReturnScreen> {
           if (paymentMode == 'credit' || paymentMode == 'split') ...[
             const SizedBox(height: 8),
             Text(
-              '${AppLang.tr(isEn, 'Supplier pending', 'आपूर्तिकर्ता बकाया')}: ${_currency.format(_selectedParty?.pendingAmount ?? 0)}',
+              '${AppLang.tr(isEn, 'Supplier pending', 'आपूर्तिकर्ता बकाया')}: ${_currency.format(bundle.remainingCreditAmount)}',
               style: const TextStyle(
                 color: AppColors.error,
                 fontSize: 12,
@@ -615,7 +615,10 @@ class _PurchaseReturnScreenState extends ConsumerState<PurchaseReturnScreen> {
       builder: (ctx) => StatefulBuilder(builder: (ctx, setSheetState) {
         final total = items.fold<double>(0, (sum, item) => sum + item.amount);
 
-        final udharReduction = total.clamp(0.0, currentPending);
+        final billCreditLeft = bundle.remainingCreditAmount;
+        final pendingAvailableForThisBill =
+            billCreditLeft.clamp(0.0, currentPending).toDouble();
+        final udharReduction = total.clamp(0.0, pendingAvailableForThisBill);
         final paidReturnAmount = (total - udharReduction).clamp(0.0, double.infinity);
 
         final showSaveSalesReturnOnly = (bundle.paymentMode == 'credit' || bundle.paymentMode == 'split') && paidReturnAmount <= 0;
@@ -1047,9 +1050,10 @@ class _PurchaseReturnScreenState extends ConsumerState<PurchaseReturnScreen> {
       final partyName = (_selectedParty?.name ?? _partyCtrl.text).trim();
       final total = selected.fold<double>(0, (sum, d) => sum + d.amount);
 
-      // Calculate how much of the return is udhar reduction vs actual cash/bank refund
+      // Calculate how much of this bill's unpaid amount is being reversed vs refunded.
       double currentPending = 0.0;
-      if (settlement == _ReturnSettlement.cashRefund) {
+      if (settlement == _ReturnSettlement.cashRefund ||
+          settlement == _ReturnSettlement.reduceUdhar) {
         if (_selectedParty != null) {
           currentPending = _selectedParty!.pendingAmount;
         } else {
@@ -1059,9 +1063,17 @@ class _PurchaseReturnScreenState extends ConsumerState<PurchaseReturnScreen> {
           }
         }
       }
-      final udharReduction = settlement == _ReturnSettlement.cashRefund
-          ? total.clamp(0.0, currentPending)
-          : 0.0;
+      final billCreditLeft = await _remainingCreditForSourceBill(
+        sourceBill: sourceBill,
+        selectedDrafts: selected,
+      );
+      final pendingAvailableForThisBill =
+          billCreditLeft.clamp(0.0, currentPending).toDouble();
+      final udharReduction =
+          (settlement == _ReturnSettlement.cashRefund ||
+                  settlement == _ReturnSettlement.reduceUdhar)
+              ? total.clamp(0.0, pendingAvailableForThisBill)
+              : 0.0;
       final paidReturnAmount = (total - udharReduction).clamp(0.0, double.infinity);
 
       // Determine effective payment mode for daily balance accuracy
@@ -1159,6 +1171,7 @@ class _PurchaseReturnScreenState extends ConsumerState<PurchaseReturnScreen> {
         userId: userId,
         partyName: partyName,
         amount: total,
+        udharReduction: udharReduction,
         settlement: settlement,
         sourceBill: sourceBill,
       );
@@ -1237,6 +1250,7 @@ class _PurchaseReturnScreenState extends ConsumerState<PurchaseReturnScreen> {
     required String userId,
     required String partyName,
     required double amount,
+    required double udharReduction,
     required _ReturnSettlement settlement,
     required BillModel? sourceBill,
   }) async {
@@ -1253,15 +1267,40 @@ class _PurchaseReturnScreenState extends ConsumerState<PurchaseReturnScreen> {
     
     final partyId = party['id'] as String;
 
-    if (settlement == _ReturnSettlement.reduceUdhar) {
+    if (settlement == _ReturnSettlement.reduceUdhar ||
+        settlement == _ReturnSettlement.cashRefund) {
       final currentPending = await SupabaseService.getPurchasePartyPendingAmount(partyId);
-      final reduceBy = amount.clamp(0, currentPending).toDouble();
+      final reduceBy = udharReduction.clamp(0, currentPending).toDouble();
       if (reduceBy > 0) {
         await SupabaseService.updatePurchasePartyPendingAmount(partyId, currentPending - reduceBy);
       }
     } else if (settlement == _ReturnSettlement.adjustment) {
       await SupabaseService.addPurchasePartyAdjustmentAmount(partyId, amount);
     }
+  }
+
+  Future<double> _remainingCreditForSourceBill({
+    required BillModel? sourceBill,
+    required List<_ReturnLineDraft> selectedDrafts,
+  }) async {
+    if (selectedDrafts.isEmpty) return 0.0;
+    if (sourceBill == null) return double.infinity;
+
+    final paymentMode = selectedDrafts.first.line.sale.paymentMode.toLowerCase();
+    if (paymentMode != 'credit' && paymentMode != 'split') return 0.0;
+
+    final originalCredit = _PurchaseBundle.creditAmountFromSales(
+      selectedDrafts.map((draft) => draft.line.sale).toList(),
+      sourceBill.amount,
+    );
+    if (originalCredit <= 0) return 0.0;
+
+    final returnedSales = await SupabaseService.getReturnSalesForBill(sourceBill.id);
+    final alreadyReduced =
+        _PurchaseBundle.creditReducedByReturns(returnedSales);
+    return (originalCredit - alreadyReduced)
+        .clamp(0.0, double.infinity)
+        .toDouble();
   }
 
   String _paymentLabel(String paymentMode, bool isEn) {
@@ -1428,6 +1467,13 @@ class _PurchaseBundle {
 
   String get paymentMode => sales.isEmpty ? 'cash' : sales.first.paymentMode;
 
+  double get originalCreditAmount => creditAmountFromSales(sales, bill.amount);
+
+  double get remainingCreditAmount {
+    final remaining = originalCreditAmount - creditReducedByReturns(returnedSales);
+    return remaining.clamp(0.0, double.infinity).toDouble();
+  }
+
   bool get hasAdjustmentReturn => returnedSales.any(
         (sale) => sale.notes.toLowerCase().contains('settlement: adjustment'),
       );
@@ -1451,6 +1497,45 @@ class _PurchaseBundle {
       0,
       (sum, line) => sum + (line.remainingQty * line.sale.sellingPrice),
     );
+  }
+
+  static double creditAmountFromSales(List<SaleModel> sales, double billAmount) {
+    if (sales.isEmpty) return 0.0;
+
+    for (final sale in sales) {
+      final credit = _creditFromAdvanceMarker(sale.notes);
+      if (credit > 0) return credit;
+    }
+
+    final paymentMode = sales.first.paymentMode.toLowerCase();
+    if (paymentMode == 'credit') return billAmount;
+    return 0.0;
+  }
+
+  static double creditReducedByReturns(List<SaleModel> returnedSales) {
+    return returnedSales.fold<double>(0.0, (sum, sale) {
+      final markerCredit = _creditFromAdvanceMarker(sale.notes);
+      if (markerCredit > 0) return sum + markerCredit;
+
+      final paymentMode = sale.paymentMode.toLowerCase();
+      if (paymentMode == 'credit') return sum + sale.totalAmount.abs();
+      return sum;
+    });
+  }
+
+  static double _creditFromAdvanceMarker(String notes) {
+    final startMarker = '__saafhisaab_credit_advance:';
+    final startIndex = notes.indexOf(startMarker);
+    if (startIndex < 0) return 0.0;
+
+    final endIndex = notes.indexOf('__', startIndex + startMarker.length);
+    if (endIndex < 0) return 0.0;
+
+    final raw = notes.substring(startIndex + startMarker.length, endIndex);
+    final parts = raw.split(';credit:');
+    if (parts.length != 2) return 0.0;
+
+    return double.tryParse(parts[1]) ?? 0.0;
   }
 }
 
@@ -1479,3 +1564,4 @@ class _StockRollback {
 }
 
 enum _ReturnSettlement { adjustment, cashRefund, reduceUdhar }
+
