@@ -3,19 +3,22 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../constants/app_colors.dart';
 import '../../globalVar.dart';
+import '../../models/shop_access_model.dart';
 import '../../providers/app_providers.dart';
 import '../../services/auth_service.dart';
 import '../../services/notification_service.dart';
 import '../auth/login_screen.dart';
 import '../bills/bill_scan_screen.dart';
+import '../master/master_screen.dart';
+import '../master/role_master_screen.dart';
+import '../master/user_master_screen.dart';
 import '../profile/profile_screen.dart';
+import '../purchase/purchase_parties_list_screen.dart';
+import '../settings/system_params_screen.dart';
 import '../stock/stock_screen.dart';
 import '../udhar/udhar_screen.dart';
-import '../purchase/purchase_parties_list_screen.dart';
-import 'reports_tab.dart';
 import 'dashboard_tab.dart';
-import '../settings/system_params_screen.dart';
-import '../master/master_screen.dart';
+import 'reports_tab.dart';
 
 class HomeScreen extends ConsumerStatefulWidget {
   const HomeScreen({super.key});
@@ -39,23 +42,33 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
   @override
   Widget build(BuildContext context) {
     final isEn = ref.watch(appLanguageProvider);
+    final accessAsync = ref.watch(shopAccessProvider);
+    final access = accessAsync.valueOrNull;
 
-    final screens = [
-      const DashboardTab(),
-      const BillScanScreen(),
-      const MasterScreen(),
-      const UdharScreen(),
-      const ReportsTab(),
-    ];
+    if (accessAsync.isLoading && access == null) {
+      return const Scaffold(
+        backgroundColor: AppColors.background,
+        body: Center(child: CircularProgressIndicator(color: AppColors.primary)),
+      );
+    }
+
+    final role = access?.role ?? ShopRole.staff;
+    final tabs = _tabsFor(role, isEn);
+
+    if (_currentIndex >= tabs.length) _currentIndex = 0;
 
     return Scaffold(
       backgroundColor: AppColors.background,
       drawer: _HomeDrawer(
         isEn: isEn,
+        role: role,
         onProfile: () => _openSettings(context),
         onSettings: () => _openSettings(context),
       ),
-      body: IndexedStack(index: _currentIndex, children: screens),
+      body: IndexedStack(
+        index: _currentIndex,
+        children: tabs.map((tab) => tab.screen).toList(),
+      ),
       bottomNavigationBar: BottomNavigationBar(
         currentIndex: _currentIndex,
         onTap: (i) => setState(() => _currentIndex = i),
@@ -65,30 +78,47 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
         selectedLabelStyle:
             const TextStyle(fontSize: 11, fontWeight: FontWeight.w600),
         unselectedLabelStyle: const TextStyle(fontSize: 11),
-        items: [
-          BottomNavigationBarItem(
-            icon: const Icon(Icons.home_rounded),
-            label: AppLang.tr(isEn, 'Home', 'Home'),
-          ),
-          BottomNavigationBarItem(
-            icon: const Icon(Icons.receipt_long_rounded),
-            label: AppLang.tr(isEn, 'Bills', 'Bills'),
-          ),
-          BottomNavigationBarItem(
-            icon: const Icon(Icons.dashboard_rounded),
-            label: AppLang.tr(isEn, 'Master', 'मास्टर'),
-          ),
-          BottomNavigationBarItem(
-            icon: const Icon(Icons.people_rounded),
-            label: AppLang.tr(isEn, 'Credit', 'Credit'),
-          ),
-          BottomNavigationBarItem(
-            icon: const Icon(Icons.insert_chart_rounded),
-            label: AppLang.tr(isEn, 'Reports', 'रिपोर्ट्स'),
-          ),
-        ],
+        items: tabs
+            .map((tab) => BottomNavigationBarItem(
+                  icon: Icon(tab.icon),
+                  label: tab.label,
+                ))
+            .toList(),
       ),
     );
+  }
+
+  List<_HomeTab> _tabsFor(ShopRole role, bool isEn) {
+    return [
+      _HomeTab(
+        screen: const DashboardTab(),
+        icon: Icons.home_rounded,
+        label: AppLang.tr(isEn, 'Home', 'Home'),
+      ),
+      _HomeTab(
+        screen: const BillScanScreen(),
+        icon: Icons.receipt_long_rounded,
+        label: AppLang.tr(isEn, 'Bills', 'Bills'),
+      ),
+      if (role.canViewMaster)
+        _HomeTab(
+          screen: const MasterScreen(),
+          icon: Icons.dashboard_rounded,
+          label: AppLang.tr(isEn, 'Master', 'Master'),
+        ),
+      if (role.canViewUdhar)
+        _HomeTab(
+          screen: const UdharScreen(),
+          icon: Icons.people_rounded,
+          label: AppLang.tr(isEn, 'Credit', 'Credit'),
+        ),
+      if (role.canViewReports)
+        _HomeTab(
+          screen: const ReportsTab(),
+          icon: Icons.insert_chart_rounded,
+          label: AppLang.tr(isEn, 'Reports', 'Reports'),
+        ),
+    ];
   }
 
   void _openSettings(BuildContext context) {
@@ -100,13 +130,27 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
   }
 }
 
+class _HomeTab {
+  final Widget screen;
+  final IconData icon;
+  final String label;
+
+  const _HomeTab({
+    required this.screen,
+    required this.icon,
+    required this.label,
+  });
+}
+
 class _HomeDrawer extends StatelessWidget {
   final bool isEn;
+  final ShopRole role;
   final VoidCallback onProfile;
   final VoidCallback onSettings;
 
   const _HomeDrawer({
     required this.isEn,
+    required this.role,
     required this.onProfile,
     required this.onSettings,
   });
@@ -128,20 +172,16 @@ class _HomeDrawer extends StatelessWidget {
                   const Icon(Icons.receipt_long_rounded,
                       color: Colors.white, size: 40),
                   const SizedBox(height: 10),
-                  Text(
-                    AppLang.tr(isEn, 'SaafHisaab', 'SaafHisaab'),
-                    style: const TextStyle(
+                  const Text(
+                    'SaafHisaab',
+                    style: TextStyle(
                       color: Colors.white,
                       fontSize: 24,
                       fontWeight: FontWeight.bold,
                     ),
                   ),
                   Text(
-                    AppLang.tr(
-                      isEn,
-                      'Clean Accounts for Your Shop',
-                      'Clean Accounts for Your Shop',
-                    ),
+                    role.label,
                     style: TextStyle(
                       color: Colors.white.withOpacity(0.8),
                       fontSize: 13,
@@ -173,73 +213,109 @@ class _HomeDrawer extends StatelessWidget {
               },
             ),
             const Divider(),
-            ListTile(
-              leading:
-                  const Icon(Icons.person_rounded, color: AppColors.textSecondary),
-              title: Text(AppLang.tr(isEn, 'My Profile', 'My Profile')),
-              onTap: onProfile,
-            ),
-            ListTile(
-              leading: const Icon(Icons.shopping_cart_rounded,
-                  color: AppColors.textSecondary),
-              title: Text(AppLang.tr(isEn, 'Purchase Account', 'खरीद खाता')),
-              onTap: () {
-                Navigator.pop(context);
-                Navigator.push(
-                  context,
-                  MaterialPageRoute(builder: (_) => const PurchasePartiesListScreen()),
-                );
-              },
-            ),
-            ListTile(
-              leading: const Icon(Icons.inventory_2_rounded,
-                  color: AppColors.textSecondary),
-              title: Text(AppLang.tr(isEn, 'Stock', 'स्टॉक')),
-              onTap: () {
-                Navigator.pop(context);
-                Navigator.push(
-                  context,
-                  MaterialPageRoute(builder: (_) => Scaffold(
-                    appBar: AppBar(
-                      title: Text(AppLang.tr(isEn, 'Stock', 'स्टॉक')),
-                      backgroundColor: AppColors.primary,
-                      foregroundColor: Colors.white,
+            if (!role.isStaff)
+              ListTile(
+                leading: const Icon(Icons.person_rounded,
+                    color: AppColors.textSecondary),
+                title: const Text('My Profile'),
+                onTap: onProfile,
+              ),
+            if (role.canViewPurchases)
+              ListTile(
+                leading: const Icon(Icons.shopping_cart_rounded,
+                    color: AppColors.textSecondary),
+                title: const Text('Purchase Account'),
+                onTap: () {
+                  Navigator.pop(context);
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                        builder: (_) => const PurchasePartiesListScreen()),
+                  );
+                },
+              ),
+            if (role.canViewStock)
+              ListTile(
+                leading: const Icon(Icons.inventory_2_rounded,
+                    color: AppColors.textSecondary),
+                title: const Text('Stock'),
+                onTap: () {
+                  Navigator.pop(context);
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (_) => Scaffold(
+                        appBar: AppBar(
+                          title: const Text('Stock'),
+                          backgroundColor: AppColors.primary,
+                          foregroundColor: Colors.white,
+                        ),
+                        body: const StockScreen(),
+                      ),
                     ),
-                    body: const StockScreen(),
-                  )),
-                );
-              },
-            ),
-            ListTile(
-              leading: const Icon(Icons.settings_rounded,
-                  color: AppColors.textSecondary),
-              title: Text(AppLang.tr(isEn, 'Settings', 'Settings')),
-              onTap: onSettings,
-            ),
-            ListTile(
-              leading: const Icon(Icons.tune_rounded,
-                  color: AppColors.textSecondary),
-              title: Text(AppLang.tr(isEn, 'System Params', 'सिस्टम पैरामीटर')),
-              onTap: () {
-                Navigator.pop(context);
-                Navigator.push(
-                  context,
-                  MaterialPageRoute(builder: (_) => const SystemParamsScreen()),
-                );
-              },
-            ),
-            ListTile(
-              leading: const Icon(Icons.help_outline_rounded,
-                  color: AppColors.textSecondary),
-              title: Text(AppLang.tr(isEn, 'Help & Support', 'Help & Support')),
-              onTap: () => Navigator.pop(context),
-            ),
+                  );
+                },
+              ),
+            if (role.canManageUsers)
+              ListTile(
+                leading: const Icon(Icons.group_add_rounded,
+                    color: AppColors.textSecondary),
+                title: const Text('User Master'),
+                onTap: () {
+                  Navigator.pop(context);
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(builder: (_) => const UserMasterScreen()),
+                  );
+                },
+              ),
+            if (role.canManageUsers)
+              ListTile(
+                leading: const Icon(Icons.admin_panel_settings_rounded,
+                    color: AppColors.textSecondary),
+                title: const Text('Role Master'),
+                onTap: () {
+                  Navigator.pop(context);
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(builder: (_) => const RoleMasterScreen()),
+                  );
+                },
+              ),
+            if (role.canOpenSettings)
+              ListTile(
+                leading: const Icon(Icons.settings_rounded,
+                    color: AppColors.textSecondary),
+                title: const Text('Settings'),
+                onTap: onSettings,
+              ),
+            if (role.canOpenSettings)
+              ListTile(
+                leading: const Icon(Icons.tune_rounded,
+                    color: AppColors.textSecondary),
+                title: const Text('System Params'),
+                onTap: () {
+                  Navigator.pop(context);
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                        builder: (_) => const SystemParamsScreen()),
+                  );
+                },
+              ),
+            if (!role.isStaff)
+              ListTile(
+                leading: const Icon(Icons.help_outline_rounded,
+                    color: AppColors.textSecondary),
+                title: const Text('Help & Support'),
+                onTap: () => Navigator.pop(context),
+              ),
             const Divider(),
             ListTile(
               leading: const Icon(Icons.logout_rounded, color: AppColors.error),
-              title: Text(
-                AppLang.tr(isEn, 'Sign Out', 'Sign Out'),
-                style: const TextStyle(color: AppColors.error),
+              title: const Text(
+                'Sign Out',
+                style: TextStyle(color: AppColors.error),
               ),
               onTap: () async {
                 await AuthService.signOut();
