@@ -64,6 +64,17 @@ class _PayablePartyDetailScreenState
       double totalPaid = 0;
 
       for (final bill in bills) {
+        if (bill.notes == 'Payment to Supplier') {
+          totalPaid += bill.amount;
+          entries.add(_PurchaseEntry(
+            bill: bill,
+            paymentMode: 'payment',
+            cashPaid: bill.amount,
+            creditAmount: 0,
+          ));
+          continue;
+        }
+
         String paymentMode = 'cash';
         double cashPaid = 0;
         double creditAmount = 0;
@@ -431,12 +442,17 @@ class _PayablePartyDetailScreenState
     final bill = entry.bill;
     final isCredit = entry.paymentMode == 'credit';
     final isSplit = entry.paymentMode == 'split';
+    final isPayment = entry.paymentMode == 'payment';
 
     // Payment mode display
     String modeLabel;
     IconData modeIcon;
     Color modeColor;
-    if (isCredit) {
+    if (isPayment) {
+      modeLabel = AppLang.tr(isEn, 'Payment', 'भुगतान');
+      modeIcon = Icons.payments_rounded;
+      modeColor = AppColors.success;
+    } else if (isCredit) {
       modeLabel = AppLang.tr(isEn, 'Credit', 'उधार');
       modeIcon = Icons.access_time_rounded;
       modeColor = AppColors.error;
@@ -524,7 +540,9 @@ class _PayablePartyDetailScreenState
             // Amount
             Column(crossAxisAlignment: CrossAxisAlignment.end, children: [
               Text(
-                _currency.format(bill.amount),
+                isPayment
+                    ? '-${_currency.format(bill.amount)}'
+                    : _currency.format(bill.amount),
                 style: const TextStyle(
                   fontSize: 17,
                   fontWeight: FontWeight.w900,
