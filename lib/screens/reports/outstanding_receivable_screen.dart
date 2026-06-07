@@ -15,7 +15,16 @@ final outstandingReceivableProvider =
   if (shop == null) return [];
 
   final customers = await SupabaseService.getAllUdharCustomers(shop.id);
-  return customers.where((c) => c.totalDue > 0).toList();
+  final recalculated = <UdharCustomerModel>[];
+  for (final customer in customers) {
+    final totalDue =
+        await SupabaseService.recalculateCustomerTotalDue(customer.id);
+    if (totalDue > 0) {
+      recalculated.add(customer.copyWith(totalDue: totalDue));
+    }
+  }
+  recalculated.sort((a, b) => b.totalDue.compareTo(a.totalDue));
+  return recalculated;
 });
 
 class OutstandingReceivableScreen extends ConsumerWidget {
