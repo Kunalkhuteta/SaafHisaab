@@ -31,6 +31,7 @@ class _ReceivablePartyDetailScreenState
   Map<String, BillModel> _billsById = {};
   double _totalCredit = 0;
   double _totalReceived = 0;
+  double _currentDue = 0;
   DateTime? _lastPaymentDate;
   DateTime? _oldestDueDate;
 
@@ -42,6 +43,7 @@ class _ReceivablePartyDetailScreenState
   @override
   void initState() {
     super.initState();
+    _currentDue = widget.customer.totalDue;
     _loadEntries();
   }
 
@@ -50,6 +52,8 @@ class _ReceivablePartyDetailScreenState
     try {
       final entries =
           await SupabaseService.getUdharEntriesForCustomer(widget.customer.id);
+      final currentDue =
+          await SupabaseService.recalculateCustomerTotalDue(widget.customer.id);
 
       double totalCredit = 0;
       double totalReceived = 0;
@@ -90,6 +94,7 @@ class _ReceivablePartyDetailScreenState
           _billsById = billsById;
           _totalCredit = totalCredit;
           _totalReceived = totalReceived;
+          _currentDue = currentDue;
           _lastPaymentDate = lastPaymentDate;
           _oldestDueDate = oldestDueDate;
           _loading = false;
@@ -231,7 +236,7 @@ class _ReceivablePartyDetailScreenState
         const SizedBox(width: 10),
         Column(crossAxisAlignment: CrossAxisAlignment.end, children: [
           Text(
-            _currency.format(widget.customer.totalDue),
+            _currency.format(_currentDue),
             style: const TextStyle(
               color: Colors.white,
               fontSize: 22,
@@ -274,7 +279,7 @@ class _ReceivablePartyDetailScreenState
       Expanded(
         child: _summaryTile(
           AppLang.tr(isEn, 'Balance', 'बाकी'),
-          _currency.format(widget.customer.totalDue),
+          _currency.format(_currentDue),
           Icons.account_balance_wallet_rounded,
           AppColors.error,
         ),
