@@ -4,6 +4,8 @@ import '../../constants/app_colors.dart';
 import 'shop_setup_screen.dart';
 import '../../services/auth_service.dart';
 import '../../services/supabase_service.dart';
+import 'access_removed_screen.dart';
+import 'member_welcome_screen.dart';
 import '../home/home_screen.dart';
 import '../../globalVar.dart';
 
@@ -61,9 +63,20 @@ class _OTPScreenState extends ConsumerState<OTPScreen> {
     try {
       final response = await AuthService.verifyOTP(phone: widget.phone, otp: otp);
       if (response.user != null) {
-        final shopExists = await SupabaseService.shopExists(response.user!.id);
+        final access = await SupabaseService.getShopAccessContext(
+          userId: response.user!.id,
+          phone: widget.phone,
+        );
         if (mounted) {
-          if (shopExists) {
+          if (access?.isDeactivated == true) {
+            Navigator.pushAndRemoveUntil(context, MaterialPageRoute(builder: (_) => const AccessRemovedScreen()), (route) => false);
+          } else if (access?.welcomeMessage != null) {
+            Navigator.pushAndRemoveUntil(
+              context,
+              MaterialPageRoute(builder: (_) => MemberWelcomeScreen(message: access!.welcomeMessage!)),
+              (route) => false,
+            );
+          } else if (access != null) {
             Navigator.pushAndRemoveUntil(context, MaterialPageRoute(builder: (_) => const HomeScreen()), (route) => false);
           } else {
             Navigator.pushAndRemoveUntil(context, MaterialPageRoute(builder: (_) => const ShopSetupScreen()), (route) => false);
