@@ -94,18 +94,23 @@ class _LedgerPartySelectionPageState extends ConsumerState<LedgerPartySelectionP
         // Fetch both customers and suppliers
         final customers = await SupabaseService.getAllUdharCustomers(shop.id);
         for (final c in customers) {
-          if (c.totalDue > 0) {
+          final due = await SupabaseService.recalculateCustomerTotalDue(c.id);
+          if (due > 0) {
             data.add(OutstandingLedger(
               accountId: c.id,
               name: c.customerName,
-              dueAmount: -c.totalDue,
+              dueAmount: -due,
             ));
           }
         }
 
-        final suppliers = await SupabaseService.getPurchasePartiesWithPending(shop.id);
+        final suppliers = await SupabaseService.getAllPurchaseParties(shop.id);
         for (final s in suppliers) {
-          final amt = (s['pending_amount'] as num?)?.toDouble() ?? 0.0;
+          final amt = await SupabaseService.recalculatePurchasePartyPendingAmount(
+            shopId: shop.id,
+            partyId: s['id'] as String,
+            partyName: s['name'] as String? ?? '',
+          );
           if (amt > 0) {
             data.add(OutstandingLedger(
               accountId: s['id'] as String,
@@ -118,18 +123,23 @@ class _LedgerPartySelectionPageState extends ConsumerState<LedgerPartySelectionP
         if (_isReceivable) {
           final customers = await SupabaseService.getAllUdharCustomers(shop.id);
           for (final c in customers) {
-            if (c.totalDue > 0) {
+            final due = await SupabaseService.recalculateCustomerTotalDue(c.id);
+            if (due > 0) {
               data.add(OutstandingLedger(
                 accountId: c.id,
                 name: c.customerName,
-                dueAmount: -c.totalDue,
+                dueAmount: -due,
               ));
             }
           }
         } else {
-          final suppliers = await SupabaseService.getPurchasePartiesWithPending(shop.id);
+          final suppliers = await SupabaseService.getAllPurchaseParties(shop.id);
           for (final s in suppliers) {
-            final amt = (s['pending_amount'] as num?)?.toDouble() ?? 0.0;
+            final amt = await SupabaseService.recalculatePurchasePartyPendingAmount(
+              shopId: shop.id,
+              partyId: s['id'] as String,
+              partyName: s['name'] as String? ?? '',
+            );
             if (amt > 0) {
               data.add(OutstandingLedger(
                 accountId: s['id'] as String,
