@@ -1,6 +1,7 @@
 import 'package:flutter/foundation.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import '../models/shop_model.dart';
+import '../models/shop_access_model.dart';
 import '../models/bill_model.dart';
 import '../models/sale_model.dart';
 import '../models/stock_model.dart';
@@ -34,6 +35,13 @@ class SupabaseService {
         .firstMatch(notes);
     if (match == null) return 0;
     return double.tryParse(match.group(1) ?? '') ?? 0;
+  }
+
+  static double _creditDueFromNotes(String notes) {
+    final match = RegExp(r'__saafhisaab_credit_advance:([0-9.]+);credit:([0-9.]+)__')
+        .firstMatch(notes);
+    if (match == null) return 0;
+    return double.tryParse(match.group(2) ?? '') ?? 0;
   }
 
   static double saleAdjustmentFromNotes(String notes) {
@@ -77,6 +85,12 @@ class SupabaseService {
     return response != null;
   }
 
+  static String normalizePhone(String phone) {
+    final digits = phone.replaceAll(RegExp(r'\D'), '');
+    if (digits.length <= 10) return digits;
+    return digits.substring(digits.length - 10);
+  }
+
   static Future<ShopModel> saveShop({
     required String userId,
     required String ownerName,
@@ -110,6 +124,308 @@ class SupabaseService {
         .maybeSingle();
     if (data == null) return null;
     return ShopModel.fromJson(data);
+  }
+
+  static Future<ShopModel?> getShopById(String shopId) async {
+    final data = await _client
+        .from('shops')
+        .select()
+        .eq('id', shopId)
+        .maybeSingle();
+    if (data == null) return null;
+    return ShopModel.fromJson(data);
+  }
+
+  static Future<ShopAccessContext?> getShopAccessContext({
+    required String userId,
+    required String? phone,
+  }) async {
+    final ownedShop = await getShop(userId);
+    if (ownedShop != null) {
+      return ShopAccessContext(
+        shop: ownedShop,
+        role: ShopRole.admin,
+        isOwner: true,
+      );
+    }
+
+    final activeMember = await _client
+        .from('shop_members')
+        .select('*, shops(*)')
+        .eq('user_id', userId)
+        .eq('is_active', true)
+        .maybeSingle();
+    if (activeMember != null && activeMember['shops'] != null) {
+      return ShopAccessContext(
+        shop: ShopModel.fromJson(Map<String, dynamic>.from(activeMember['shops'])),
+        role: ShopRoleX.parse(activeMember['role'] as String?),
+        isOwner: false,
+        membershipId: activeMember['id'] as String?,
+      );
+    }
+
+    final inactiveMember = await _client
+        .from('shop_members')
+        .select('*, shops(*)')
+        .eq('user_id', userId)
+        .eq('is_active', false)
+        .order('updated_at', ascending: false)
+        .limit(1)
+        .maybeSingle();
+    if (inactiveMember != null && inactiveMember['shops'] != null) {
+      return ShopAccessContext(
+        shop: ShopModel.fromJson(Map<String, dynamic>.from(inactiveMember['shops'])),
+        role: ShopRoleX.parse(inactiveMember['role'] as String?),
+        isOwner: false,
+        isDeactivated: true,
+        membershipId: inactiveMember['id'] as String?,
+      );
+    }
+
+    final normalizedPhone = normalizePhone(phone ?? '');
+    if (normalizedPhone.isEmpty) return null;
+
+    final invite = await _client
+        .from('shop_member_invites')
+        .select('*, shops(*)')
+        .eq('phone', normalizedPhone)
+        .eq('is_accepted', false)
+        .order('created_at')
+        .limit(1)
+        .maybeSingle();
+    if (invite == null || invite['shops'] == null) return null;
+
+    final memberData = await _client
+        .from('shop_members')
+        .insert({
+          'shop_id': invite['shop_id'],
+          'user_id': userId,
+          'name': invite['name'],
+          'phone': normalizedPhone,
+          'role': invite['role'],
+          'is_active': true,
+          'added_by': invite['invited_by'],
+        })
+        .select()
+        .single();
+
+    await _client
+        .from('shop_member_invites')
+        .update({
+          'is_accepted': true,
+          'accepted_user_id': userId,
+          'accepted_at': DateTime.now().toIso8601String(),
+        })
+        .eq('id', invite['id']);
+
+    final shop = ShopModel.fromJson(Map<String, dynamic>.from(invite['shops']));
+    return ShopAccessContext(
+      shop: shop,
+      role: ShopRoleX.parse(invite['role'] as String?),
+      isOwner: false,
+      membershipId: memberData['id'] as String?,
+      welcomeMessage:
+          'You have been added to ${shop.shopName} as ${ShopRoleX.parse(invite['role'] as String?).label}.',
+    );
+  }
+
+  static Future<List<ShopMember>> getShopMembers(String shopId) async {
+    final data = await _client
+        .from('shop_members')
+        .select()
+        .eq('shop_id', shopId)
+        .order('created_at', ascending: false);
+    return (data as List)
+        .map((m) => ShopMember.fromJson(Map<String, dynamic>.from(m)))
+        .toList();
+  }
+
+  static Future<List<ShopMemberInvite>> getPendingShopInvites(
+      String shopId) async {
+    final data = await _client
+        .from('shop_member_invites')
+        .select()
+        .eq('shop_id', shopId)
+        .eq('is_accepted', false)
+        .order('created_at', ascending: false);
+    return (data as List)
+        .map((i) => ShopMemberInvite.fromJson(Map<String, dynamic>.from(i)))
+        .toList();
+  }
+
+  static Future<void> inviteShopMember({
+    required String shopId,
+    required String ownerUserId,
+    required String ownerPhone,
+    required String name,
+    required String phone,
+    required ShopRole role,
+  }) async {
+    final normalizedPhone = normalizePhone(phone);
+    if (normalizedPhone.length != 10) {
+      throw Exception('Enter a valid 10-digit phone number.');
+    }
+    if (normalizedPhone == normalizePhone(ownerPhone)) {
+      throw Exception('You are already the admin of this shop.');
+    }
+
+    final existingMember = await _client
+        .from('shop_members')
+        .select('id')
+        .eq('shop_id', shopId)
+        .eq('phone', normalizedPhone)
+        .maybeSingle();
+    if (existingMember != null) {
+      throw Exception('This person is already part of your shop.');
+    }
+
+    final existingInvite = await _client
+        .from('shop_member_invites')
+        .select('id')
+        .eq('shop_id', shopId)
+        .eq('phone', normalizedPhone)
+        .eq('is_accepted', false)
+        .maybeSingle();
+    if (existingInvite != null) {
+      throw Exception('This phone number already has a pending invite.');
+    }
+
+    String? existingUserId;
+    try {
+      final rpcResult = await _client.rpc(
+        'find_user_id_by_phone',
+        params: {'phone_input': '+91$normalizedPhone'},
+      );
+      if (rpcResult is String && rpcResult.isNotEmpty) {
+        existingUserId = rpcResult;
+      } else if (rpcResult is Map && rpcResult['id'] is String) {
+        existingUserId = rpcResult['id'] as String;
+      }
+    } catch (_) {
+      existingUserId = null;
+    }
+
+    if (existingUserId != null) {
+      await _client.from('shop_members').insert({
+        'shop_id': shopId,
+        'user_id': existingUserId,
+        'name': name,
+        'phone': normalizedPhone,
+        'role': role.value,
+        'is_active': true,
+        'added_by': ownerUserId,
+      });
+      return;
+    }
+
+    await _client.from('shop_member_invites').insert({
+      'shop_id': shopId,
+      'name': name,
+      'phone': normalizedPhone,
+      'role': role.value,
+      'invited_by': ownerUserId,
+      'is_accepted': false,
+    });
+  }
+
+  static Future<void> updateShopMemberRole({
+    required String shopId,
+    required String memberId,
+    required ShopRole role,
+  }) async {
+    final currentMember = await _client
+        .from('shop_members')
+        .select('role, is_active')
+        .eq('shop_id', shopId)
+        .eq('id', memberId)
+        .maybeSingle();
+    final currentRole = ShopRoleX.parse(currentMember?['role'] as String?);
+    final isActive = currentMember?['is_active'] as bool? ?? false;
+    if (isActive && currentRole.isAdmin && !role.isAdmin) {
+      await _ensureAnotherActiveMemberAdmin(
+        shopId: shopId,
+        excludingMemberId: memberId,
+      );
+    }
+
+    await _client
+        .from('shop_members')
+        .update({
+          'role': role.value,
+          'updated_at': DateTime.now().toIso8601String(),
+        })
+        .eq('shop_id', shopId)
+        .eq('id', memberId);
+  }
+
+  static Future<void> deactivateShopMember({
+    required String shopId,
+    required String memberId,
+  }) async {
+    final currentMember = await _client
+        .from('shop_members')
+        .select('role, is_active')
+        .eq('shop_id', shopId)
+        .eq('id', memberId)
+        .maybeSingle();
+    final currentRole = ShopRoleX.parse(currentMember?['role'] as String?);
+    final isActive = currentMember?['is_active'] as bool? ?? false;
+    if (isActive && currentRole.isAdmin) {
+      await _ensureAnotherActiveMemberAdmin(
+        shopId: shopId,
+        excludingMemberId: memberId,
+      );
+    }
+
+    await _client
+        .from('shop_members')
+        .update({
+          'is_active': false,
+          'updated_at': DateTime.now().toIso8601String(),
+        })
+        .eq('shop_id', shopId)
+        .eq('id', memberId);
+  }
+
+  static Future<void> _ensureAnotherActiveMemberAdmin({
+    required String shopId,
+    required String excludingMemberId,
+  }) async {
+    final shop = await _client
+        .from('shops')
+        .select('id')
+        .eq('id', shopId)
+        .maybeSingle();
+    if (shop != null) return;
+
+    final admins = await _client
+        .from('shop_members')
+        .select('id')
+        .eq('shop_id', shopId)
+        .eq('role', ShopRole.admin.value)
+        .eq('is_active', true);
+    final hasAnotherAdmin = (admins as List).any(
+      (admin) => admin['id'] != excludingMemberId,
+    );
+    if (!hasAnotherAdmin) {
+      throw Exception(
+        'There must be at least one admin in the shop. Promote another member to admin first.',
+      );
+    }
+  }
+
+  static Future<void> cancelShopInvite({
+    required String shopId,
+    required String inviteId,
+  }) async {
+    await _client
+        .from('shop_member_invites')
+        .update({
+          'is_accepted': true,
+          'cancelled_at': DateTime.now().toIso8601String(),
+        })
+        .eq('shop_id', shopId)
+        .eq('id', inviteId);
   }
 
   static Future<void> updateShop(
@@ -1015,6 +1331,25 @@ static Future<double> getTodaySalesTotal(String shopId) async {
     return (data['total_due'] as num?)?.toDouble() ?? 0.0;
   }
 
+  static Future<double> recalculateCustomerTotalDue(String customerId) async {
+    final entries = await getUdharEntriesForCustomer(customerId);
+    double creditTotal = 0.0;
+    double debitTotal = 0.0;
+
+    for (final entry in entries) {
+      if (entry.entryType == 'credit') {
+        creditTotal += entry.amount;
+      } else if (entry.entryType == 'debit') {
+        debitTotal += entry.amount;
+      }
+    }
+
+    final due = (creditTotal - debitTotal).clamp(0.0, double.infinity).toDouble();
+    await updateCustomerTotalDue(customerId, due);
+    await syncCustomerCreditEntriesPaidStatus(customerId);
+    return due;
+  }
+
   /// Computes available adjustment balance from udhar_entries.
   /// This is the source of truth — column is just a cache.
   static Future<double> _computeAdjustmentFromEntries(String customerId) async {
@@ -1355,28 +1690,11 @@ static Future<double> getTotalUdhar(String shopId) async {
           final sales = await getSalesByBillId(bill.id);
           if (sales.isNotEmpty) {
             final paymentMode = sales.first.paymentMode.toLowerCase();
-            bool hasCreditDetails = false;
+            creditAmount = sales
+                .map((s) => _creditDueFromNotes(s.notes))
+                .firstWhere((amount) => amount > 0, orElse: () => 0.0);
 
-            for (final s in sales) {
-              final notesStr = s.notes;
-              final startMarker = '__saafhisaab_credit_advance:';
-              final startIndex = notesStr.indexOf(startMarker);
-              if (startIndex >= 0) {
-                final endMarker = '__';
-                final endIndex = notesStr.indexOf(endMarker, startIndex + startMarker.length);
-                if (endIndex >= 0) {
-                  final sub = notesStr.substring(startIndex + startMarker.length, endIndex);
-                  final parts = sub.split(';credit:');
-                  if (parts.length == 2) {
-                    creditAmount = double.tryParse(parts[1]) ?? 0.0;
-                    hasCreditDetails = true;
-                    break;
-                  }
-                }
-              }
-            }
-
-            if (!hasCreditDetails) {
+            if (creditAmount <= 0) {
               if (paymentMode == 'credit' || paymentMode == 'split') {
                 creditAmount = bill.amount;
               }
@@ -1404,7 +1722,8 @@ static Future<double> getTotalUdhar(String shopId) async {
     required String paymentMethod,
   }) async {
     final currentPending = await getPurchasePartyPendingAmount(partyId);
-    final newPending = (currentPending - amount).clamp(0.0, double.infinity);
+    final paidAmount = amount.clamp(0, currentPending).toDouble();
+    final newPending = (currentPending - paidAmount).clamp(0.0, double.infinity);
     await updatePurchasePartyPendingAmount(partyId, newPending);
 
     // Save payment as purchase bill
@@ -1412,7 +1731,7 @@ static Future<double> getTotalUdhar(String shopId) async {
       id: '',
       shopId: shopId,
       userId: userId,
-      amount: amount,
+      amount: paidAmount,
       billDate: DateTime.now(),
       vendorName: partyName,
       billType: 'purchase',
@@ -1428,14 +1747,20 @@ static Future<double> getTotalUdhar(String shopId) async {
       itemName: 'Payment to Supplier',
       quantity: 1,
       unit: 'piece',
-      sellingPrice: amount,
-      totalAmount: amount,
+      sellingPrice: paidAmount,
+      totalAmount: paidAmount,
       paymentMode: paymentMethod,
       billId: billId.isNotEmpty ? billId : null,
       saleDate: DateTime.now(),
       notes: 'Payment to Supplier',
       createdAt: DateTime.now(),
     ));
+
+    await recalculatePurchasePartyPendingAmount(
+      shopId: shopId,
+      partyId: partyId,
+      partyName: partyName,
+    );
 
     // Force sync daily balances
     await _trySyncDailyBalancesForDate(shopId, DateTime.now());
@@ -1600,6 +1925,16 @@ static Future<double> getTotalUdhar(String shopId) async {
         .eq('shop_id', shopId)
         .gt('pending_amount', 0)
         .order('pending_amount', ascending: false);
+    return List<Map<String, dynamic>>.from(data);
+  }
+
+  static Future<List<Map<String, dynamic>>> getAllPurchaseParties(
+      String shopId) async {
+    final data = await _client
+        .from('purchase_parties')
+        .select()
+        .eq('shop_id', shopId)
+        .order('name');
     return List<Map<String, dynamic>>.from(data);
   }
 
