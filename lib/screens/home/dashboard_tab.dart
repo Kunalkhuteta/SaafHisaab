@@ -9,6 +9,7 @@ import '../../constants/app_colors.dart';
 import '../../globalVar.dart';
 import '../../models/bill_model.dart';
 import '../../models/sale_model.dart';
+import '../../models/shop_access_model.dart';
 import '../../models/udhar_model.dart';
 import '../../providers/app_providers.dart';
 import '../../services/supabase_service.dart';
@@ -105,11 +106,13 @@ class _DashboardTabState extends ConsumerState<DashboardTab> {
       SupabaseService.getBills(shopId, fetchStart, gridEnd),
       SupabaseService.getUdharCustomers(shopId),
       SupabaseService.getLowStockCount(shopId),
+      SupabaseService.getTodayBillCount(shopId),
     ]);
 
     final allBills = results[0] as List<BillModel>;
     final receivables = results[1] as List<UdharCustomerModel>;
     final lowStock = results[2] as int;
+    final todayBillCount = results[3] as int;
 
     // Filter bills for grid cards (Month)
     final gridBills = allBills.where((b) => !b.billDate.isBefore(gridStart) && !b.billDate.isAfter(gridEnd)).toList();
@@ -194,6 +197,7 @@ class _DashboardTabState extends ConsumerState<DashboardTab> {
       creditPurchase: creditPurchase,
       totalCredit: totalCredit,
       lowStockCount: lowStock,
+      todayBillCount: todayBillCount,
       charts: charts,
       saleReturnsPoints: saleReturnPoints,
       purchaseReturnsPoints: purchaseReturnPoints,
@@ -243,6 +247,7 @@ class _DashboardTabState extends ConsumerState<DashboardTab> {
   Widget build(BuildContext context) {
     final isEn = ref.watch(appLanguageProvider);
     final shopAsync = ref.watch(shopProvider);
+    final role = ref.watch(currentRoleProvider) ?? ShopRole.staff;
 
     return shopAsync.when(
       loading: () => const Center(child: CircularProgressIndicator(color: AppColors.primary)),
@@ -294,6 +299,16 @@ class _DashboardTabState extends ConsumerState<DashboardTab> {
                               crossAxisSpacing: 10,
                               childAspectRatio: 2.3,
                               children: [
+                                if (role.isStaff)
+                                  _gridCard(
+                                    title: 'Today Bills',
+                                    amount: data.todayBillCount.toDouble(),
+                                    isCount: true,
+                                    color: AppColors.success,
+                                    icon: Icons.receipt_long_rounded,
+                                    onTap: () => _gotoInvoice('sale', isEn),
+                                  ),
+                                if (!role.isStaff)
                                 _gridCard(
                                   title: AppLang.tr(isEn, 'Cash Sales', 'नकद बिक्री'),
                                   amount: data.cashSales,
@@ -301,6 +316,7 @@ class _DashboardTabState extends ConsumerState<DashboardTab> {
                                   icon: Icons.trending_up_rounded,
                                   onTap: () => _gotoInvoice('sale', isEn),
                                 ),
+                                if (!role.isStaff)
                                 _gridCard(
                                   title: AppLang.tr(isEn, 'Credit Sales', 'उधार बिक्री'),
                                   amount: data.creditSales,
@@ -308,6 +324,7 @@ class _DashboardTabState extends ConsumerState<DashboardTab> {
                                   icon: Icons.assignment_turned_in_rounded,
                                   onTap: () => _gotoInvoice('sale', isEn),
                                 ),
+                                if (role.canViewPurchases)
                                 _gridCard(
                                   title: AppLang.tr(isEn, 'Cash Purchase', 'नकद खरीद'),
                                   amount: data.cashPurchase,
@@ -315,6 +332,7 @@ class _DashboardTabState extends ConsumerState<DashboardTab> {
                                   icon: Icons.shopping_bag_rounded,
                                   onTap: () => _gotoInvoice('purchase', isEn),
                                 ),
+                                if (role.canViewPurchases)
                                 _gridCard(
                                   title: AppLang.tr(isEn, 'Credit Purchase', 'उधार खरीद'),
                                   amount: data.creditPurchase,
@@ -322,6 +340,7 @@ class _DashboardTabState extends ConsumerState<DashboardTab> {
                                   icon: Icons.assignment_rounded,
                                   onTap: () => _gotoInvoice('purchase', isEn),
                                 ),
+                                if (role.canViewUdhar)
                                 _gridCard(
                                   title: AppLang.tr(isEn, 'Total Udhar', 'कुल उधार'),
                                   amount: data.totalCredit,
@@ -331,6 +350,7 @@ class _DashboardTabState extends ConsumerState<DashboardTab> {
                                     Navigator.push(context, MaterialPageRoute(builder: (_) => const UdharScreen())).then((_) => setState(() {}));
                                   },
                                 ),
+                                if (role.canViewStock)
                                 _gridCard(
                                   title: AppLang.tr(isEn, 'Low Stock', 'कम स्टॉक'),
                                   amount: data.lowStockCount.toDouble(),
@@ -343,10 +363,10 @@ class _DashboardTabState extends ConsumerState<DashboardTab> {
                                 ),
                               ],
                             ),
-                            const SizedBox(height: 16),
+                            if (role.canViewReports) const SizedBox(height: 16),
                             
                             // 1/3 Space: Charts
-                            Row(
+                            if (role.canViewReports) Row(
                               mainAxisAlignment: MainAxisAlignment.spaceBetween,
                               children: [
                                 Text(
@@ -379,8 +399,8 @@ class _DashboardTabState extends ConsumerState<DashboardTab> {
                                 ),
                               ],
                             ),
-                            const SizedBox(height: 10),
-                            SizedBox(
+                            if (role.canViewReports) const SizedBox(height: 10),
+                            if (role.canViewReports) SizedBox(
                               height: 220,
                               child: PageView(
                                 controller: _chartsPageCtrl,
@@ -694,6 +714,7 @@ class _DashboardData {
   final double creditPurchase;
   final double totalCredit;
   final int lowStockCount;
+  final int todayBillCount;
   final ChartsData charts;
   final List<ChartPoint> saleReturnsPoints;
   final List<ChartPoint> purchaseReturnsPoints;
@@ -707,6 +728,7 @@ class _DashboardData {
     required this.creditPurchase,
     required this.totalCredit,
     required this.lowStockCount,
+    required this.todayBillCount,
     required this.charts,
     required this.saleReturnsPoints,
     required this.purchaseReturnsPoints,
@@ -721,6 +743,7 @@ class _DashboardData {
         creditPurchase: 0,
         totalCredit: 0,
         lowStockCount: 0,
+        todayBillCount: 0,
         charts: ChartsData.empty(),
         saleReturnsPoints: [],
         purchaseReturnsPoints: [],
