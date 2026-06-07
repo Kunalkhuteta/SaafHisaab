@@ -15,12 +15,23 @@ final outstandingPayableProvider =
   final shop = await ref.watch(shopProvider.future);
   if (shop == null) return [];
 
-  final parties =
-      await SupabaseService.getPurchasePartiesWithPending(shop.id);
+  final parties = await SupabaseService.getAllPurchaseParties(shop.id);
   final items = <OutstandingPayableItem>[];
 
   for (final party in parties) {
     final partyName = party['name'] as String? ?? '';
+    final partyId = party['id'] as String? ?? '';
+    final pendingAmount = partyId.isEmpty
+        ? ((party['pending_amount'] as num?)?.toDouble() ?? 0.0)
+        : await SupabaseService.recalculatePurchasePartyPendingAmount(
+            shopId: shop.id,
+            partyId: partyId,
+            partyName: partyName,
+          );
+    if (pendingAmount <= 0) continue;
+
+    final refreshedParty = Map<String, dynamic>.from(party);
+    refreshedParty['pending_amount'] = pendingAmount;
     final bills = await SupabaseService.getPurchaseBillsForParty(
         shop.id, partyName);
 
@@ -40,7 +51,7 @@ final outstandingPayableProvider =
     }
 
     items.add(OutstandingPayableItem(
-      party: party,
+      party: refreshedParty,
       creditBills: creditBills,
       allBills: bills,
     ));
