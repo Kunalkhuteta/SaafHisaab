@@ -19,11 +19,13 @@ final currentUserProvider = Provider<User?>((ref) {
 
 // ── Shop provider — loads shop data for current user ──
 final shopAccessProvider = FutureProvider<ShopAccessContext?>((ref) async {
-  final userId = AuthService.currentUserId;
+  final authState = ref.watch(authStateProvider);
+  final user = authState.valueOrNull?.session?.user ?? AuthService.currentUser;
+  final userId = user?.id;
   if (userId == null) return null;
   return await SupabaseService.getShopAccessContext(
     userId: userId,
-    phone: AuthService.currentUserPhone,
+    phone: user?.phone,
   );
 });
 
