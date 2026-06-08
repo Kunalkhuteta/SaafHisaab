@@ -11,7 +11,10 @@ import 'screens/auth/login_screen.dart';
 import 'screens/auth/set_passcode_screen.dart';
 import 'screens/auth/passcode_screen.dart';
 import 'screens/auth/shop_setup_screen.dart';
+import 'screens/auth/access_removed_screen.dart';
+import 'screens/auth/member_welcome_screen.dart';
 import 'screens/home/home_screen.dart';
+import 'models/shop_access_model.dart';
 import 'services/notification_service.dart';
 import 'services/session_service.dart';
 import 'globalVar.dart';
@@ -158,12 +161,8 @@ class AuthWrapper extends StatelessWidget {
         if (session == null) return const LoginScreen();
 
         // Session exists — check passcode
-        return FutureBuilder<List<bool>>(
-          future: Future.wait([
-            SessionService.isPasscodeSet(),
-            SessionService.shouldShowPasscode(),
-            SupabaseService.shopExists(session.user.id),
-          ]),
+        return FutureBuilder<_StartupState>(
+          future: _loadStartupState(session.user),
           builder: (context, futureSnap) {
             if (!futureSnap.hasData) {
               return const Scaffold(
@@ -174,18 +173,22 @@ class AuthWrapper extends StatelessWidget {
               );
             }
 
-            final isPasscodeSet = futureSnap.data![0];
-            final shouldShowPasscode = futureSnap.data![1];
-            final shopExists = futureSnap.data![2];
+            final state = futureSnap.data!;
+            final access = state.access;
 
             // No shop yet → shop setup (passcode comes after)
-            if (!shopExists) return const ShopSetupScreen();
+            if (access?.isDeactivated == true) return const AccessRemovedScreen();
+            if (access?.welcomeMessage != null) {
+              return MemberWelcomeScreen(message: access!.welcomeMessage!);
+            }
+
+            if (access == null) return const ShopSetupScreen();
 
             // No passcode set → set one
-            if (!isPasscodeSet) return const SetPasscodeScreen();
+            if (!state.isPasscodeSet) return const SetPasscodeScreen();
 
             // Passcode set + should show → ask for it
-            if (shouldShowPasscode) return const _PasscodeGate();
+            if (state.shouldShowPasscode) return const _PasscodeGate();
 
             // All good → home
             return const HomeScreen();
@@ -194,6 +197,35 @@ class AuthWrapper extends StatelessWidget {
       },
     );
   }
+}
+
+Future<_StartupState> _loadStartupState(User user) async {
+  final results = await Future.wait<dynamic>([
+    SessionService.isPasscodeSet(),
+    SessionService.shouldShowPasscode(),
+    SupabaseService.getShopAccessContext(
+      userId: user.id,
+      phone: user.phone,
+    ),
+  ]);
+
+  return _StartupState(
+    isPasscodeSet: results[0] as bool,
+    shouldShowPasscode: results[1] as bool,
+    access: results[2] as ShopAccessContext?,
+  );
+}
+
+class _StartupState {
+  final bool isPasscodeSet;
+  final bool shouldShowPasscode;
+  final ShopAccessContext? access;
+
+  const _StartupState({
+    required this.isPasscodeSet,
+    required this.shouldShowPasscode,
+    required this.access,
+  });
 }
 
 // Intermediate widget that shows PasscodeScreen and navigates to Home on success
