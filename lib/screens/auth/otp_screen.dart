@@ -8,6 +8,7 @@ import 'access_removed_screen.dart';
 import 'member_welcome_screen.dart';
 import '../home/home_screen.dart';
 import '../../globalVar.dart';
+import '../../providers/app_providers.dart';
 
 class OTPScreen extends ConsumerStatefulWidget {
   final String phone;
@@ -63,6 +64,9 @@ class _OTPScreenState extends ConsumerState<OTPScreen> {
     try {
       final response = await AuthService.verifyOTP(phone: widget.phone, otp: otp);
       if (response.user != null) {
+        ref.invalidate(shopAccessProvider);
+        ref.invalidate(shopProvider);
+        ref.invalidate(currentRoleProvider);
         final access = await SupabaseService.getShopAccessContext(
           userId: response.user!.id,
           phone: widget.phone,
