@@ -98,6 +98,9 @@ class _PasscodeScreenState extends ConsumerState<PasscodeScreen>
         // 5 wrong — clear everything, go to login
         await SessionService.clearPasscode();
         await AuthService.signOut();
+        ref.invalidate(shopAccessProvider);
+        ref.invalidate(shopProvider);
+        ref.invalidate(currentRoleProvider);
         if (mounted) {
           Navigator.pushAndRemoveUntil(
             context,
@@ -259,6 +262,9 @@ class _PasscodeScreenState extends ConsumerState<PasscodeScreen>
                     onTap: () async {
                       await SessionService.clearPasscode();
                       await AuthService.signOut();
+                      ref.invalidate(shopAccessProvider);
+                      ref.invalidate(shopProvider);
+                      ref.invalidate(currentRoleProvider);
                       if (mounted) {
                         Navigator.pushAndRemoveUntil(
                           context,
