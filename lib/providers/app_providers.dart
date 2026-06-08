@@ -2,6 +2,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import '../models/shop_model.dart';
 import '../models/bill_model.dart';
+import '../models/shop_access_model.dart';
 import '../services/auth_service.dart';
 import '../services/supabase_service.dart';
 import '../../main.dart';
@@ -17,10 +18,23 @@ final currentUserProvider = Provider<User?>((ref) {
 });
 
 // ── Shop provider — loads shop data for current user ──
-final shopProvider = FutureProvider<ShopModel?>((ref) async {
+final shopAccessProvider = FutureProvider<ShopAccessContext?>((ref) async {
   final userId = AuthService.currentUserId;
   if (userId == null) return null;
-  return await SupabaseService.getShop(userId);
+  return await SupabaseService.getShopAccessContext(
+    userId: userId,
+    phone: AuthService.currentUserPhone,
+  );
+});
+
+final shopProvider = FutureProvider<ShopModel?>((ref) async {
+  final context = await ref.watch(shopAccessProvider.future);
+  if (context == null || context.isDeactivated) return null;
+  return context.shop;
+});
+
+final currentRoleProvider = Provider<ShopRole?>((ref) {
+  return ref.watch(shopAccessProvider).valueOrNull?.role;
 });
 
 // ── Dashboard stats provider ──
