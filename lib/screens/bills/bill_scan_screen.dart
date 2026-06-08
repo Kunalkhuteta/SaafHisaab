@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../constants/app_colors.dart';
 import '../../globalVar.dart';
+import '../../models/shop_access_model.dart';
 import '../../providers/app_providers.dart';
 import 'invoice_list_screen.dart';
 
@@ -17,6 +18,7 @@ class _BillScanScreenState extends ConsumerState<BillScanScreen> {
   @override
   Widget build(BuildContext context) {
     final isEn = ref.watch(appLanguageProvider);
+    final role = ref.watch(shopAccessProvider).valueOrNull?.role ?? ShopRole.staff;
 
     return Scaffold(
       backgroundColor: AppColors.surface,
@@ -67,7 +69,8 @@ class _BillScanScreenState extends ConsumerState<BillScanScreen> {
                     Icons.trending_up_rounded,
                     'sale',
                   ),
-                  const SizedBox(height: 12),
+                  if (role.canViewPurchases) const SizedBox(height: 12),
+                  if (role.canViewPurchases)
                   _dashboardCard(
                     isEn,
                     'Purchase Invoice',
@@ -75,7 +78,8 @@ class _BillScanScreenState extends ConsumerState<BillScanScreen> {
                     Icons.shopping_cart_rounded,
                     'purchase',
                   ),
-                  const SizedBox(height: 12),
+                  if (role != ShopRole.staff) const SizedBox(height: 12),
+                  if (role != ShopRole.staff)
                   _dashboardCard(
                     isEn,
                     'Sales Return',
@@ -83,7 +87,8 @@ class _BillScanScreenState extends ConsumerState<BillScanScreen> {
                     Icons.assignment_return_rounded,
                     'sale_return',
                   ),
-                  const SizedBox(height: 12),
+                  if (role.canViewPurchases) const SizedBox(height: 12),
+                  if (role.canViewPurchases)
                   _dashboardCard(
                     isEn,
                     'Purchase Return',
