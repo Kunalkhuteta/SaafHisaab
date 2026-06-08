@@ -1,7 +1,9 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../constants/app_colors.dart';
 import '../../services/auth_service.dart';
+import '../../providers/app_providers.dart';
 import 'login_screen.dart';
 import 'shop_setup_screen.dart';
 
@@ -79,7 +81,11 @@ class AccessRemovedScreen extends StatelessWidget {
                   icon: const Icon(Icons.logout_rounded),
                   label: const Text('Sign out'),
                   onPressed: () async {
+                    final container = ProviderScope.containerOf(context);
                     await AuthService.signOut();
+                    container.invalidate(shopAccessProvider);
+                    container.invalidate(shopProvider);
+                    container.invalidate(currentRoleProvider);
                     if (context.mounted) {
                       Navigator.pushAndRemoveUntil(
                         context,
