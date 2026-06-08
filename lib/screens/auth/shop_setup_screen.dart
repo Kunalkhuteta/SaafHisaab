@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../constants/app_colors.dart';
 import '../home/home_screen.dart';
 import '../../services/auth_service.dart';
+import '../../providers/app_providers.dart';
 import '../../services/supabase_service.dart';
 import '../../globalVar.dart';
 
@@ -55,6 +56,9 @@ class _ShopSetupScreenState extends ConsumerState<ShopSetupScreen> {
       );
 
       if (mounted) {
+        ref.invalidate(shopAccessProvider);
+        ref.invalidate(shopProvider);
+        ref.invalidate(currentRoleProvider);
         Navigator.pushAndRemoveUntil(context, MaterialPageRoute(builder: (_) => const HomeScreen()), (route) => false);
       }
     } catch (e) {
