@@ -247,7 +247,18 @@ class _DashboardTabState extends ConsumerState<DashboardTab> {
   Widget build(BuildContext context) {
     final isEn = ref.watch(appLanguageProvider);
     final shopAsync = ref.watch(shopProvider);
-    final role = ref.watch(currentRoleProvider) ?? ShopRole.staff;
+    final accessAsync = ref.watch(shopAccessProvider);
+    final role = accessAsync.valueOrNull?.role;
+
+    if (accessAsync.isLoading && role == null) {
+      return const Center(child: CircularProgressIndicator(color: AppColors.primary));
+    }
+    if (accessAsync.hasError) {
+      return Center(child: Text('Error: ${accessAsync.error}'));
+    }
+    if (role == null) {
+      return const Center(child: Text('No shop access found.'));
+    }
 
     return shopAsync.when(
       loading: () => const Center(child: CircularProgressIndicator(color: AppColors.primary)),
