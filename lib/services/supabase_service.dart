@@ -140,7 +140,9 @@ class SupabaseService {
     required String userId,
     required String? phone,
   }) async {
+    debugPrint('getShopAccessContext: userId=$userId, phone=$phone');
     final ownedShop = await getShop(userId);
+    debugPrint('getShopAccessContext: ownedShop=$ownedShop');
     if (ownedShop != null) {
       return ShopAccessContext(
         shop: ownedShop,
@@ -149,84 +151,117 @@ class SupabaseService {
       );
     }
 
-    final activeMember = await _client
-        .from('shop_members')
-        .select('*, shops(*)')
-        .eq('user_id', userId)
-        .eq('is_active', true)
-        .maybeSingle();
-    if (activeMember != null && activeMember['shops'] != null) {
-      return ShopAccessContext(
-        shop: ShopModel.fromJson(Map<String, dynamic>.from(activeMember['shops'])),
-        role: ShopRoleX.parse(activeMember['role'] as String?),
-        isOwner: false,
-        membershipId: activeMember['id'] as String?,
-      );
+    try {
+      final activeMember = await _client
+          .from('shop_members')
+          .select('*, shops(*)')
+          .eq('user_id', userId)
+          .eq('is_active', true)
+          .maybeSingle();
+      debugPrint('getShopAccessContext: activeMember query result=$activeMember');
+      if (activeMember != null) {
+        debugPrint('getShopAccessContext: activeMember["shops"]=${activeMember['shops']}');
+        if (activeMember['shops'] != null) {
+          return ShopAccessContext(
+            shop: ShopModel.fromJson(Map<String, dynamic>.from(activeMember['shops'])),
+            role: ShopRoleX.parse(activeMember['role'] as String?),
+            isOwner: false,
+            membershipId: activeMember['id'] as String?,
+          );
+        }
+      }
+    } catch (e) {
+      debugPrint('getShopAccessContext: error querying activeMember: $e');
     }
 
-    final inactiveMember = await _client
-        .from('shop_members')
-        .select('*, shops(*)')
-        .eq('user_id', userId)
-        .eq('is_active', false)
-        .order('updated_at', ascending: false)
-        .limit(1)
-        .maybeSingle();
-    if (inactiveMember != null && inactiveMember['shops'] != null) {
-      return ShopAccessContext(
-        shop: ShopModel.fromJson(Map<String, dynamic>.from(inactiveMember['shops'])),
-        role: ShopRoleX.parse(inactiveMember['role'] as String?),
-        isOwner: false,
-        isDeactivated: true,
-        membershipId: inactiveMember['id'] as String?,
-      );
+    try {
+      final inactiveMember = await _client
+          .from('shop_members')
+          .select('*, shops(*)')
+          .eq('user_id', userId)
+          .eq('is_active', false)
+          .order('updated_at', ascending: false)
+          .limit(1)
+          .maybeSingle();
+      debugPrint('getShopAccessContext: inactiveMember query result=$inactiveMember');
+      if (inactiveMember != null) {
+        debugPrint('getShopAccessContext: inactiveMember["shops"]=${inactiveMember['shops']}');
+        if (inactiveMember['shops'] != null) {
+          return ShopAccessContext(
+            shop: ShopModel.fromJson(Map<String, dynamic>.from(inactiveMember['shops'])),
+            role: ShopRoleX.parse(inactiveMember['role'] as String?),
+            isOwner: false,
+            isDeactivated: true,
+            membershipId: inactiveMember['id'] as String?,
+          );
+        }
+      }
+    } catch (e) {
+      debugPrint('getShopAccessContext: error querying inactiveMember: $e');
     }
 
     final normalizedPhone = normalizePhone(phone ?? '');
-    if (normalizedPhone.isEmpty) return null;
+    debugPrint('getShopAccessContext: normalizedPhone=$normalizedPhone');
+    if (normalizedPhone.isEmpty) {
+      debugPrint('getShopAccessContext: normalizedPhone is empty, returning null');
+      return null;
+    }
 
-    final invite = await _client
-        .from('shop_member_invites')
-        .select('*, shops(*)')
-        .eq('phone', normalizedPhone)
-        .eq('is_accepted', false)
-        .order('created_at')
-        .limit(1)
-        .maybeSingle();
-    if (invite == null || invite['shops'] == null) return null;
+    try {
+      final invite = await _client
+          .from('shop_member_invites')
+          .select()
+          .eq('phone', normalizedPhone)
+          .eq('is_accepted', false)
+          .order('created_at')
+          .limit(1)
+          .maybeSingle();
+      debugPrint('getShopAccessContext: invite query result=$invite');
+      if (invite == null) {
+        return null;
+      }
 
-    final memberData = await _client
-        .from('shop_members')
-        .insert({
-          'shop_id': invite['shop_id'],
-          'user_id': userId,
-          'name': invite['name'],
-          'phone': normalizedPhone,
-          'role': invite['role'],
-          'is_active': true,
-          'added_by': invite['invited_by'],
-        })
-        .select()
-        .single();
+      final memberData = await _client
+          .from('shop_members')
+          .insert({
+            'shop_id': invite['shop_id'],
+            'user_id': userId,
+            'name': invite['name'],
+            'phone': normalizedPhone,
+            'role': invite['role'],
+            'is_active': true,
+            'added_by': invite['invited_by'],
+          })
+          .select()
+          .single();
+      debugPrint('getShopAccessContext: memberData inserted=$memberData');
 
-    await _client
-        .from('shop_member_invites')
-        .update({
-          'is_accepted': true,
-          'accepted_user_id': userId,
-          'accepted_at': DateTime.now().toIso8601String(),
-        })
-        .eq('id', invite['id']);
+      await _client
+          .from('shop_member_invites')
+          .update({
+            'is_accepted': true,
+            'accepted_user_id': userId,
+            'accepted_at': DateTime.now().toIso8601String(),
+          })
+          .eq('id', invite['id']);
+      debugPrint('getShopAccessContext: invite accepted and updated');
 
-    final shop = ShopModel.fromJson(Map<String, dynamic>.from(invite['shops']));
-    return ShopAccessContext(
-      shop: shop,
-      role: ShopRoleX.parse(invite['role'] as String?),
-      isOwner: false,
-      membershipId: memberData['id'] as String?,
-      welcomeMessage:
-          'You have been added to ${shop.shopName} as ${ShopRoleX.parse(invite['role'] as String?).label}.',
-    );
+      final shop = await getShopById(invite['shop_id'] as String);
+      debugPrint('getShopAccessContext: shop by id query result=$shop');
+      if (shop == null) return null;
+
+      return ShopAccessContext(
+        shop: shop,
+        role: ShopRoleX.parse(invite['role'] as String?),
+        isOwner: false,
+        membershipId: memberData['id'] as String?,
+        welcomeMessage:
+            'You have been added to ${shop.shopName} as ${ShopRoleX.parse(invite['role'] as String?).label}.',
+      );
+    } catch (e) {
+      debugPrint('getShopAccessContext: error during invite acceptance check: $e');
+      return null;
+    }
   }
 
   static Future<List<ShopMember>> getShopMembers(String shopId) async {
