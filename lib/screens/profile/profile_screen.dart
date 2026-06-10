@@ -200,11 +200,16 @@ class ProfileScreen extends ConsumerWidget {
                   width: double.infinity, height: 50,
                   child: OutlinedButton.icon(
                     onPressed: () async {
+                      final navigator = Navigator.of(context);
                       await SessionService.clearPasscode();
                       await AuthService.signOut();
-                      if (context.mounted) {
-                        Navigator.pushAndRemoveUntil(context, MaterialPageRoute(builder: (_) => const LoginScreen()), (route) => false);
-                      }
+                      ref.invalidate(shopAccessProvider);
+                      ref.invalidate(shopProvider);
+                      ref.invalidate(currentRoleProvider);
+                      navigator.pushAndRemoveUntil(
+                        MaterialPageRoute(builder: (_) => const LoginScreen()),
+                        (route) => false,
+                      );
                     },
                     icon: const Icon(Icons.logout_rounded, color: AppColors.error),
                     label: Text(AppLang.tr(isEn, 'Sign Out', 'लॉग आउट करें'), style: const TextStyle(color: AppColors.error, fontWeight: FontWeight.w600)),
