@@ -52,7 +52,29 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
       );
     }
 
-    final role = access?.role ?? ShopRole.staff;
+    if (accessAsync.hasError) {
+      return Scaffold(
+        backgroundColor: AppColors.background,
+        body: Center(
+          child: Padding(
+            padding: const EdgeInsets.all(24),
+            child: Text(
+              'Could not load your shop access. ${accessAsync.error}',
+              textAlign: TextAlign.center,
+            ),
+          ),
+        ),
+      );
+    }
+
+    if (access == null) {
+      return const Scaffold(
+        backgroundColor: AppColors.background,
+        body: Center(child: Text('No shop access found. Please sign in again.')),
+      );
+    }
+
+    final role = access.role;
     final tabs = _tabsFor(role, isEn);
 
     if (_currentIndex >= tabs.length) _currentIndex = 0;
@@ -318,14 +340,16 @@ class _HomeDrawer extends StatelessWidget {
                 style: TextStyle(color: AppColors.error),
               ),
               onTap: () async {
+                final navigator = Navigator.of(context);
+                final container = ProviderScope.containerOf(context);
                 await AuthService.signOut();
-                if (context.mounted) {
-                  Navigator.pushAndRemoveUntil(
-                    context,
-                    MaterialPageRoute(builder: (_) => const LoginScreen()),
-                    (r) => false,
-                  );
-                }
+                container.invalidate(shopAccessProvider);
+                container.invalidate(shopProvider);
+                container.invalidate(currentRoleProvider);
+                navigator.pushAndRemoveUntil(
+                  MaterialPageRoute(builder: (_) => const LoginScreen()),
+                  (r) => false,
+                );
               },
             ),
           ],
