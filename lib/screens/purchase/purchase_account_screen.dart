@@ -7,6 +7,7 @@ import '../../globalVar.dart';
 import '../../sys_param.dart';
 import '../../services/auth_service.dart';
 import '../../services/supabase_service.dart';
+import '../../providers/app_providers.dart';
 
 class PurchaseAccountScreen extends ConsumerStatefulWidget {
   final Map<String, dynamic>? party;
@@ -66,7 +67,7 @@ class _PurchaseAccountScreenState extends ConsumerState<PurchaseAccountScreen> {
       final userId = AuthService.currentUserId;
       if (userId == null) throw Exception('User not logged in');
 
-      final shop = await SupabaseService.getShop(userId);
+      final shop = await ref.read(shopProvider.future);
       if (shop == null) throw Exception('Shop not found');
 
       final sysParams = ref.read(sysParamProvider);
