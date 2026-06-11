@@ -47,6 +47,7 @@ class ShopAccessContext {
   final bool isDeactivated;
   final String? membershipId;
   final String? welcomeMessage;
+  final String? memberName;
 
   const ShopAccessContext({
     required this.shop,
@@ -55,6 +56,7 @@ class ShopAccessContext {
     this.isDeactivated = false,
     this.membershipId,
     this.welcomeMessage,
+    this.memberName,
   });
 }
 

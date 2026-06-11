@@ -39,6 +39,13 @@ final currentRoleProvider = Provider<ShopRole?>((ref) {
   return ref.watch(shopAccessProvider).valueOrNull?.role;
 });
 
+// ── Current user name provider ──
+final currentUserNameProvider = Provider<String>((ref) {
+  final context = ref.watch(shopAccessProvider).valueOrNull;
+  if (context == null) return '';
+  return context.memberName ?? context.shop.ownerName;
+});
+
 // ── Dashboard stats provider ──
 final dashboardStatsProvider = FutureProvider<Map<String, dynamic>>((ref) async {
   final shop = await ref.watch(shopProvider.future);
