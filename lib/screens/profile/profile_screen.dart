@@ -16,6 +16,7 @@ class ProfileScreen extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final isEn = ref.watch(appLanguageProvider);
     final shopAsync = ref.watch(shopProvider);
+    final currentUserName = ref.watch(currentUserNameProvider);
 
     return Scaffold(
       backgroundColor: AppColors.background,
@@ -33,13 +34,13 @@ class ProfileScreen extends ConsumerWidget {
                   width: 52, height: 52,
                   decoration: BoxDecoration(color: Colors.white.withOpacity(0.2), borderRadius: BorderRadius.circular(14)),
                   child: Center(child: Text(
-                    shop?.ownerName.isNotEmpty == true ? shop!.ownerName[0].toUpperCase() : '?',
+                    currentUserName.isNotEmpty ? currentUserName[0].toUpperCase() : '?',
                     style: const TextStyle(fontSize: 22, fontWeight: FontWeight.bold, color: Colors.white),
                   )),
                 ),
                 const SizedBox(width: 14),
                 Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                  Text(shop?.ownerName ?? AppLang.tr(isEn, 'User', 'उपयोगकर्ता'), style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Colors.white)),
+                  Text(currentUserName.isNotEmpty ? currentUserName : AppLang.tr(isEn, 'User', 'उपयोगकर्ता'), style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Colors.white)),
                   Text(shop?.shopName ?? '', style: TextStyle(fontSize: 13, color: Colors.white.withOpacity(0.75))),
                 ])),
               ],

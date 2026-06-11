@@ -122,6 +122,7 @@ class _PasscodeScreenState extends ConsumerState<PasscodeScreen>
   Widget build(BuildContext context) {
     final isEn = ref.watch(appLanguageProvider);
     final shopAsync = ref.watch(shopProvider);
+    final currentUserName = ref.watch(currentUserNameProvider);
     final remaining = 5 - _attempts;
 
     return PopScope(
@@ -174,7 +175,7 @@ class _PasscodeScreenState extends ConsumerState<PasscodeScreen>
               data: (shop) => Column(
                 children: [
                   Text(
-                    AppLang.tr(isEn, 'Hello, ${shop?.ownerName ?? 'User'} ji', 'नमस्ते, ${shop?.ownerName ?? ''} जी'),
+                    AppLang.tr(isEn, 'Hello, ${currentUserName.isNotEmpty ? currentUserName : 'User'} ji', 'नमस्ते, ${currentUserName.isNotEmpty ? currentUserName : ''} जी'),
                     style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold, color: AppColors.textPrimary),
                   ),
                   if (shop?.shopName.isNotEmpty == true) ...[
