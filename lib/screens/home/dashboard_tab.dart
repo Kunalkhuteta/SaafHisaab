@@ -269,7 +269,7 @@ class _DashboardTabState extends ConsumerState<DashboardTab> {
         return Column(
           children: [
             _DashboardAppBar(
-              ownerName: shop.ownerName,
+              userName: ref.watch(currentUserNameProvider),
               shopName: shop.shopName,
               isEn: isEn,
             ),
@@ -665,12 +665,12 @@ class _DashboardTabState extends ConsumerState<DashboardTab> {
 }
 
 class _DashboardAppBar extends StatelessWidget {
-  final String ownerName;
+  final String userName;
   final String shopName;
   final bool isEn;
 
   const _DashboardAppBar({
-    required this.ownerName,
+    required this.userName,
     required this.shopName,
     required this.isEn,
   });
@@ -691,7 +691,7 @@ class _DashboardAppBar extends StatelessWidget {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(AppLang.tr(isEn, 'Hello, $ownerName', 'Hello, $ownerName'),
+                Text(AppLang.tr(isEn, 'Hello, $userName', 'Hello, $userName'),
                   maxLines: 1, overflow: TextOverflow.ellipsis,
                   style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Colors.white),
                 ),
