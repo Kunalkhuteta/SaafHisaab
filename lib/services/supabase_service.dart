@@ -161,12 +161,19 @@ class SupabaseService {
       debugPrint('getShopAccessContext: activeMember query result=$activeMember');
       if (activeMember != null) {
         debugPrint('getShopAccessContext: activeMember["shops"]=${activeMember['shops']}');
+        ShopModel? shop;
         if (activeMember['shops'] != null) {
+          shop = ShopModel.fromJson(Map<String, dynamic>.from(activeMember['shops']));
+        } else if (activeMember['shop_id'] != null) {
+          shop = await getShopById(activeMember['shop_id'] as String);
+        }
+        if (shop != null) {
           return ShopAccessContext(
-            shop: ShopModel.fromJson(Map<String, dynamic>.from(activeMember['shops'])),
+            shop: shop,
             role: ShopRoleX.parse(activeMember['role'] as String?),
             isOwner: false,
             membershipId: activeMember['id'] as String?,
+            memberName: activeMember['name'] as String?,
           );
         }
       }
@@ -186,13 +193,20 @@ class SupabaseService {
       debugPrint('getShopAccessContext: inactiveMember query result=$inactiveMember');
       if (inactiveMember != null) {
         debugPrint('getShopAccessContext: inactiveMember["shops"]=${inactiveMember['shops']}');
+        ShopModel? shop;
         if (inactiveMember['shops'] != null) {
+          shop = ShopModel.fromJson(Map<String, dynamic>.from(inactiveMember['shops']));
+        } else if (inactiveMember['shop_id'] != null) {
+          shop = await getShopById(inactiveMember['shop_id'] as String);
+        }
+        if (shop != null) {
           return ShopAccessContext(
-            shop: ShopModel.fromJson(Map<String, dynamic>.from(inactiveMember['shops'])),
+            shop: shop,
             role: ShopRoleX.parse(inactiveMember['role'] as String?),
             isOwner: false,
             isDeactivated: true,
             membershipId: inactiveMember['id'] as String?,
+            memberName: inactiveMember['name'] as String?,
           );
         }
       }
@@ -255,6 +269,7 @@ class SupabaseService {
         role: ShopRoleX.parse(invite['role'] as String?),
         isOwner: false,
         membershipId: memberData['id'] as String?,
+        memberName: invite['name'] as String?,
         welcomeMessage:
             'You have been added to ${shop.shopName} as ${ShopRoleX.parse(invite['role'] as String?).label}.',
       );
