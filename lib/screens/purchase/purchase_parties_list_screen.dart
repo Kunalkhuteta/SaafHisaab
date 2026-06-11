@@ -6,6 +6,7 @@ import '../../constants/app_colors.dart';
 import '../../globalVar.dart';
 import '../../services/auth_service.dart';
 import '../../services/supabase_service.dart';
+import '../../providers/app_providers.dart';
 import 'purchase_account_screen.dart';
 
 class PurchasePartiesListScreen extends ConsumerStatefulWidget {
@@ -31,7 +32,7 @@ class _PurchasePartiesListScreenState extends ConsumerState<PurchasePartiesListS
       final userId = AuthService.currentUserId;
       if (userId == null) throw Exception('User not logged in');
 
-      final shop = await SupabaseService.getShop(userId);
+      final shop = await ref.read(shopProvider.future);
       if (shop == null) throw Exception('Shop not found');
 
       final response = await Supabase.instance.client
