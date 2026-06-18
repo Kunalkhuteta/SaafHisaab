@@ -200,12 +200,15 @@ class AuthWrapper extends StatelessWidget {
 }
 
 Future<_StartupState> _loadStartupState(User user) async {
+  final phone = user.phone ??
+      user.userMetadata?['phone'] ??
+      user.userMetadata?['phone_number'];
   final results = await Future.wait<dynamic>([
     SessionService.isPasscodeSet(),
     SessionService.shouldShowPasscode(),
     SupabaseService.getShopAccessContext(
       userId: user.id,
-      phone: user.phone,
+      phone: phone as String?,
     ),
   ]);
 

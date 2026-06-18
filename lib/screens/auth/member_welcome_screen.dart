@@ -1,9 +1,14 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../constants/app_colors.dart';
+import '../../globalVar.dart';
+import '../../providers/app_providers.dart';
+import '../../services/session_service.dart';
 import '../home/home_screen.dart';
+import 'set_passcode_screen.dart';
 
-class MemberWelcomeScreen extends StatelessWidget {
+class MemberWelcomeScreen extends ConsumerWidget {
   final String message;
 
   const MemberWelcomeScreen({
@@ -12,7 +17,7 @@ class MemberWelcomeScreen extends StatelessWidget {
   });
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
     return Scaffold(
       backgroundColor: AppColors.background,
       body: SafeArea(
@@ -66,12 +71,30 @@ class MemberWelcomeScreen extends StatelessWidget {
                       borderRadius: BorderRadius.circular(12),
                     ),
                   ),
-                  onPressed: () {
-                    Navigator.pushAndRemoveUntil(
-                      context,
-                      MaterialPageRoute(builder: (_) => const HomeScreen()),
-                      (_) => false,
-                    );
+                  onPressed: () async {
+                    final access = ref.read(shopAccessProvider).valueOrNull;
+                    final user = ref.read(currentUserProvider);
+                    if (access != null && user != null) {
+                      await prefs.setBool('welcome_shown_${user.id}_${access.shop.id}', true);
+                    }
+                    ref.invalidate(shopAccessProvider);
+
+                    final isPasscodeSet = await SessionService.isPasscodeSet();
+                    if (context.mounted) {
+                      if (isPasscodeSet) {
+                        Navigator.pushAndRemoveUntil(
+                          context,
+                          MaterialPageRoute(builder: (_) => const HomeScreen()),
+                          (_) => false,
+                        );
+                      } else {
+                        Navigator.pushAndRemoveUntil(
+                          context,
+                          MaterialPageRoute(builder: (_) => const SetPasscodeScreen()),
+                          (_) => false,
+                        );
+                      }
+                    }
                   },
                 ),
               ),
