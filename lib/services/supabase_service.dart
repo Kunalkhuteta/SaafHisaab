@@ -223,7 +223,13 @@ class SupabaseService {
       debugPrint('getShopAccessContext: error querying inactiveMember: $e');
     }
 
-    final normalizedPhone = normalizePhone(phone ?? '');
+    final authUser = _client.auth.currentUser;
+    final String resolvedPhone = phone ??
+        authUser?.phone ??
+        authUser?.userMetadata?['phone'] ??
+        authUser?.userMetadata?['phone_number'] ??
+        '';
+    final normalizedPhone = normalizePhone(resolvedPhone);
     debugPrint('getShopAccessContext: normalizedPhone=$normalizedPhone');
     if (normalizedPhone.isEmpty) {
       debugPrint('getShopAccessContext: normalizedPhone is empty, returning null');
@@ -234,7 +240,7 @@ class SupabaseService {
       final invite = await _client
           .from('shop_member_invites')
           .select()
-          .eq('phone', normalizedPhone)
+          .or('phone.eq.$normalizedPhone,phone.eq.+91$normalizedPhone,phone.eq.$resolvedPhone')
           .eq('is_accepted', false)
           .order('created_at')
           .limit(1)
