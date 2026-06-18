@@ -10,6 +10,8 @@ import '../models/udhar_model.dart';
 import '../models/daily_balance_model.dart';
 import '../models/ledger_row_model.dart';
 import 'dart:typed_data';
+import '../globalVar.dart';
+
 
 class StockUnavailableException implements Exception {
   final String message;
@@ -168,12 +170,19 @@ class SupabaseService {
           shop = await getShopById(activeMember['shop_id'] as String);
         }
         if (shop != null) {
+          final role = ShopRoleX.parse(activeMember['role'] as String?);
+          final welcomeKey = 'welcome_shown_${userId}_${shop.id}';
+          final welcomeShown = prefs.getBool(welcomeKey) ?? false;
+
           return ShopAccessContext(
             shop: shop,
-            role: ShopRoleX.parse(activeMember['role'] as String?),
+            role: role,
             isOwner: false,
             membershipId: activeMember['id'] as String?,
             memberName: activeMember['name'] as String?,
+            welcomeMessage: welcomeShown
+                ? null
+                : 'You have been added to ${shop.shopName} as ${role.label}.',
           );
         }
       }
