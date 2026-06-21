@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../constants/app_colors.dart';
 import 'shop_setup_screen.dart';
@@ -61,14 +62,30 @@ class _OTPScreenState extends ConsumerState<OTPScreen> {
       return;
     }
     setState(() => _isLoading = true);
+    User? loggedInUser;
     try {
       final response = await AuthService.verifyOTP(phone: widget.phone, otp: otp);
-      if (response.user != null) {
+      loggedInUser = response.user;
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+          content: Text(AppLang.tr(isEn, 'Invalid OTP — please try again', 'गलत OTP — कृपया पुनः प्रयास करें')),
+          backgroundColor: AppColors.error,
+        ));
+        for (var c in _controllers) c.clear();
+        _focusNodes[0].requestFocus();
+      }
+      setState(() => _isLoading = false);
+      return;
+    }
+
+    if (loggedInUser != null) {
+      try {
         ref.invalidate(shopAccessProvider);
         ref.invalidate(shopProvider);
         ref.invalidate(currentRoleProvider);
         final access = await SupabaseService.getShopAccessContext(
-          userId: response.user!.id,
+          userId: loggedInUser.id,
           phone: widget.phone,
         );
         if (mounted) {
@@ -86,16 +103,16 @@ class _OTPScreenState extends ConsumerState<OTPScreen> {
             Navigator.pushAndRemoveUntil(context, MaterialPageRoute(builder: (_) => const ShopSetupScreen()), (route) => false);
           }
         }
+      } catch (e) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+            content: Text('Failed to load shop access: $e'),
+            backgroundColor: AppColors.error,
+          ));
+        }
       }
-    } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(AppLang.tr(isEn, 'Invalid OTP — please try again', 'गलत OTP — कृपया पुनः प्रयास करें')), backgroundColor: AppColors.error));
-        for (var c in _controllers) c.clear();
-        _focusNodes[0].requestFocus();
-      }
-    } finally {
-      if (mounted) setState(() => _isLoading = false);
     }
+    if (mounted) setState(() => _isLoading = false);
   }
 
   @override
