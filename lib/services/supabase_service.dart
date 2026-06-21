@@ -188,6 +188,7 @@ class SupabaseService {
       }
     } catch (e) {
       debugPrint('getShopAccessContext: error querying activeMember: $e');
+      rethrow;
     }
 
     try {
@@ -221,6 +222,7 @@ class SupabaseService {
       }
     } catch (e) {
       debugPrint('getShopAccessContext: error querying inactiveMember: $e');
+      rethrow;
     }
 
     final authUser = _client.auth.currentUser;
@@ -288,9 +290,9 @@ class SupabaseService {
         welcomeMessage:
             'You have been added to ${shop.shopName} as ${ShopRoleX.parse(invite['role'] as String?).label}.',
       );
-    } catch (e) {
-      debugPrint('getShopAccessContext: error during invite acceptance check: $e');
-      return null;
+    } catch (e, stack) {
+      debugPrint('getShopAccessContext: error during invite acceptance check: $e\n$stack');
+      rethrow;
     }
   }
 
