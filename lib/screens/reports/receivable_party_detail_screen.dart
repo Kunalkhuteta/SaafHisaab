@@ -626,28 +626,55 @@ class _ReceivablePartyDetailScreenState
               ),
             ),
             Column(crossAxisAlignment: CrossAxisAlignment.end, children: [
-              Text(
-                isCredit
-                    ? _currency.format(billBalance)
-                    : '-${_currency.format(entry.amount)}',
-                style: TextStyle(
-                  fontSize: 16,
-                  fontWeight: FontWeight.w900,
-                  color: isCredit
-                      ? (billBalance <= 0 ? AppColors.success : AppColors.error)
-                      : color,
+              if (isCredit && billBalance <= 0)
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                  decoration: BoxDecoration(
+                    color: AppColors.success.withOpacity(0.12),
+                    borderRadius: BorderRadius.circular(6),
+                    border: Border.all(color: AppColors.success.withOpacity(0.3)),
+                  ),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      const Icon(Icons.check_circle_rounded,
+                          color: AppColors.success, size: 12),
+                      const SizedBox(width: 4),
+                      Text(
+                        AppLang.tr(isEn, 'Paid', 'चुकाया'),
+                        style: const TextStyle(
+                          fontSize: 10,
+                          fontWeight: FontWeight.w800,
+                          color: AppColors.success,
+                        ),
+                      ),
+                    ],
+                  ),
+                )
+              else ...[
+                Text(
+                  isCredit
+                      ? _currency.format(billBalance)
+                      : '-${_currency.format(entry.amount)}',
+                  style: TextStyle(
+                    fontSize: 16,
+                    fontWeight: FontWeight.w900,
+                    color: isCredit
+                        ? (billBalance <= 0 ? AppColors.success : AppColors.error)
+                        : color,
+                  ),
                 ),
-              ),
-              Text(
-                isCredit
-                    ? AppLang.tr(isEn, 'Balance left', 'Balance left')
-                    : _dateFmt.format(entry.entryDate),
-                style: const TextStyle(
-                  fontSize: 10,
-                  color: AppColors.textHint,
-                  fontWeight: FontWeight.w600,
+                Text(
+                  isCredit
+                      ? AppLang.tr(isEn, 'Balance left', 'Balance left')
+                      : _dateFmt.format(entry.entryDate),
+                  style: const TextStyle(
+                    fontSize: 10,
+                    color: AppColors.textHint,
+                    fontWeight: FontWeight.w600,
+                  ),
                 ),
-              ),
+              ],
             ]),
           ]),
         ),
@@ -990,7 +1017,9 @@ class _ReceivablePartyDetailScreenState
             ),
           ),
           Text(
-            '${AppLang.tr(isEn, 'Left', 'Left')}: ${_currency.format(balance)}',
+            balance <= 0
+                ? AppLang.tr(isEn, 'Paid', 'चुकाया')
+                : '${AppLang.tr(isEn, 'Left', 'Left')}: ${_currency.format(balance)}',
             style: TextStyle(
               color: balance <= 0 ? AppColors.success : AppColors.error,
               fontSize: 12,
@@ -1034,6 +1063,7 @@ class _ReceivablePartyDetailScreenState
 
   bool _isAdvancePaymentEntry(UdharEntryModel entry) {
     if (entry.entryType != 'debit') return false;
+    if (entry.note.contains(UdharPaymentMeta.noteMarker)) return false;
     final note = entry.note.toLowerCase();
     if (note.contains('advance payment on credit sale')) return true;
 
