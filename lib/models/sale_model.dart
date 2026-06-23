@@ -1,3 +1,5 @@
+import '../utils/indian_date_time.dart';
+
 class SaleModel {
   final String id;
   final String shopId;
@@ -47,9 +49,9 @@ class SaleModel {
       category: json['category'] ?? 'General',
       billId: json['bill_id'],
       stockItemId: json['stock_item_id'],
-      saleDate: DateTime.parse(json['sale_date']),
+      saleDate: IndianDateTime.parse(json['sale_date']),
       notes: json['notes'] ?? '',
-      createdAt: DateTime.parse(json['created_at']),
+      createdAt: IndianDateTime.parse(json['created_at']),
     );
   }
 
