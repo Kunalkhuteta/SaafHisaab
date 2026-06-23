@@ -41,14 +41,14 @@ class BillModel {
       imageUrl: json['image_url'] ?? '',
       rawText: json['raw_text'] ?? '',
       amount: (json['amount'] ?? 0).toDouble(),
-      billDate: IndianDateTime.parse(json['bill_date']),
+      billDate: IndianIndianDateTime.parse(json['bill_date']),
       vendorName: json['vendor_name'] ?? '',
       category: json['category'] ?? 'General',
       billType: json['bill_type'] ?? 'purchase',
       isGstBill: json['is_gst_bill'] ?? false,
       gstAmount: (json['gst_amount'] ?? 0).toDouble(),
       notes: json['notes'] ?? '',
-      createdAt: IndianDateTime.parse(json['created_at']),
+      createdAt: IndianIndianDateTime.parse(json['created_at']),
     );
   }
 

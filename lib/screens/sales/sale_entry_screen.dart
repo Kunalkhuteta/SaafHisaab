@@ -18,6 +18,8 @@ import '../../widgets/credit_entry_sheet.dart';
 import '../../widgets/purchase_credit_entry_sheet.dart';
 import '../../widgets/party_name_field.dart';
 import '../../widgets/custom_alert.dart';
+import 'package:saafhisaab/utils/indian_date_time.dart';
+
 
 /// Invoice type codes and utilities
 class InvType {
@@ -176,7 +178,7 @@ class _SaleEntryScreenState extends ConsumerState<SaleEntryScreen> {
                 userId: '', 
                 itemName: '', 
                 currentStock: 0, 
-                createdAt: DateTime.now(),
+                createdAt: IndianDateTime.now(),
               )
             );
             li.currentStock = si.currentStock;
@@ -794,7 +796,7 @@ class _SaleEntryScreenState extends ConsumerState<SaleEntryScreen> {
           customerName: credit.customerName,
           customerPhone: credit.customerPhone,
           totalDue: oldDue,
-          createdAt: DateTime.now(),
+          createdAt: IndianDateTime.now(),
         );
       } else {
         customer = await SupabaseService.findCustomerByName(shopId, credit.customerName);
@@ -986,7 +988,7 @@ class _SaleEntryScreenState extends ConsumerState<SaleEntryScreen> {
               userId: '',
               itemName: '',
               currentStock: 0,
-              createdAt: DateTime.now(),
+              createdAt: IndianDateTime.now(),
             ),
           );
           li.currentStock = si.currentStock;
@@ -1006,8 +1008,8 @@ class _SaleEntryScreenState extends ConsumerState<SaleEntryScreen> {
                   sellingPrice: 0,
                   totalAmount: 0,
                   paymentMode: '',
-                  saleDate: DateTime.now(),
-                  createdAt: DateTime.now(),
+                  saleDate: IndianDateTime.now(),
+                  createdAt: IndianDateTime.now(),
                 ),
               );
               li.originalQty = match.quantity;
@@ -1160,12 +1162,12 @@ class _SaleEntryScreenState extends ConsumerState<SaleEntryScreen> {
           shopId: shop.id,
           userId: userId,
           amount: _grandTotal,
-          billDate: DateTime.now(),
+          billDate: IndianDateTime.now(),
           vendorName: _customerCtrl.text.trim(),
           billType: _billType,
           notes: _notesCtrl.text.trim(),
           imageUrl: uploadedBillImageUrl,
-          createdAt: DateTime.now(),
+          createdAt: IndianDateTime.now(),
         ));
         createdBillId = billId;
       }
@@ -1184,9 +1186,9 @@ class _SaleEntryScreenState extends ConsumerState<SaleEntryScreen> {
           totalAmount: li.lineTotal,
           paymentMode: _paymentMode,
           billId: billId.isNotEmpty ? billId : null,
-          saleDate: widget.bill?.billDate ?? DateTime.now(),
+          saleDate: widget.bill?.billDate ?? IndianDateTime.now(),
           notes: _saleNotesForPersistence(),
-          createdAt: DateTime.now(),
+          createdAt: IndianDateTime.now(),
           stockItemId: li.stockItemId,
         ));
 
@@ -1257,7 +1259,7 @@ class _SaleEntryScreenState extends ConsumerState<SaleEntryScreen> {
 
       await _syncDailyBalancesForBillDates(
         shop.id,
-        [widget.bill?.billDate ?? DateTime.now(), DateTime.now()],
+        [widget.bill?.billDate ?? IndianDateTime.now(), IndianDateTime.now()],
       );
 
       ref.invalidate(todayBillsProvider);

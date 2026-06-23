@@ -3,6 +3,8 @@ import 'dart:typed_data';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:http/http.dart' as http;
 import 'package:flutter/foundation.dart';
+import 'package:saafhisaab/utils/indian_date_time.dart';
+
 
 class AiOcrService {
   static Future<Map<String, dynamic>> extractBillData(Uint8List bytes) async {
@@ -84,7 +86,7 @@ class AiOcrService {
           'raw_text': parsedData['raw_text'] ?? '',
           'amount': (parsedData['amount'] ?? 0.0) is num ? (parsedData['amount'] as num).toDouble() : 0.0,
           'vendor_name': parsedData['vendor_name'] ?? '',
-          'bill_date': parsedData['bill_date'] ?? DateTime.now().toIso8601String().split('T')[0],
+          'bill_date': parsedData['bill_date'] ?? IndianDateTime.now().toIso8601String().split('T')[0],
           'is_gst_bill': parsedData['is_gst_bill'] ?? false,
           'gst_amount': (parsedData['gst_amount'] ?? 0.0) is num ? (parsedData['gst_amount'] as num).toDouble() : 0.0,
         };
@@ -103,7 +105,7 @@ class AiOcrService {
       'raw_text': '',
       'amount': 0.0,
       'vendor_name': '',
-      'bill_date': DateTime.now().toIso8601String().split('T')[0],
+      'bill_date': IndianDateTime.now().toIso8601String().split('T')[0],
       'is_gst_bill': false,
       'gst_amount': 0.0,
       'error': errorMsg,

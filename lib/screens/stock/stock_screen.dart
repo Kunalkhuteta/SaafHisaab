@@ -6,6 +6,8 @@ import '../../services/auth_service.dart';
 import '../../services/supabase_service.dart';
 import '../../models/stock_model.dart';
 import '../../globalVar.dart';
+import 'package:saafhisaab/utils/indian_date_time.dart';
+
 
 class StockScreen extends ConsumerStatefulWidget {
   const StockScreen({super.key});
@@ -282,7 +284,7 @@ class _StockScreenState extends ConsumerState<StockScreen> {
         unit: unit,
         buyingPrice: double.tryParse(buy) ?? 0, 
         sellingPrice: double.tryParse(sell) ?? 0,
-        createdAt: itemToEdit?.createdAt ?? DateTime.now(),
+        createdAt: itemToEdit?.createdAt ?? IndianDateTime.now(),
       );
 
       if (itemToEdit == null) {

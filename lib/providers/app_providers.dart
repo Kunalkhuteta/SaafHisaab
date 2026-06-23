@@ -6,6 +6,8 @@ import '../models/shop_access_model.dart';
 import '../services/auth_service.dart';
 import '../services/supabase_service.dart';
 import '../../main.dart';
+import 'package:saafhisaab/utils/indian_date_time.dart';
+
 
 // ── Auth state provider ──
 final authStateProvider = StreamProvider<AuthState>((ref) {
@@ -68,8 +70,8 @@ final filteredBillsProvider = FutureProvider.family<List<BillModel>, String>((re
   final shop = await ref.watch(shopProvider.future);
   if (shop == null) return [];
   final filter = ref.watch(billsDateFilterProvider);
-  final now = DateTime.now();
-  final today = DateTime(now.year, now.month, now.day);
+  final now = IndianDateTime.now();
+  final today = IndianDateTime.date(now.year, now.month, now.day);
 
   DateTime from;
   DateTime to = now;
@@ -79,7 +81,7 @@ final filteredBillsProvider = FutureProvider.family<List<BillModel>, String>((re
       from = today.subtract(const Duration(days: 7));
       break;
     case 'month':
-      from = DateTime(now.year, now.month, 1);
+      from = IndianDateTime.date(now.year, now.month, 1);
       break;
     default:
       from = today;

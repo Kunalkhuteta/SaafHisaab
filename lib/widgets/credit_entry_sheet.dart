@@ -12,6 +12,8 @@ import '../models/udhar_model.dart';
 import 'credit_item_row.dart';
 import 'party_name_field.dart';
 import 'custom_alert.dart';
+import 'package:saafhisaab/utils/indian_date_time.dart';
+
 
 class CreditSaleItem {
   final String? stockItemId;
@@ -124,7 +126,7 @@ class SavedCreditSale {
         totalAmount: (payload['totalAmount'] as num?)?.toDouble() ?? 0,
         dueDate: payload['dueDate'] == null
             ? null
-            : DateTime.tryParse(payload['dueDate']),
+            : IndianDateTime.tryParse(payload['dueDate']),
         note: payload['note'] ?? '',
         items: rawItems
             .whereType<Map>()
@@ -335,12 +337,12 @@ class _CreditEntrySheetState extends State<CreditEntrySheet> {
   }
 
   Future<void> _pickDueDate() async {
-    final now = DateTime.now();
+    final now = IndianDateTime.now();
     final picked = await showDatePicker(
       context: context,
       initialDate: _dueDate ?? now,
-      firstDate: DateTime(now.year, now.month, now.day),
-      lastDate: DateTime(now.year + 5),
+      firstDate: IndianDateTime.date(now.year, now.month, now.day),
+      lastDate: IndianDateTime.date(now.year + 5),
     );
     if (picked != null) setState(() => _dueDate = picked);
   }

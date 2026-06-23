@@ -6,11 +6,13 @@ import '../../globalVar.dart';
 import '../../models/daily_balance_model.dart';
 import '../../providers/app_providers.dart';
 import '../../services/supabase_service.dart';
+import 'package:saafhisaab/utils/indian_date_time.dart';
+
 
 // Provider to manage the selected month and year
 final selectedMonthProvider = StateProvider<DateTime>((ref) {
-  final now = DateTime.now();
-  return DateTime(now.year, now.month);
+  final now = IndianDateTime.now();
+  return IndianDateTime.date(now.year, now.month);
 });
 
 // Provider to fetch daily balances based on the selected month
@@ -52,7 +54,7 @@ class DailyBalancesScreen extends ConsumerWidget {
                   icon: const Icon(Icons.chevron_left_rounded, color: Colors.white),
                   onPressed: () {
                     ref.read(selectedMonthProvider.notifier).state = 
-                        DateTime(selectedMonth.year, selectedMonth.month - 1);
+                        IndianDateTime.date(selectedMonth.year, selectedMonth.month - 1);
                   },
                 ),
                 Text(
@@ -66,8 +68,8 @@ class DailyBalancesScreen extends ConsumerWidget {
                 IconButton(
                   icon: const Icon(Icons.chevron_right_rounded, color: Colors.white),
                   onPressed: () {
-                    final nextMonth = DateTime(selectedMonth.year, selectedMonth.month + 1);
-                    if (nextMonth.isBefore(DateTime.now()) || _isSameMonth(nextMonth, DateTime.now())) {
+                    final nextMonth = IndianDateTime.date(selectedMonth.year, selectedMonth.month + 1);
+                    if (nextMonth.isBefore(IndianDateTime.now()) || _isSameMonth(nextMonth, IndianDateTime.now())) {
                       ref.read(selectedMonthProvider.notifier).state = nextMonth;
                     }
                   },

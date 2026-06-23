@@ -7,6 +7,8 @@ import '../../globalVar.dart';
 import '../../providers/app_providers.dart';
 import '../../services/supabase_service.dart';
 import 'ledger_monthly_view_page.dart';
+import 'package:saafhisaab/utils/indian_date_time.dart';
+
 
 class OutstandingLedger {
   final String accountId;
@@ -255,7 +257,7 @@ class _LedgerPartySelectionPageState extends ConsumerState<LedgerPartySelectionP
   @override
   Widget build(BuildContext context) {
     final isEn = ref.watch(appLanguageProvider);
-    final now = DateTime.now();
+    final now = IndianDateTime.now();
     final fyStart = now.month >= 4 ? now.year : now.year - 1;
 
     return Scaffold(

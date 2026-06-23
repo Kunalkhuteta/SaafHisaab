@@ -3,6 +3,8 @@ import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:flutter/foundation.dart';
+import 'package:saafhisaab/utils/indian_date_time.dart';
+
 
 @pragma('vm:entry-point')
 Future<void> firebaseMessagingBackgroundHandler(RemoteMessage message) async {
@@ -92,7 +94,7 @@ class NotificationService {
     String? payload,
   }) async {
     await _localNotifications.show(
-      DateTime.now().millisecond,
+      IndianDateTime.now().millisecond,
       title,
       body,
       NotificationDetails(

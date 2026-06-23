@@ -9,6 +9,8 @@ import '../globalVar.dart';
 import '../models/item_master_model.dart';
 import 'credit_entry_sheet.dart';
 import 'credit_item_row.dart';
+import 'package:saafhisaab/utils/indian_date_time.dart';
+
 
 /// Bottom sheet for entering purchase credit details (owner buying on credit from a supplier).
 /// Returns a [SavedCreditSale] to keep the data model consistent with the sale credit flow.
@@ -191,12 +193,12 @@ class _PurchaseCreditEntrySheetState extends State<PurchaseCreditEntrySheet> {
   }
 
   Future<void> _pickDueDate() async {
-    final now = DateTime.now();
+    final now = IndianDateTime.now();
     final picked = await showDatePicker(
       context: context,
       initialDate: _dueDate ?? now,
-      firstDate: DateTime(now.year, now.month, now.day),
-      lastDate: DateTime(now.year + 5),
+      firstDate: IndianDateTime.date(now.year, now.month, now.day),
+      lastDate: IndianDateTime.date(now.year + 5),
     );
     if (picked != null) setState(() => _dueDate = picked);
   }

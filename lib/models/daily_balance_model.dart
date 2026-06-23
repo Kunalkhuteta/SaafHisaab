@@ -29,7 +29,7 @@ class DailyBalanceModel {
     return DailyBalanceModel(
       id: json['id'] ?? '',
       shopId: json['shop_id'] ?? '',
-      balanceDate: IndianDateTime.parse(json['balance_date']),
+      balanceDate: IndianIndianDateTime.parse(json['balance_date']),
       cashIn: (json['cash_in'] ?? 0).toDouble(),
       cashOut: (json['cash_out'] ?? 0).toDouble(),
       bankIn: (json['bank_in'] ?? 0).toDouble(),

@@ -1,3 +1,5 @@
+import '../utils/indian_date_time.dart';
+
 class ItemMasterModel {
   final String id;
   final String shopId;
@@ -33,9 +35,9 @@ class ItemMasterModel {
       itemGroup: json['item_group'] ?? '',
       currentStock: (json['current_stock'] as num?)?.toDouble() ?? 0.0,
       imageUrl: json['image_url'] ?? '',
-      createdAt: DateTime.parse(json['created_at']),
+      createdAt: IndianIndianDateTime.parse(json['created_at']),
       updatedAt: json['updated_at'] != null
-          ? DateTime.parse(json['updated_at'])
+          ? IndianIndianDateTime.parse(json['updated_at'])
           : null,
     );
   }

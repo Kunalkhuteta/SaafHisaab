@@ -8,6 +8,8 @@ import '../../models/ledger_row_model.dart';
 import '../../providers/app_providers.dart';
 import '../../services/supabase_service.dart';
 import 'ledger_particular_month_page.dart';
+import 'package:saafhisaab/utils/indian_date_time.dart';
+
 
 class LedgerMonthlyViewPage extends ConsumerStatefulWidget {
   final String accountId;
@@ -59,13 +61,13 @@ class _LedgerMonthlyViewPageState extends ConsumerState<LedgerMonthlyViewPage> {
 
   DateTime _monthStart(String monthName, int coFinYear) {
     final month = _monthMap[monthName.trim()]!;
-    return DateTime(_yearForMonth(month, coFinYear), month, 1);
+    return IndianDateTime.date(_yearForMonth(month, coFinYear), month, 1);
   }
 
   DateTime _monthEnd(String monthName, int coFinYear) {
     final month = _monthMap[monthName.trim()]!;
     final year = _yearForMonth(month, coFinYear);
-    return DateTime(year, month + 1, 0);
+    return IndianDateTime.date(year, month + 1, 0);
   }
 
   @override
@@ -109,13 +111,13 @@ class _LedgerMonthlyViewPageState extends ConsumerState<LedgerMonthlyViewPage> {
   double get _totalCredit => _monthRows.fold(0.0, (s, r) => s + r.credit);
 
   void _onMonthTap(LedgerRow e) {
-    final now = DateTime.now();
+    final now = IndianDateTime.now();
     final fy = now.month >= 4 ? now.year : now.year - 1;
     DateTime from, to;
 
     if (e.particular == '***** ALL MONTHS *****') {
-      from = DateTime(fy, 4, 1);
-      to = DateTime(fy + 1, 3, 31);
+      from = IndianDateTime.date(fy, 4, 1);
+      to = IndianDateTime.date(fy + 1, 3, 31);
     } else {
       from = _monthStart(e.particular, fy);
       to = _monthEnd(e.particular, fy);

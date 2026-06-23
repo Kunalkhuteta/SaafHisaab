@@ -11,6 +11,8 @@ import '../models/daily_balance_model.dart';
 import '../models/ledger_row_model.dart';
 import 'dart:typed_data';
 import '../globalVar.dart';
+import 'package:saafhisaab/utils/indian_date_time.dart';
+
 
 
 class StockUnavailableException implements Exception {
@@ -272,7 +274,7 @@ class SupabaseService {
           .update({
             'is_accepted': true,
             'accepted_user_id': userId,
-            'accepted_at': DateTime.now().toIso8601String(),
+            'accepted_at': IndianDateTime.nowUtc().toIso8601String(),
           })
           .eq('id', invite['id']);
       debugPrint('getShopAccessContext: invite accepted and updated');
@@ -419,7 +421,7 @@ class SupabaseService {
         .from('shop_members')
         .update({
           'role': role.value,
-          'updated_at': DateTime.now().toIso8601String(),
+          'updated_at': IndianDateTime.nowUtc().toIso8601String(),
         })
         .eq('shop_id', shopId)
         .eq('id', memberId);
@@ -448,7 +450,7 @@ class SupabaseService {
         .from('shop_members')
         .update({
           'is_active': false,
-          'updated_at': DateTime.now().toIso8601String(),
+          'updated_at': IndianDateTime.nowUtc().toIso8601String(),
         })
         .eq('shop_id', shopId)
         .eq('id', memberId);
@@ -489,7 +491,7 @@ class SupabaseService {
         .from('shop_member_invites')
         .update({
           'is_accepted': true,
-          'cancelled_at': DateTime.now().toIso8601String(),
+          'cancelled_at': IndianDateTime.nowUtc().toIso8601String(),
         })
         .eq('shop_id', shopId)
         .eq('id', inviteId);
@@ -501,7 +503,7 @@ class SupabaseService {
         .from('shops')
         .update({
           ...updates,
-          'updated_at': DateTime.now().toIso8601String(),
+          'updated_at': IndianDateTime.nowUtc().toIso8601String(),
         })
         .eq('id', shopId);
   }
@@ -618,7 +620,7 @@ class SupabaseService {
   }
 
   static Future<List<BillModel>> getTodayBills(String shopId) async {
-    final today = DateTime.now().toIso8601String().split('T')[0];
+    final today = IndianDateTime.now().toIso8601String().split('T')[0];
     final data = await _client
         .from('bills')
         .select()
@@ -691,7 +693,7 @@ class SupabaseService {
   }
 
 static Future<double> getTodaySalesTotal(String shopId) async {
-  final today = DateTime.now().toIso8601String().split('T')[0];
+  final today = IndianDateTime.now().toIso8601String().split('T')[0];
   final data = await _client
       .from('sales')
       .select('total_amount')
@@ -707,7 +709,7 @@ static Future<double> getTodaySalesTotal(String shopId) async {
 }
 
   static Future<int> getTodaySalesCount(String shopId) async {
-    final today = DateTime.now().toIso8601String().split('T')[0];
+    final today = IndianDateTime.now().toIso8601String().split('T')[0];
     final data = await _client
         .from('sales')
         .select('id')
@@ -761,7 +763,7 @@ static Future<double> getTodaySalesTotal(String shopId) async {
         .from('stock_items')
         .update({
           'current_quantity': newQuantity,
-          'updated_at': DateTime.now().toIso8601String(),
+          'updated_at': IndianDateTime.nowUtc().toIso8601String(),
         })
         .eq('id', itemId);
   }
@@ -776,7 +778,7 @@ static Future<double> getTodaySalesTotal(String shopId) async {
           'unit': item.unit,
           'buying_price': item.buyingPrice,
           'selling_price': item.sellingPrice,
-          'updated_at': DateTime.now().toIso8601String(),
+          'updated_at': IndianDateTime.nowUtc().toIso8601String(),
         })
         .eq('id', item.id);
   }
@@ -802,7 +804,7 @@ static Future<double> getTodaySalesTotal(String shopId) async {
   static Future<void> updateMasterItem(ItemMasterModel item) async {
     // using patch correctly
     final updates = item.toJson();
-    updates['updated_at'] = DateTime.now().toIso8601String();
+    updates['updated_at'] = IndianDateTime.nowUtc().toIso8601String();
     
     await _client
         .from('item_master')
@@ -824,7 +826,7 @@ static Future<double> getTodaySalesTotal(String shopId) async {
   }
 
   static Future<String> uploadItemImage(String shopId, String itemName, Uint8List imageBytes, String extension) async {
-    final fileName = '${shopId}_${DateTime.now().millisecondsSinceEpoch}.$extension';
+    final fileName = '${shopId}_${IndianDateTime.now().millisecondsSinceEpoch}.$extension';
     final path = '$shopId/$fileName';
     
     await _client.storage.from('items').uploadBinary(
@@ -839,7 +841,7 @@ static Future<double> getTodaySalesTotal(String shopId) async {
   static Future<String> uploadCreditReceipt(
       String shopId, Uint8List imageBytes, String extension) async {
     final fileName =
-        'credit_receipt_${DateTime.now().millisecondsSinceEpoch}.$extension';
+        'credit_receipt_${IndianDateTime.now().millisecondsSinceEpoch}.$extension';
     final path = '$shopId/credit_receipts/$fileName';
 
     await _client.storage.from('items').uploadBinary(
@@ -854,7 +856,7 @@ static Future<double> getTodaySalesTotal(String shopId) async {
   static Future<String> uploadBillImage(
       String shopId, Uint8List imageBytes, String extension) async {
     final fileName =
-        'bill_${DateTime.now().millisecondsSinceEpoch}.$extension';
+        'bill_${IndianDateTime.now().millisecondsSinceEpoch}.$extension';
     final path = '$shopId/bills/$fileName';
 
     await _client.storage.from('items').uploadBinary(
@@ -878,7 +880,7 @@ static Future<double> getTodaySalesTotal(String shopId) async {
           .from('item_master')
           .update({
             'current_stock': current + quantity,
-            'updated_at': DateTime.now().toIso8601String(),
+            'updated_at': IndianDateTime.nowUtc().toIso8601String(),
           })
           .eq('id', stockItemId);
       return true;
@@ -916,7 +918,7 @@ static Future<double> getTodaySalesTotal(String shopId) async {
           .from('item_master')
           .update({
             'current_stock': newQty,
-            'updated_at': DateTime.now().toIso8601String(),
+            'updated_at': IndianDateTime.nowUtc().toIso8601String(),
           })
           .eq('id', stockItemId)
           .eq('current_stock', current)
@@ -937,7 +939,7 @@ static Future<double> getTodaySalesTotal(String shopId) async {
           'customer_name': customer.customerName,
           'customer_phone': customer.customerPhone,
           'total_due': customer.totalDue,
-          'updated_at': DateTime.now().toIso8601String(),
+          'updated_at': IndianDateTime.nowUtc().toIso8601String(),
         })
         .eq('id', customer.id);
   }
@@ -995,7 +997,7 @@ static Future<double> getTodaySalesTotal(String shopId) async {
           .from('stock_items')
           .update({
             'current_quantity': newQty,
-            'updated_at': DateTime.now().toIso8601String(),
+            'updated_at': IndianDateTime.nowUtc().toIso8601String(),
           })
           .eq('id', stockItemId)
           .eq('current_quantity', current)
@@ -1041,7 +1043,7 @@ static Future<double> getTodaySalesTotal(String shopId) async {
           .from('stock_items')
           .update({
             'current_quantity': newQty,
-            'updated_at': DateTime.now().toIso8601String(),
+            'updated_at': IndianDateTime.nowUtc().toIso8601String(),
           })
           .eq('id', data['id'])
           .eq('current_quantity', current)
@@ -1179,7 +1181,7 @@ static Future<double> getTodaySalesTotal(String shopId) async {
             'entry_type': 'credit',
             'amount': amount,
             'note': note,
-            'entry_date': DateTime.now().toIso8601String().split('T')[0],
+            'entry_date': IndianDateTime.now().toIso8601String().split('T')[0],
             'is_paid': false,
             'party_paid': 0.0,
           })
@@ -1199,7 +1201,7 @@ static Future<double> getTodaySalesTotal(String shopId) async {
               'entry_type': 'credit',
               'amount': amount,
               'note': note,
-              'entry_date': DateTime.now().toIso8601String().split('T')[0],
+              'entry_date': IndianDateTime.now().toIso8601String().split('T')[0],
             })
             .select()
             .single();
@@ -1226,7 +1228,7 @@ static Future<double> getTodaySalesTotal(String shopId) async {
             'entry_type': 'debit',
             'amount': amount,
             'note': note,
-            'entry_date': DateTime.now().toIso8601String().split('T')[0],
+            'entry_date': IndianDateTime.now().toIso8601String().split('T')[0],
             'is_paid': false,
             'party_paid': 0.0,
           })
@@ -1246,7 +1248,7 @@ static Future<double> getTodaySalesTotal(String shopId) async {
               'entry_type': 'debit',
               'amount': amount,
               'note': note,
-              'entry_date': DateTime.now().toIso8601String().split('T')[0],
+              'entry_date': IndianDateTime.now().toIso8601String().split('T')[0],
             })
             .select()
             .single();
@@ -1273,7 +1275,7 @@ static Future<double> getTodaySalesTotal(String shopId) async {
             'entry_type': 'credit_adjustment',
             'amount': amount,
             'note': note,
-            'entry_date': DateTime.now().toIso8601String().split('T')[0],
+            'entry_date': IndianDateTime.now().toIso8601String().split('T')[0],
             'is_paid': false,
             'party_paid': 0.0,
           })
@@ -1293,7 +1295,7 @@ static Future<double> getTodaySalesTotal(String shopId) async {
               'entry_type': 'credit_adjustment',
               'amount': amount,
               'note': note,
-              'entry_date': DateTime.now().toIso8601String().split('T')[0],
+              'entry_date': IndianDateTime.now().toIso8601String().split('T')[0],
             })
             .select()
             .single();
@@ -1334,7 +1336,7 @@ static Future<double> getTodaySalesTotal(String shopId) async {
       note: meta.toEntryNote(),
     );
     await updateCustomerTotalDue(customer.id, remainingAmount);
-    await _trySyncDailyBalancesForDate(shopId, DateTime.now());
+    await _trySyncDailyBalancesForDate(shopId, IndianDateTime.now());
     return entry;
   }
 
@@ -1384,7 +1386,7 @@ static Future<double> getTodaySalesTotal(String shopId) async {
         .from('udhar_customers')
         .update({
           'total_due': newTotalDue < 0 ? 0 : newTotalDue,
-          'updated_at': DateTime.now().toIso8601String(),
+          'updated_at': IndianDateTime.nowUtc().toIso8601String(),
         })
         .eq('id', customerId);
   }
@@ -1470,7 +1472,7 @@ static Future<double> getTodaySalesTotal(String shopId) async {
           .from('udhar_customers')
           .update({
             adjustmentAmountColumn: safeAmount,
-            'updated_at': DateTime.now().toIso8601String(),
+            'updated_at': IndianDateTime.nowUtc().toIso8601String(),
           })
           .eq('id', customerId);
     } catch (_) {
@@ -1479,7 +1481,7 @@ static Future<double> getTodaySalesTotal(String shopId) async {
             .from('udhar_customers')
             .update({
               adjustmentAmountFallbackColumn: safeAmount,
-              'updated_at': DateTime.now().toIso8601String(),
+              'updated_at': IndianDateTime.nowUtc().toIso8601String(),
             })
             .eq('id', customerId);
       } catch (_) {
@@ -1546,7 +1548,7 @@ static Future<double> getTodaySalesTotal(String shopId) async {
           'entry_type': 'adjustment_used',
           'amount': amount,
           'note': note,
-          'entry_date': DateTime.now().toIso8601String().split('T')[0],
+          'entry_date': IndianDateTime.now().toIso8601String().split('T')[0],
         })
         .select()
         .single();
@@ -1626,7 +1628,7 @@ static Future<double> getTotalUdhar(String shopId) async {
         .from('udhar_customers')
         .update({
           'total_due': newDue,
-          'updated_at': DateTime.now().toIso8601String(),
+          'updated_at': IndianDateTime.nowUtc().toIso8601String(),
         })
         .eq('id', customerId);
         
@@ -1638,7 +1640,7 @@ static Future<double> getTotalUdhar(String shopId) async {
         .from('udhar_customers')
         .update({
           'total_due': 0,
-          'updated_at': DateTime.now().toIso8601String(),
+          'updated_at': IndianDateTime.nowUtc().toIso8601String(),
         })
         .eq('id', customerId);
   }
@@ -1799,11 +1801,11 @@ static Future<double> getTotalUdhar(String shopId) async {
       shopId: shopId,
       userId: userId,
       amount: paidAmount,
-      billDate: DateTime.now(),
+      billDate: IndianDateTime.now(),
       vendorName: partyName,
       billType: 'purchase',
       notes: 'Payment to Supplier',
-      createdAt: DateTime.now(),
+      createdAt: IndianDateTime.now(),
     ));
 
     // Save a linked sale to record the payment mode
@@ -1818,9 +1820,9 @@ static Future<double> getTotalUdhar(String shopId) async {
       totalAmount: paidAmount,
       paymentMode: paymentMethod,
       billId: billId.isNotEmpty ? billId : null,
-      saleDate: DateTime.now(),
+      saleDate: IndianDateTime.now(),
       notes: 'Payment to Supplier',
-      createdAt: DateTime.now(),
+      createdAt: IndianDateTime.now(),
     ));
 
     await recalculatePurchasePartyPendingAmount(
@@ -1830,7 +1832,7 @@ static Future<double> getTotalUdhar(String shopId) async {
     );
 
     // Force sync daily balances
-    await _trySyncDailyBalancesForDate(shopId, DateTime.now());
+    await _trySyncDailyBalancesForDate(shopId, IndianDateTime.now());
   }
 
   static Future<List<LedgerRow>> fetchLedgerMonthly({
@@ -1838,10 +1840,10 @@ static Future<double> getTotalUdhar(String shopId) async {
     required bool isReceivable,
     required String shopId,
   }) async {
-    final now = DateTime.now();
+    final now = IndianDateTime.now();
     final fyStart = now.month >= 4 ? now.year : now.year - 1;
-    final startOfFy = DateTime(fyStart, 4, 1);
-    final endOfFy = DateTime(fyStart + 1, 3, 31);
+    final startOfFy = IndianDateTime.date(fyStart, 4, 1);
+    final endOfFy = IndianDateTime.date(fyStart + 1, 3, 31);
 
     double openingBalance = 0.0;
 
@@ -2023,7 +2025,7 @@ static Future<double> getTotalUdhar(String shopId) async {
 
   /// Sum of bill amounts by type from [bills] table for today
   static Future<double> getTodayBillTotalByType(String shopId, String type) async {
-    final today = DateTime.now().toIso8601String().split('T')[0];
+    final today = IndianDateTime.now().toIso8601String().split('T')[0];
     final data = await _client
         .from('bills')
         .select('amount')
@@ -2040,7 +2042,7 @@ static Future<double> getTotalUdhar(String shopId) async {
 
   /// Count of all bills from [bills] table for today
   static Future<int> getTodayBillCount(String shopId) async {
-    final today = DateTime.now().toIso8601String().split('T')[0];
+    final today = IndianDateTime.now().toIso8601String().split('T')[0];
     final data = await _client
         .from('bills')
         .select('id')
@@ -2075,9 +2077,9 @@ static Future<double> getTotalUdhar(String shopId) async {
   // ─────────────────────────────────────────
 
   static Future<List<DailyBalanceModel>> syncAndGetDailyBalances(String shopId, int month, int year) async {
-    final start = DateTime(year, month, 1).toIso8601String().split('T')[0];
+    final start = IndianDateTime.date(year, month, 1).toIso8601String().split('T')[0];
     // End date is the last day of the month
-    final end = DateTime(year, month + 1, 0).toIso8601String().split('T')[0];
+    final end = IndianDateTime.date(year, month + 1, 0).toIso8601String().split('T')[0];
 
     // 1. Fetch bills for the month
     final billsData = await _client
@@ -2125,7 +2127,7 @@ static Future<double> getTotalUdhar(String shopId) async {
 
       if (!dailyMap.containsKey(dateStr)) {
         dailyMap[dateStr] = DailyBalanceModel(
-          id: '', shopId: shopId, balanceDate: DateTime.parse(dateStr),
+          id: '', shopId: shopId, balanceDate: IndianDateTime.parse(dateStr),
         );
       }
 
@@ -2187,7 +2189,7 @@ static Future<double> getTotalUdhar(String shopId) async {
         () => DailyBalanceModel(
           id: '',
           shopId: shopId,
-          balanceDate: DateTime.parse(dateStr),
+          balanceDate: IndianDateTime.parse(dateStr),
         ),
       );
 
@@ -2216,7 +2218,7 @@ static Future<double> getTotalUdhar(String shopId) async {
         'bank_out': d.bankOut,
         'net_cash': d.cashIn - d.cashOut,
         'net_bank': d.bankIn - d.bankOut,
-        'updated_at': DateTime.now().toIso8601String(),
+        'updated_at': IndianDateTime.nowUtc().toIso8601String(),
       };
     }).toList();
 

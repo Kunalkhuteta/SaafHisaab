@@ -49,9 +49,9 @@ class SaleModel {
       category: json['category'] ?? 'General',
       billId: json['bill_id'],
       stockItemId: json['stock_item_id'],
-      saleDate: IndianDateTime.parse(json['sale_date']),
+      saleDate: IndianIndianDateTime.parse(json['sale_date']),
       notes: json['notes'] ?? '',
-      createdAt: IndianDateTime.parse(json['created_at']),
+      createdAt: IndianIndianDateTime.parse(json['created_at']),
     );
   }
 

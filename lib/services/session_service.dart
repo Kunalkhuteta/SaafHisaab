@@ -2,6 +2,8 @@ import 'dart:convert';
 import 'package:crypto/crypto.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:saafhisaab/utils/indian_date_time.dart';
+
 
 class SessionService {
   static const _storage = FlutterSecureStorage();
@@ -44,7 +46,7 @@ class SessionService {
   static Future<void> saveLastActiveTime() async {
     await _storage.write(
       key: _lastActiveKey,
-      value: DateTime.now().millisecondsSinceEpoch.toString(),
+      value: IndianDateTime.now().millisecondsSinceEpoch.toString(),
     );
   }
 
@@ -68,7 +70,7 @@ class SessionService {
     final lastActive = DateTime.fromMillisecondsSinceEpoch(
       int.tryParse(lastActiveStr) ?? 0,
     );
-    final elapsed = DateTime.now().difference(lastActive);
+    final elapsed = IndianDateTime.now().difference(lastActive);
     return elapsed.inMinutes >= timeoutMinutes;
   }
 

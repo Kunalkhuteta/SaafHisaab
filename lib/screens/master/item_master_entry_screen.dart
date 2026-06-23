@@ -13,6 +13,8 @@ import '../../providers/app_providers.dart';
 import '../../models/item_master_model.dart';
 import '../../services/supabase_service.dart';
 import '../../services/auth_service.dart';
+import 'package:saafhisaab/utils/indian_date_time.dart';
+
 
 class ItemMasterEntryScreen extends ConsumerStatefulWidget {
   final ItemMasterModel? itemToEdit;
@@ -135,7 +137,7 @@ class _ItemMasterEntryScreenState extends ConsumerState<ItemMasterEntryScreen> {
         itemGroup: _groupCtrl.text.trim(),
         currentStock: stockVal,
         imageUrl: imageUrl,
-        createdAt: widget.itemToEdit?.createdAt ?? DateTime.now(),
+        createdAt: widget.itemToEdit?.createdAt ?? IndianDateTime.now(),
       );
 
       if (widget.itemToEdit == null) {

@@ -18,6 +18,8 @@ import '../udhar/udhar_screen.dart';
 import '../stock/stock_screen.dart';
 import '../profile/profile_screen.dart';
 import 'chart_data_helper.dart';
+import 'package:saafhisaab/utils/indian_date_time.dart';
+
 
 class DashboardTab extends ConsumerStatefulWidget {
   const DashboardTab({super.key});
@@ -74,11 +76,11 @@ class _DashboardTabState extends ConsumerState<DashboardTab> {
   }
 
   Future<_DashboardData> _loadData(String shopId) async {
-    final now = DateTime.now();
+    final now = IndianDateTime.now();
     
     // Default range for bills/cards (this month)
-    final gridStart = DateTime(now.year, now.month, 1);
-    final gridEnd = DateTime(now.year, now.month, now.day, 23, 59, 59);
+    final gridStart = IndianDateTime.date(now.year, now.month, 1);
+    final gridEnd = IndianDateTime.date(now.year, now.month, now.day, 23, 59, 59);
 
     // Range for charts based on filter
     DateTime chartStart;
@@ -87,11 +89,11 @@ class _DashboardTabState extends ConsumerState<DashboardTab> {
 
     if (_chartFilter == 'week') {
       chartStart = now.subtract(Duration(days: now.weekday - 1));
-      chartStart = DateTime(chartStart.year, chartStart.month, chartStart.day);
+      chartStart = IndianDateTime.date(chartStart.year, chartStart.month, chartStart.day);
       rangeType = ChartRange.week;
     } else if (_chartFilter == 'year') {
-      chartStart = DateTime(now.year, 4, 1);
-      if (now.month < 4) chartStart = DateTime(now.year - 1, 4, 1);
+      chartStart = IndianDateTime.date(now.year, 4, 1);
+      if (now.month < 4) chartStart = IndianDateTime.date(now.year - 1, 4, 1);
       rangeType = ChartRange.year;
     } else {
       chartStart = gridStart;
@@ -210,8 +212,8 @@ class _DashboardTabState extends ConsumerState<DashboardTab> {
     if (rangeType == ChartRange.year) {
       final months = range.end.difference(range.start).inDays ~/ 30 + 1;
       buckets = List.generate(months > 12 ? 12 : months, (i) {
-        final start = DateTime(range.start.year, range.start.month + i, 1);
-        final end = DateTime(start.year, start.month + 1, 0, 23, 59, 59);
+        final start = IndianDateTime.date(range.start.year, range.start.month + i, 1);
+        final end = IndianDateTime.date(start.year, start.month + 1, 0, 23, 59, 59);
         return ChartBucket(start, end, _monthAbbr(start.month), subLabel: '${start.year}');
       });
     } else {
@@ -225,10 +227,10 @@ class _DashboardTabState extends ConsumerState<DashboardTab> {
     final points = buckets.map((b) => ChartPoint(b.label, 0, subLabel: b.subLabel)).toList();
     
     for (final bill in bills.where((b) => b.billType == type)) {
-      final day = DateTime(bill.billDate.year, bill.billDate.month, bill.billDate.day);
+      final day = IndianDateTime.date(bill.billDate.year, bill.billDate.month, bill.billDate.day);
       for (var i = 0; i < buckets.length; i++) {
         final b = buckets[i];
-        final s = DateTime(b.start.year, b.start.month, b.start.day);
+        final s = IndianDateTime.date(b.start.year, b.start.month, b.start.day);
         if (!day.isBefore(s) && !day.isAfter(s)) {
           points[i] = ChartPoint(points[i].label, points[i].amount + bill.amount, subLabel: points[i].subLabel);
           break;

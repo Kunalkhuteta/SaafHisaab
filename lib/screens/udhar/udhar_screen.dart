@@ -14,6 +14,8 @@ import '../../models/udhar_model.dart';
 import '../../globalVar.dart';
 import '../../widgets/credit_entry_sheet.dart';
 import 'udhar_detail_screen.dart';
+import 'package:saafhisaab/utils/indian_date_time.dart';
+
 
 class UdharScreen extends ConsumerStatefulWidget {
   const UdharScreen({super.key});
@@ -382,7 +384,7 @@ class _UdharScreenState extends ConsumerState<UdharScreen> {
                   customerName: nameCtrl.text.trim(), 
                   customerPhone: phoneCtrl.text.trim(),
                   totalDue: double.tryParse(amountCtrl.text) ?? 0, 
-                  createdAt: customerToEdit?.createdAt ?? DateTime.now(),
+                  createdAt: customerToEdit?.createdAt ?? IndianDateTime.now(),
                 );
 
                 if (customerToEdit == null) {

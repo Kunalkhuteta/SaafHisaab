@@ -9,6 +9,8 @@ import '../../services/share_service.dart';
 import '../../models/bill_model.dart';
 import '../../models/item_master_model.dart';
 import '../../globalVar.dart';
+import 'package:saafhisaab/utils/indian_date_time.dart';
+
 
 class BillReviewScreen extends ConsumerStatefulWidget {
   final Uint8List imageBytes;
@@ -65,9 +67,9 @@ class _BillReviewScreenState extends ConsumerState<BillReviewScreen> {
 
     try {
       final dateStr = data['bill_date'] as String?;
-      _billDate = dateStr != null ? DateTime.parse(dateStr) : DateTime.now();
+      _billDate = dateStr != null ? IndianDateTime.parse(dateStr) : IndianDateTime.now();
     } catch (_) {
-      _billDate = DateTime.now();
+      _billDate = IndianDateTime.now();
     }
   }
 
@@ -87,8 +89,8 @@ class _BillReviewScreenState extends ConsumerState<BillReviewScreen> {
     final picked = await showDatePicker(
       context: context,
       initialDate: _billDate,
-      firstDate: DateTime(2020),
-      lastDate: DateTime.now(),
+      firstDate: IndianDateTime.date(2020),
+      lastDate: IndianDateTime.now(),
       builder: (ctx, child) => Theme(
         data: Theme.of(ctx).copyWith(
           colorScheme: const ColorScheme.light(primary: AppColors.primary),
@@ -170,7 +172,7 @@ class _BillReviewScreenState extends ConsumerState<BillReviewScreen> {
             id: '', shopId: shop.id, userId: userId, 
             itemName: _newItemNameCtrl.text.trim(),
             currentStock: qty,
-            createdAt: DateTime.now(),
+            createdAt: IndianDateTime.now(),
           );
           await SupabaseService.saveMasterItem(newItem);
         } else if (!_isNewItem && _selectedStockItem != null) {
@@ -191,7 +193,7 @@ class _BillReviewScreenState extends ConsumerState<BillReviewScreen> {
         isGstBill: _isGstBill,
         gstAmount: gstAmount,
         notes: notes,
-        createdAt: DateTime.now(),
+        createdAt: IndianDateTime.now(),
       ));
 
       ref.invalidate(todayBillsProvider);

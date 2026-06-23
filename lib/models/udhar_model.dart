@@ -1,4 +1,5 @@
 import 'dart:convert';
+import '../utils/indian_date_time.dart';
 
 class UdharCustomerModel {
   final String id;
@@ -35,9 +36,9 @@ class UdharCustomerModel {
           (json['tobeadjustAmount'] as num?)?.toDouble() ??
               (json['tobeadjust_amount'] as num?)?.toDouble() ??
               0,
-      createdAt: DateTime.parse(json['created_at']),
+      createdAt: IndianIndianDateTime.parse(json['created_at']),
       updatedAt: json['updated_at'] != null
-          ? DateTime.parse(json['updated_at'])
+          ? IndianIndianDateTime.parse(json['updated_at'])
           : null,
     );
   }
@@ -178,8 +179,8 @@ class UdharEntryModel {
           (json['party_paid'] as num?)?.toDouble() ??
           0,
       note: json['note'] ?? '',
-      entryDate: DateTime.parse(json['entry_date']),
-      createdAt: DateTime.parse(json['created_at']),
+      entryDate: IndianIndianDateTime.parse(json['entry_date']),
+      createdAt: IndianIndianDateTime.parse(json['created_at']),
     );
   }
 

@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 import '../../models/bill_model.dart';
 import '../../models/sale_model.dart';
 import '../../models/udhar_model.dart';
+import 'package:saafhisaab/utils/indian_date_time.dart';
+
 
 enum ChartRange { week, month, year, custom }
 enum ChartTab { sale, purchase, returns, credit }
@@ -125,13 +127,13 @@ class ChartsData {
 
   static List<ChartBucket> _yearBuckets(DateTimeRange range) {
     final year = range.start.year;
-    final now = DateTime.now();
+    final now = IndianDateTime.now();
     final maxMonth = (year == now.year) ? now.month : 12;
     return List.generate(maxMonth, (i) {
-      final start = DateTime(year, i + 1, 1);
+      final start = IndianDateTime.date(year, i + 1, 1);
       final end = (i + 1 < 12)
-          ? DateTime(year, i + 2, 0)
-          : DateTime(year, 12, 31);
+          ? IndianDateTime.date(year, i + 2, 0)
+          : IndianDateTime.date(year, 12, 31);
       return ChartBucket(start, end, _monthNames[i]);
     });
   }
@@ -153,12 +155,12 @@ class ChartsData {
       });
     } else {
       final months = <ChartBucket>[];
-      var cursor = DateTime(range.start.year, range.start.month, 1);
+      var cursor = IndianDateTime.date(range.start.year, range.start.month, 1);
       while (!cursor.isAfter(range.end)) {
-        final mEnd = DateTime(cursor.year, cursor.month + 1, 0);
+        final mEnd = IndianDateTime.date(cursor.year, cursor.month + 1, 0);
         final actualEnd = mEnd.isAfter(range.end) ? range.end : mEnd;
         months.add(ChartBucket(cursor, actualEnd, _monthNames[cursor.month - 1]));
-        cursor = DateTime(cursor.year, cursor.month + 1, 1);
+        cursor = IndianDateTime.date(cursor.year, cursor.month + 1, 1);
       }
       return months;
     }
@@ -173,11 +175,11 @@ class ChartsData {
     DateTime date,
     double amount,
   ) {
-    final day = DateTime(date.year, date.month, date.day);
+    final day = IndianDateTime.date(date.year, date.month, date.day);
     for (var i = 0; i < buckets.length; i++) {
       final b = buckets[i];
-      final s = DateTime(b.start.year, b.start.month, b.start.day);
-      final e = DateTime(b.end.year, b.end.month, b.end.day);
+      final s = IndianDateTime.date(b.start.year, b.start.month, b.start.day);
+      final e = IndianDateTime.date(b.end.year, b.end.month, b.end.day);
       if (!day.isBefore(s) && !day.isAfter(e)) {
         points[i] = ChartPoint(points[i].label, points[i].amount + amount,
             subLabel: points[i].subLabel);

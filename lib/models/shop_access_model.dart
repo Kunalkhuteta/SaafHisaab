@@ -1,4 +1,5 @@
 import 'shop_model.dart';
+import '../utils/indian_date_time.dart';
 
 enum ShopRole {
   admin,
@@ -93,7 +94,7 @@ class ShopMember {
       role: ShopRoleX.parse(json['role'] as String?),
       isActive: json['is_active'] ?? true,
       addedBy: json['added_by'] ?? '',
-      createdAt: DateTime.tryParse(json['created_at'] ?? '') ?? DateTime.now(),
+      createdAt: IndianIndianDateTime.tryParse(json['created_at'] ?? '') ?? IndianIndianDateTime.now(),
     );
   }
 }
@@ -128,7 +129,7 @@ class ShopMemberInvite {
       role: ShopRoleX.parse(json['role'] as String?),
       invitedBy: json['invited_by'] ?? '',
       isAccepted: json['is_accepted'] ?? false,
-      createdAt: DateTime.tryParse(json['created_at'] ?? '') ?? DateTime.now(),
+      createdAt: IndianIndianDateTime.tryParse(json['created_at'] ?? '') ?? IndianIndianDateTime.now(),
     );
   }
 }

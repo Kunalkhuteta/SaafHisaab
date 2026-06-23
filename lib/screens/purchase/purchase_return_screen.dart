@@ -11,6 +11,8 @@ import '../../models/sale_model.dart';
 import '../../providers/app_providers.dart';
 import '../../services/auth_service.dart';
 import '../../services/supabase_service.dart';
+import 'package:saafhisaab/utils/indian_date_time.dart';
+
 
 class PurchaseReturnScreen extends ConsumerStatefulWidget {
   final BillModel? initialBill;
@@ -144,8 +146,8 @@ class _PurchaseReturnScreenState extends ConsumerState<PurchaseReturnScreen> {
   }
 
   DateTimeRange? _dateRangeForFilter(String filter) {
-    final now = DateTime.now();
-    final today = DateTime(now.year, now.month, now.day);
+    final now = IndianDateTime.now();
+    final today = IndianDateTime.date(now.year, now.month, now.day);
     switch (filter) {
       case 'today':
         return DateTimeRange(start: today, end: now);
@@ -153,7 +155,7 @@ class _PurchaseReturnScreenState extends ConsumerState<PurchaseReturnScreen> {
         final yesterday = today.subtract(const Duration(days: 1));
         return DateTimeRange(
           start: yesterday,
-          end: DateTime(yesterday.year, yesterday.month, yesterday.day, 23, 59, 59),
+          end: IndianDateTime.date(yesterday.year, yesterday.month, yesterday.day, 23, 59, 59),
         );
       case 'week':
         return DateTimeRange(
@@ -161,15 +163,15 @@ class _PurchaseReturnScreenState extends ConsumerState<PurchaseReturnScreen> {
           end: now,
         );
       case 'month':
-        return DateTimeRange(start: DateTime(now.year, now.month, 1), end: now);
+        return DateTimeRange(start: IndianDateTime.date(now.year, now.month, 1), end: now);
       case 'prev_month':
-        final start = DateTime(now.year, now.month - 1, 1);
+        final start = IndianDateTime.date(now.year, now.month - 1, 1);
         return DateTimeRange(
           start: start,
-          end: DateTime(now.year, now.month, 0, 23, 59, 59),
+          end: IndianDateTime.date(now.year, now.month, 0, 23, 59, 59),
         );
       case 'year':
-        return DateTimeRange(start: DateTime(now.year, 1, 1), end: now);
+        return DateTimeRange(start: IndianDateTime.date(now.year, 1, 1), end: now);
       default:
         return null;
     }
@@ -940,9 +942,9 @@ class _PurchaseReturnScreenState extends ConsumerState<PurchaseReturnScreen> {
                                   sellingPrice: price,
                                   totalAmount: total,
                                   paymentMode: 'cash',
-                                  saleDate: DateTime.now(),
+                                  saleDate: IndianDateTime.now(),
                                   notes: '',
-                                  createdAt: DateTime.now(),
+                                  createdAt: IndianDateTime.now(),
                                 ),
                                 qty,
                               ),
@@ -994,9 +996,9 @@ class _PurchaseReturnScreenState extends ConsumerState<PurchaseReturnScreen> {
                                   sellingPrice: price,
                                   totalAmount: total,
                                   paymentMode: 'adjustment',
-                                  saleDate: DateTime.now(),
+                                  saleDate: IndianDateTime.now(),
                                   notes: '',
-                                  createdAt: DateTime.now(),
+                                  createdAt: IndianDateTime.now(),
                                 ),
                                 qty,
                               ),
@@ -1107,11 +1109,11 @@ class _PurchaseReturnScreenState extends ConsumerState<PurchaseReturnScreen> {
         shopId: shop.id,
         userId: userId,
         amount: total,
-        billDate: DateTime.now(),
+        billDate: IndianDateTime.now(),
         vendorName: partyName,
         billType: 'purchase_return',
         notes: note,
-        createdAt: DateTime.now(),
+        createdAt: IndianDateTime.now(),
       ));
 
       for (final draft in selected) {
@@ -1128,7 +1130,7 @@ class _PurchaseReturnScreenState extends ConsumerState<PurchaseReturnScreen> {
               userId: '',
               itemName: '',
               currentStock: 0,
-              createdAt: DateTime.now(),
+              createdAt: IndianDateTime.now(),
             ),
           );
           if (existing.id.isNotEmpty) {
@@ -1160,9 +1162,9 @@ class _PurchaseReturnScreenState extends ConsumerState<PurchaseReturnScreen> {
           paymentMode: effectivePaymentMode,
           billId: billId,
           stockItemId: stockItemId,
-          saleDate: DateTime.now(),
+          saleDate: IndianDateTime.now(),
           notes: note,
-          createdAt: DateTime.now(),
+          createdAt: IndianDateTime.now(),
         ));
       }
 
@@ -1179,8 +1181,8 @@ class _PurchaseReturnScreenState extends ConsumerState<PurchaseReturnScreen> {
       try {
         await SupabaseService.syncAndGetDailyBalances(
           shop.id,
-          DateTime.now().month,
-          DateTime.now().year,
+          IndianDateTime.now().month,
+          IndianDateTime.now().year,
         );
       } catch (e) {
         debugPrint('Daily balance sync failed: $e');

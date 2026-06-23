@@ -1,3 +1,5 @@
+import '../utils/indian_date_time.dart';
+
 class StockItemModel {
   final String id;
   final String shopId;
@@ -47,7 +49,7 @@ class StockItemModel {
       lowStockAlert: (json['low_stock_alert'] ?? 5).toDouble(),
       supplierName: json['supplier_name'] ?? '',
       supplierPhone: json['supplier_phone'] ?? '',
-      createdAt: DateTime.parse(json['created_at']),
+      createdAt: IndianIndianDateTime.parse(json['created_at']),
     );
   }
 

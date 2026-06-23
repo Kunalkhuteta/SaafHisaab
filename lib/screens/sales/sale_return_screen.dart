@@ -13,6 +13,8 @@ import '../../providers/app_providers.dart';
 import '../../services/auth_service.dart';
 import '../../services/supabase_service.dart';
 import '../../widgets/credit_entry_sheet.dart';
+import 'package:saafhisaab/utils/indian_date_time.dart';
+
 
 class SaleReturnScreen extends ConsumerStatefulWidget {
   final BillModel? initialBill;
@@ -147,8 +149,8 @@ class _SaleReturnScreenState extends ConsumerState<SaleReturnScreen> {
   }
 
   DateTimeRange? _dateRangeForFilter(String filter) {
-    final now = DateTime.now();
-    final today = DateTime(now.year, now.month, now.day);
+    final now = IndianDateTime.now();
+    final today = IndianDateTime.date(now.year, now.month, now.day);
     switch (filter) {
       case 'today':
         return DateTimeRange(start: today, end: now);
@@ -156,7 +158,7 @@ class _SaleReturnScreenState extends ConsumerState<SaleReturnScreen> {
         final yesterday = today.subtract(const Duration(days: 1));
         return DateTimeRange(
           start: yesterday,
-          end: DateTime(yesterday.year, yesterday.month, yesterday.day, 23, 59, 59),
+          end: IndianDateTime.date(yesterday.year, yesterday.month, yesterday.day, 23, 59, 59),
         );
       case 'week':
         return DateTimeRange(
@@ -164,15 +166,15 @@ class _SaleReturnScreenState extends ConsumerState<SaleReturnScreen> {
           end: now,
         );
       case 'month':
-        return DateTimeRange(start: DateTime(now.year, now.month, 1), end: now);
+        return DateTimeRange(start: IndianDateTime.date(now.year, now.month, 1), end: now);
       case 'prev_month':
-        final start = DateTime(now.year, now.month - 1, 1);
+        final start = IndianDateTime.date(now.year, now.month - 1, 1);
         return DateTimeRange(
           start: start,
-          end: DateTime(now.year, now.month, 0, 23, 59, 59),
+          end: IndianDateTime.date(now.year, now.month, 0, 23, 59, 59),
         );
       case 'year':
-        return DateTimeRange(start: DateTime(now.year, 1, 1), end: now);
+        return DateTimeRange(start: IndianDateTime.date(now.year, 1, 1), end: now);
       default:
         return null;
     }
@@ -1108,8 +1110,8 @@ class _SaleReturnScreenState extends ConsumerState<SaleReturnScreen> {
       sellingPrice: price,
       totalAmount: qty * price,
       paymentMode: paymentMode,
-      saleDate: DateTime.now(),
-      createdAt: DateTime.now(),
+      saleDate: IndianDateTime.now(),
+      createdAt: IndianDateTime.now(),
     );
     await _saveReturn(
       sourceBill: null,
@@ -1180,11 +1182,11 @@ class _SaleReturnScreenState extends ConsumerState<SaleReturnScreen> {
         shopId: shop.id,
         userId: userId,
         amount: total,
-        billDate: DateTime.now(),
+        billDate: IndianDateTime.now(),
         vendorName: customerName,
         billType: 'sale_return',
         notes: note,
-        createdAt: DateTime.now(),
+        createdAt: IndianDateTime.now(),
       ));
 
       for (final draft in selected) {
@@ -1197,7 +1199,7 @@ class _SaleReturnScreenState extends ConsumerState<SaleReturnScreen> {
             userId: userId,
             itemName: sale.itemName,
             currentStock: draft.qty,
-            createdAt: DateTime.now(),
+            createdAt: IndianDateTime.now(),
           ));
           stockItemId = created.id;
           stockAddedIds.add(_StockRollback(stockItemId, draft.qty, created: true));
@@ -1229,9 +1231,9 @@ class _SaleReturnScreenState extends ConsumerState<SaleReturnScreen> {
           paymentMode: entryPaymentMode,
           billId: billId,
           stockItemId: stockItemId,
-          saleDate: DateTime.now(),
+          saleDate: IndianDateTime.now(),
           notes: note,
-          createdAt: DateTime.now(),
+          createdAt: IndianDateTime.now(),
         ));
       }
 
@@ -1248,8 +1250,8 @@ class _SaleReturnScreenState extends ConsumerState<SaleReturnScreen> {
       try {
         await SupabaseService.syncAndGetDailyBalances(
           shop.id,
-          DateTime.now().month,
-          DateTime.now().year,
+          IndianDateTime.now().month,
+          IndianDateTime.now().year,
         );
       } catch (e) {
         debugPrint('Daily balance sync failed: $e');

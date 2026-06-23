@@ -8,6 +8,8 @@ import '../../globalVar.dart';
 import '../../providers/app_providers.dart';
 import '../../services/supabase_service.dart';
 import 'chart_data_helper.dart';
+import 'package:saafhisaab/utils/indian_date_time.dart';
+
 
 class ChartsScreen extends ConsumerStatefulWidget {
   const ChartsScreen({super.key});
@@ -123,8 +125,8 @@ class _ChartsScreenState extends ConsumerState<ChartsScreen>
         if (v == ChartRange.custom) {
           final picked = await showDateRangePicker(
             context: context,
-            firstDate: DateTime(2020),
-            lastDate: DateTime.now(),
+            firstDate: IndianDateTime.date(2020),
+            lastDate: IndianDateTime.now(),
             initialDateRange: _customRange ?? _selectedRange(),
             builder: (c, child) => Theme(
               data: Theme.of(c).copyWith(
@@ -625,8 +627,8 @@ class _ChartsScreenState extends ConsumerState<ChartsScreen>
   }
 
   DateTimeRange _selectedRange() {
-    final now = DateTime.now();
-    final today = DateTime(now.year, now.month, now.day);
+    final now = IndianDateTime.now();
+    final today = IndianDateTime.date(now.year, now.month, now.day);
     switch (_range) {
       case ChartRange.week:
         return DateTimeRange(
@@ -634,18 +636,18 @@ class _ChartsScreenState extends ConsumerState<ChartsScreen>
             end: _eod(today));
       case ChartRange.month:
         return DateTimeRange(
-            start: DateTime(now.year, now.month, 1), end: _eod(today));
+            start: IndianDateTime.date(now.year, now.month, 1), end: _eod(today));
       case ChartRange.year:
         return DateTimeRange(
-            start: DateTime(now.year, 1, 1), end: _eod(today));
+            start: IndianDateTime.date(now.year, 1, 1), end: _eod(today));
       case ChartRange.custom:
         return _customRange ??
             DateTimeRange(
-                start: DateTime(now.year, now.month, 1), end: today);
+                start: IndianDateTime.date(now.year, now.month, 1), end: today);
     }
   }
 
-  DateTime _eod(DateTime d) => DateTime(d.year, d.month, d.day, 23, 59, 59);
+  DateTime _eod(DateTime d) => IndianDateTime.date(d.year, d.month, d.day, 23, 59, 59);
 
   Color _tabColor(ChartTab tab) {
     switch (tab) {

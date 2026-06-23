@@ -1,3 +1,5 @@
+import '../utils/indian_date_time.dart';
+
 class ShopModel {
   final String id;
   final String userId;
@@ -34,7 +36,7 @@ class ShopModel {
       gstNumber: json['gst_number'] ?? '',
       phone: json['phone'] ?? '',
       plan: json['plan'] ?? 'free',
-      createdAt: DateTime.parse(json['created_at']),
+      createdAt: IndianIndianDateTime.parse(json['created_at']),
     );
   }
 

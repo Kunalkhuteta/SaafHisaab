@@ -1,5 +1,7 @@
 import 'dart:io';
 import 'package:google_mlkit_text_recognition/google_mlkit_text_recognition.dart';
+import 'package:saafhisaab/utils/indian_date_time.dart';
+
 
 class OcrService {
   // ✅ Latin only — covers English + Hindi roman text
@@ -25,7 +27,7 @@ class OcrService {
         'raw_text': '',
         'amount': 0.0,
         'vendor_name': '',
-        'bill_date': DateTime.now().toIso8601String().split('T')[0],
+        'bill_date': IndianDateTime.now().toIso8601String().split('T')[0],
         'is_gst_bill': false,
         'gst_amount': 0.0,
         'error': e.toString(),
@@ -210,7 +212,7 @@ class OcrService {
     }
 
     // Fallback — today's date
-    return DateTime.now().toIso8601String().split('T')[0];
+    return IndianDateTime.now().toIso8601String().split('T')[0];
   }
 
   // ─────────────────────────────────────────

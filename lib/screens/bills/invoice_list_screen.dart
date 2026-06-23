@@ -12,6 +12,8 @@ import 'bill_review_screen.dart';
 import '../sales/sale_entry_screen.dart';
 import '../sales/sale_return_screen.dart';
 import '../purchase/purchase_return_screen.dart';
+import 'package:saafhisaab/utils/indian_date_time.dart';
+
 
 class InvoiceListScreen extends ConsumerStatefulWidget {
   final String billType;
@@ -269,7 +271,7 @@ class _InvoiceListScreenState extends ConsumerState<InvoiceListScreen> {
       final bytes = await xfile.readAsBytes();
       Map<String, dynamic> ocrData = {
         'raw_text': '', 'amount': 0.0, 'vendor_name': '',
-        'bill_date': DateTime.now().toIso8601String().split('T')[0],
+        'bill_date': IndianDateTime.now().toIso8601String().split('T')[0],
         'is_gst_bill': false, 'gst_amount': 0.0,
       };
       try { ocrData = await AiOcrService.extractBillData(bytes); } catch (e) { debugPrint('OCR failed: $e'); }
