@@ -35,9 +35,9 @@ class ItemMasterModel {
       itemGroup: json['item_group'] ?? '',
       currentStock: (json['current_stock'] as num?)?.toDouble() ?? 0.0,
       imageUrl: json['image_url'] ?? '',
-      createdAt: IndianIndianDateTime.parse(json['created_at']),
+      createdAt: IndianDateTime.parse(json['created_at']),
       updatedAt: json['updated_at'] != null
-          ? IndianIndianDateTime.parse(json['updated_at'])
+          ? IndianDateTime.parse(json['updated_at'])
           : null,
     );
   }
