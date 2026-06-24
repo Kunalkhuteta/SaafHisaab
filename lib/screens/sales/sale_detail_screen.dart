@@ -130,6 +130,8 @@ class _SaleDetailScreenState extends ConsumerState<SaleDetailScreen> {
     final isEn = ref.watch(appLanguageProvider);
     final bill = widget.bill;
     final isSale = bill.billType == 'sale';
+    final namesMap = ref.watch(shopMemberNamesProvider).valueOrNull ?? const <String, String>{};
+    final creatorName = namesMap[bill.userId] ?? '';
 
     return Scaffold(
       backgroundColor: AppColors.background,
@@ -233,6 +235,17 @@ class _SaleDetailScreenState extends ConsumerState<SaleDetailScreen> {
           child: SingleChildScrollView(
             padding: const EdgeInsets.all(20),
             child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              // ── Created By Info ──
+              if (creatorName.isNotEmpty) ...[
+                _infoCard(
+                  icon: Icons.create_rounded,
+                  title: AppLang.tr(isEn, 'Created By', 'किसके द्वारा बनाया गया'),
+                  value: creatorName,
+                  color: AppColors.primary,
+                ),
+                const SizedBox(height: 12),
+              ],
+
               // ── Customer / Vendor Info ──
               if (bill.vendorName.isNotEmpty) ...[
                 _infoCard(

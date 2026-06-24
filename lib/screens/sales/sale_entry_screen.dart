@@ -1491,12 +1491,43 @@ class _SaleEntryScreenState extends ConsumerState<SaleEntryScreen> {
     );
   }
 
+  Widget _creatorInfoCard(bool isEn) {
+    final namesMap = ref.watch(shopMemberNamesProvider).valueOrNull ?? const {};
+    final creatorName = namesMap[widget.bill!.userId] ?? '';
+    if (creatorName.isEmpty) return const SizedBox();
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(12),
+      margin: const EdgeInsets.only(bottom: 16),
+      decoration: BoxDecoration(
+        color: AppColors.surface,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: AppColors.border),
+      ),
+      child: Row(
+        children: [
+          const Icon(Icons.create_rounded, color: AppColors.primary, size: 18),
+          const SizedBox(width: 8),
+          Text(
+            '${AppLang.tr(isEn, 'Created By', 'किसके द्वारा बनाया गया')}: ',
+            style: const TextStyle(fontSize: 13, color: AppColors.textSecondary),
+          ),
+          Text(
+            creatorName,
+            style: const TextStyle(fontSize: 13, fontWeight: FontWeight.bold, color: AppColors.textPrimary),
+          ),
+        ],
+      ),
+    );
+  }
+
   Widget _buildForm(bool isEn, List<dynamic> rawStockItems, String shopId) {
     final stockItems = rawStockItems.cast<ItemMasterModel>();
 
     return SingleChildScrollView(
       padding: const EdgeInsets.all(20),
       child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        if (widget.bill != null) _creatorInfoCard(isEn),
         // ── Customer Name ──
         _sectionLabel(AppLang.tr(isEn, 'Customer Name *', 'ग्राहक का नाम *')),
         const SizedBox(height: 6),

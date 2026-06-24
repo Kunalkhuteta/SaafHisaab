@@ -124,3 +124,26 @@ final purchasePartiesProvider = FutureProvider<List<Map<String, dynamic>>>((ref)
       .order('name');
   return List<Map<String, dynamic>>.from(response);
 });
+
+// ── Shop member names provider (maps user_id to member/owner name) ──
+final shopMemberNamesProvider = FutureProvider<Map<String, String>>((ref) async {
+  final shop = await ref.watch(shopProvider.future);
+  if (shop == null) return {};
+
+  final Map<String, String> namesMap = {};
+  
+  // Add the shop owner first
+  namesMap[shop.userId] = shop.ownerName;
+
+  // Fetch active and inactive shop members to map their names
+  try {
+    final members = await SupabaseService.getShopMembers(shop.id);
+    for (final member in members) {
+      namesMap[member.userId] = member.name;
+    }
+  } catch (e) {
+    // Fail gracefully
+  }
+
+  return namesMap;
+});

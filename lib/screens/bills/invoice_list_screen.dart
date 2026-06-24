@@ -42,6 +42,7 @@ class _InvoiceListScreenState extends ConsumerState<InvoiceListScreen> {
     final billsAsync = ref.watch(filteredBillsProvider(widget.billType));
     final typeColor = InvType.color(widget.billType);
     final code = InvType.shortCode(widget.billType);
+    final namesMap = ref.watch(shopMemberNamesProvider).valueOrNull ?? const <String, String>{};
 
     return Scaffold(
       backgroundColor: AppColors.background,
@@ -124,11 +125,12 @@ class _InvoiceListScreenState extends ConsumerState<InvoiceListScreen> {
                   onRefresh: () async {
                     ref.invalidate(filteredBillsProvider);
                     ref.invalidate(dashboardStatsProvider);
+                    ref.invalidate(shopMemberNamesProvider);
                   },
                   child: ListView.builder(
                     padding: const EdgeInsets.all(16),
                     itemCount: bills.length,
-                    itemBuilder: (_, i) => _billCard(bills[i], isEn, typeColor),
+                    itemBuilder: (_, i) => _billCard(bills[i], isEn, typeColor, namesMap),
                   ),
                 ),
           ),
@@ -302,8 +304,9 @@ class _InvoiceListScreenState extends ConsumerState<InvoiceListScreen> {
     }
   }
 
-  Widget _billCard(BillModel bill, bool isEn, Color typeColor) {
+  Widget _billCard(BillModel bill, bool isEn, Color typeColor, Map<String, String> namesMap) {
     final code = InvType.shortCode(bill.billType);
+    final creatorName = namesMap[bill.userId] ?? '';
     return GestureDetector(
       onTap: () => _openEditForm(bill),
       child: Container(
@@ -343,6 +346,16 @@ class _InvoiceListScreenState extends ConsumerState<InvoiceListScreen> {
               const SizedBox(width: 6),
               Text('${bill.billDate.day}/${bill.billDate.month}/${bill.billDate.year}',
                 style: const TextStyle(fontSize: 11, color: AppColors.textHint)),
+              if (creatorName.isNotEmpty) ...[
+                const SizedBox(width: 6),
+                Container(
+                  width: 3, height: 3,
+                  decoration: const BoxDecoration(color: AppColors.textHint, shape: BoxShape.circle),
+                ),
+                const SizedBox(width: 6),
+                Text(creatorName,
+                  style: const TextStyle(fontSize: 11, color: AppColors.textHint, fontWeight: FontWeight.w500)),
+              ],
             ]),
           ])),
           Text('₹${bill.amount.toStringAsFixed(0)}',
