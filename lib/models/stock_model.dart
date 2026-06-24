@@ -49,7 +49,7 @@ class StockItemModel {
       lowStockAlert: (json['low_stock_alert'] ?? 5).toDouble(),
       supplierName: json['supplier_name'] ?? '',
       supplierPhone: json['supplier_phone'] ?? '',
-      createdAt: IndianIndianDateTime.parse(json['created_at']),
+      createdAt: IndianDateTime.parse(json['created_at']),
     );
   }
 

@@ -94,7 +94,7 @@ class ShopMember {
       role: ShopRoleX.parse(json['role'] as String?),
       isActive: json['is_active'] ?? true,
       addedBy: json['added_by'] ?? '',
-      createdAt: IndianIndianDateTime.tryParse(json['created_at'] ?? '') ?? IndianIndianDateTime.now(),
+      createdAt: IndianDateTime.tryParse(json['created_at'] ?? '') ?? IndianDateTime.now(),
     );
   }
 }
@@ -129,7 +129,7 @@ class ShopMemberInvite {
       role: ShopRoleX.parse(json['role'] as String?),
       invitedBy: json['invited_by'] ?? '',
       isAccepted: json['is_accepted'] ?? false,
-      createdAt: IndianIndianDateTime.tryParse(json['created_at'] ?? '') ?? IndianIndianDateTime.now(),
+      createdAt: IndianDateTime.tryParse(json['created_at'] ?? '') ?? IndianDateTime.now(),
     );
   }
 }

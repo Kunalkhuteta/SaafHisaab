@@ -36,9 +36,9 @@ class UdharCustomerModel {
           (json['tobeadjustAmount'] as num?)?.toDouble() ??
               (json['tobeadjust_amount'] as num?)?.toDouble() ??
               0,
-      createdAt: IndianIndianDateTime.parse(json['created_at']),
+      createdAt: IndianDateTime.parse(json['created_at']),
       updatedAt: json['updated_at'] != null
-          ? IndianIndianDateTime.parse(json['updated_at'])
+          ? IndianDateTime.parse(json['updated_at'])
           : null,
     );
   }
@@ -179,8 +179,8 @@ class UdharEntryModel {
           (json['party_paid'] as num?)?.toDouble() ??
           0,
       note: json['note'] ?? '',
-      entryDate: IndianIndianDateTime.parse(json['entry_date']),
-      createdAt: IndianIndianDateTime.parse(json['created_at']),
+      entryDate: IndianDateTime.parse(json['entry_date']),
+      createdAt: IndianDateTime.parse(json['created_at']),
     );
   }
 

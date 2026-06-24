@@ -36,7 +36,7 @@ class ShopModel {
       gstNumber: json['gst_number'] ?? '',
       phone: json['phone'] ?? '',
       plan: json['plan'] ?? 'free',
-      createdAt: IndianIndianDateTime.parse(json['created_at']),
+      createdAt: IndianDateTime.parse(json['created_at']),
     );
   }
 
