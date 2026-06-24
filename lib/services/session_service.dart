@@ -3,13 +3,34 @@ import 'package:crypto/crypto.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:saafhisaab/utils/indian_date_time.dart';
-
+import 'auth_service.dart';
 
 class SessionService {
   static const _storage = FlutterSecureStorage();
-  static const _passcodeKey = 'saafhisaab_passcode';
-  static const _lastActiveKey = 'saafhisaab_last_active';
-  static const _timeoutKey = 'session_timeout_minutes';
+
+  static String get _passcodeKey {
+    final userId = AuthService.currentUserId;
+    if (userId == null || userId.isEmpty) {
+      return 'saafhisaab_passcode';
+    }
+    return 'saafhisaab_passcode_$userId';
+  }
+
+  static String get _lastActiveKey {
+    final userId = AuthService.currentUserId;
+    if (userId == null || userId.isEmpty) {
+      return 'saafhisaab_last_active';
+    }
+    return 'saafhisaab_last_active_$userId';
+  }
+
+  static String get _timeoutKey {
+    final userId = AuthService.currentUserId;
+    if (userId == null || userId.isEmpty) {
+      return 'session_timeout_minutes';
+    }
+    return 'session_timeout_minutes_$userId';
+  }
 
   // ── Hash passcode with SHA-256 ──
   static String _hashPasscode(String passcode) {

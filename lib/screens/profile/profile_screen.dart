@@ -202,7 +202,6 @@ class ProfileScreen extends ConsumerWidget {
                   child: OutlinedButton.icon(
                     onPressed: () async {
                       final navigator = Navigator.of(context);
-                      await SessionService.clearPasscode();
                       await AuthService.signOut();
                       ref.invalidate(shopAccessProvider);
                       ref.invalidate(shopProvider);
