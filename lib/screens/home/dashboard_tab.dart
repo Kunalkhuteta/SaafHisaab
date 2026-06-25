@@ -75,7 +75,7 @@ class _DashboardTabState extends ConsumerState<DashboardTab> {
     ).then((_) => setState(() {}));
   }
 
-  Future<_DashboardData> _loadData(String shopId) async {
+  Future<_DashboardData> _loadData(String shopId, ShopRole? role) async {
     final now = IndianDateTime.now();
     
     // Default range for bills/cards (this month)
@@ -108,13 +108,21 @@ class _DashboardTabState extends ConsumerState<DashboardTab> {
       SupabaseService.getBills(shopId, fetchStart, gridEnd),
       SupabaseService.getUdharCustomers(shopId),
       SupabaseService.getLowStockCount(shopId),
-      SupabaseService.getTodayBillCount(shopId),
     ]);
 
     final allBills = results[0] as List<BillModel>;
     final receivables = results[1] as List<UdharCustomerModel>;
     final lowStock = results[2] as int;
-    final todayBillCount = results[3] as int;
+
+    // Filter today's bills directly from the already-fetched allBills list
+    final todayStr = IndianDateTime.now().toIso8601String().split('T')[0];
+    final todayBills = allBills.where((b) => b.billDate.toIso8601String().split('T')[0] == todayStr).toList();
+    
+    // For staff members, we only count today's sales bills (since they are restricted from purchases and their card navigates to the sales list).
+    // For others, we count all bills today.
+    final todayBillCount = (role?.isStaff ?? false)
+        ? todayBills.where((b) => b.billType == 'sale').length
+        : todayBills.length;
 
     // Filter bills for grid cards (Month)
     final gridBills = allBills.where((b) => !b.billDate.isBefore(gridStart) && !b.billDate.isAfter(gridEnd)).toList();
@@ -277,7 +285,7 @@ class _DashboardTabState extends ConsumerState<DashboardTab> {
             ),
             Expanded(
               child: FutureBuilder<_DashboardData>(
-                future: _loadData(shop.id),
+                future: _loadData(shop.id, role),
                 builder: (context, snapshot) {
                   if (snapshot.connectionState == ConnectionState.waiting) {
                     return const Center(child: CircularProgressIndicator(color: AppColors.primary));
