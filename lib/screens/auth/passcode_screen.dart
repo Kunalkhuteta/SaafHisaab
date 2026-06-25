@@ -7,6 +7,7 @@ import '../../services/session_service.dart';
 import '../../services/auth_service.dart';
 import '../../providers/app_providers.dart';
 import 'login_screen.dart';
+import 'package:saafhisaab/utils/indian_date_time.dart';
 
 class PasscodeScreen extends ConsumerStatefulWidget {
   const PasscodeScreen({super.key});
@@ -44,6 +45,27 @@ class _PasscodeScreenState extends ConsumerState<PasscodeScreen>
         });
       }
     });
+    _loadAttemptsAndLockState();
+  }
+
+  Future<void> _loadAttemptsAndLockState() async {
+    final attempts = await SessionService.getPasscodeAttempts();
+    final lockedUntil = await SessionService.getPasscodeLockedUntil();
+    
+    if (mounted) {
+      setState(() {
+        _attempts = attempts;
+      });
+      if (lockedUntil != null) {
+        final now = IndianDateTime.now();
+        if (lockedUntil.isAfter(now)) {
+          final diff = lockedUntil.difference(now).inSeconds;
+          _startLockTimer(diff);
+        } else {
+          await SessionService.savePasscodeLockedUntil(null);
+        }
+      }
+    }
   }
 
   @override
@@ -53,11 +75,12 @@ class _PasscodeScreenState extends ConsumerState<PasscodeScreen>
     super.dispose();
   }
 
-  void _startLockTimer() {
+  void _startLockTimer(int seconds) {
     setState(() {
       _isLocked = true;
-      _lockSeconds = 30;
+      _lockSeconds = seconds;
     });
+    _lockTimer?.cancel();
     _lockTimer = Timer.periodic(const Duration(seconds: 1), (timer) {
       if (_lockSeconds <= 1) {
         timer.cancel();
@@ -91,12 +114,17 @@ class _PasscodeScreenState extends ConsumerState<PasscodeScreen>
     final isCorrect = await SessionService.verifyPasscode(_passcode);
     if (isCorrect) {
       await SessionService.saveLastActiveTime();
+      await SessionService.clearPasscodeAttempts();
+      await SessionService.savePasscodeLockedUntil(null);
       if (mounted) Navigator.of(context).pop(true);
     } else {
       _attempts++;
+      await SessionService.savePasscodeAttempts(_attempts);
       if (_attempts >= 5) {
         // 5 wrong — clear everything, go to login
         await SessionService.clearPasscode();
+        await SessionService.clearPasscodeAttempts();
+        await SessionService.savePasscodeLockedUntil(null);
         await AuthService.signOut();
         ref.invalidate(shopAccessProvider);
         ref.invalidate(shopProvider);
@@ -111,7 +139,9 @@ class _PasscodeScreenState extends ConsumerState<PasscodeScreen>
         return;
       }
       if (_attempts >= 3) {
-        _startLockTimer();
+        final lockedUntil = IndianDateTime.now().add(const Duration(seconds: 30));
+        await SessionService.savePasscodeLockedUntil(lockedUntil);
+        _startLockTimer(30);
       }
       setState(() => _showError = true);
       _shakeController.forward();

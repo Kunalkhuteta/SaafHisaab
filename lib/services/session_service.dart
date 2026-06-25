@@ -32,6 +32,22 @@ class SessionService {
     return 'session_timeout_minutes_$userId';
   }
 
+  static String get _attemptsKey {
+    final userId = AuthService.currentUserId;
+    if (userId == null || userId.isEmpty) {
+      return 'saafhisaab_passcode_attempts';
+    }
+    return 'saafhisaab_passcode_attempts_$userId';
+  }
+
+  static String get _lockedUntilKey {
+    final userId = AuthService.currentUserId;
+    if (userId == null || userId.isEmpty) {
+      return 'saafhisaab_passcode_locked_until';
+    }
+    return 'saafhisaab_passcode_locked_until_$userId';
+  }
+
   // ── Hash passcode with SHA-256 ──
   static String _hashPasscode(String passcode) {
     final bytes = utf8.encode(passcode);
@@ -55,12 +71,46 @@ class SessionService {
   static Future<void> clearPasscode() async {
     await _storage.delete(key: _passcodeKey);
     await _storage.delete(key: _lastActiveKey);
+    await _storage.delete(key: _attemptsKey);
+    await _storage.delete(key: _lockedUntilKey);
   }
 
   // ── Check if passcode is set ──
   static Future<bool> isPasscodeSet() async {
     final stored = await _storage.read(key: _passcodeKey);
     return stored != null && stored.isNotEmpty;
+  }
+
+  // ── Get passcode attempts ──
+  static Future<int> getPasscodeAttempts() async {
+    final val = await _storage.read(key: _attemptsKey);
+    return int.tryParse(val ?? '') ?? 0;
+  }
+
+  // ── Save passcode attempts ──
+  static Future<void> savePasscodeAttempts(int attempts) async {
+    await _storage.write(key: _attemptsKey, value: attempts.toString());
+  }
+
+  // ── Clear passcode attempts ──
+  static Future<void> clearPasscodeAttempts() async {
+    await _storage.delete(key: _attemptsKey);
+  }
+
+  // ── Get passcode locked until ──
+  static Future<DateTime?> getPasscodeLockedUntil() async {
+    final val = await _storage.read(key: _lockedUntilKey);
+    if (val == null) return null;
+    return DateTime.tryParse(val);
+  }
+
+  // ── Save passcode locked until ──
+  static Future<void> savePasscodeLockedUntil(DateTime? dateTime) async {
+    if (dateTime == null) {
+      await _storage.delete(key: _lockedUntilKey);
+    } else {
+      await _storage.write(key: _lockedUntilKey, value: dateTime.toIso8601String());
+    }
   }
 
   // ── Save last active time ──
