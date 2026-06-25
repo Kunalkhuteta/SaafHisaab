@@ -4,8 +4,10 @@ import 'package:intl/intl.dart';
 
 import '../../constants/app_colors.dart';
 import '../../globalVar.dart';
+import '../../models/udhar_model.dart';
 import '../../providers/app_providers.dart';
 import '../../services/supabase_service.dart';
+import '../../widgets/credit_entry_sheet.dart';
 
 class LedgerParticularMonthPage extends ConsumerStatefulWidget {
   final String accountId;
@@ -174,7 +176,7 @@ class _LedgerParticularMonthPageState extends ConsumerState<LedgerParticularMont
                 Expanded(
                   child: _entries.isEmpty
                       ? Center(child: Text(AppLang.tr(isEn, 'No transactions this month', 'इस महीने कोई लेन-देन नहीं')))
-                      : _buildEntriesList(),
+                      : _buildEntriesList(isEn),
                 ),
               ],
             ),
@@ -229,7 +231,7 @@ class _LedgerParticularMonthPageState extends ConsumerState<LedgerParticularMont
     );
   }
 
-  Widget _buildEntriesList() {
+  Widget _buildEntriesList(bool isEn) {
     return ListView.separated(
       padding: const EdgeInsets.all(16),
       itemCount: _entries.length,
@@ -241,10 +243,7 @@ class _LedgerParticularMonthPageState extends ConsumerState<LedgerParticularMont
         final balVal = entry.balanceAfter;
 
         // Clean up raw notes or JSON text markers if present
-        String cleanPart = entry.particular;
-        if (cleanPart.contains('__saafhisaab_credit_payment_v1__')) {
-          cleanPart = 'Payment';
-        }
+        String cleanPart = _formatParticular(entry.particular, isEn);
 
         return Container(
           padding: const EdgeInsets.all(12),
@@ -305,6 +304,127 @@ class _LedgerParticularMonthPageState extends ConsumerState<LedgerParticularMont
         );
       },
     );
+  }
+
+  String _formatParticular(String particular, bool isEn) {
+    // 1. Try to parse credit sale meta (__saafhisaab_credit_sale_v1__)
+    if (particular.contains(SavedCreditSale.noteMarker)) {
+      final sale = SavedCreditSale.tryParseNote(particular);
+      if (sale != null) {
+        final itemsText = sale.items
+            .map((item) =>
+                '${item.itemName} (${item.quantity.toStringAsFixed(item.quantity % 1 == 0 ? 0 : 1)} ${item.unit})')
+            .join(', ');
+        final prefix = AppLang.tr(isEn, 'Credit Sale: ', 'उधार बिक्री: ');
+        String result = itemsText.isNotEmpty
+            ? '$prefix$itemsText'
+            : AppLang.tr(isEn, 'Credit Sale', 'उधार बिक्री');
+        if (sale.note.isNotEmpty) {
+          result += ' (${sale.note})';
+        }
+        return result;
+      }
+    }
+
+    // 2. Try to parse payment meta (__saafhisaab_credit_payment_v1__)
+    if (particular.contains(UdharPaymentMeta.noteMarker)) {
+      final payment = UdharPaymentMeta.tryParseNote(particular);
+      if (payment != null) {
+        final method = payment.paymentMethod.toLowerCase();
+        String methodText = '';
+        if (method == 'upi') {
+          methodText = 'UPI';
+        } else if (method == 'cash') {
+          methodText = AppLang.tr(isEn, 'Cash', 'नकद');
+        } else if (method == 'card') {
+          methodText = AppLang.tr(isEn, 'Card', 'कार्ड');
+        } else if (method == 'bank') {
+          methodText = AppLang.tr(isEn, 'Bank Transfer', 'बैंक ट्रांसफर');
+        } else if (method == 'adjustment') {
+          methodText = AppLang.tr(isEn, 'Adjustment', 'समायोजन');
+        } else {
+          methodText = payment.paymentMethod;
+        }
+        return AppLang.tr(isEn, 'Payment ($methodText)', 'भुगतान ($methodText)');
+      }
+    }
+
+    // 3. Clean other internal markers
+    String clean = particular;
+
+    // Remove sale adjustment metadata: __saafhisaab_sale_adjustment_v1__ followed by JSON object
+    clean = clean.replaceAll(RegExp(r'__saafhisaab_sale_adjustment_v1__\{[^}]*\}'), '');
+
+    // Remove credit advance metadata: __saafhisaab_credit_advance:...__
+    clean = clean.replaceAll(RegExp(r'__saafhisaab_credit_advance:[^_]+__'), '');
+
+    // Remove return reference metadata: __saafhisaab_return_ref:...__
+    clean = clean.replaceAll(RegExp(r'__saafhisaab_return_ref:[^_]+__'), '');
+
+    // Split into lines, translate system parts, and join
+    final lines = clean.split('\n');
+    final cleanedLines = <String>[];
+
+    for (var line in lines) {
+      final trimmedLine = line.trim();
+      if (trimmedLine.isEmpty) continue;
+
+      // Translate system texts
+      String translated = trimmedLine;
+      if (trimmedLine == 'Payment to Supplier') {
+        translated = AppLang.tr(isEn, 'Payment to Supplier', 'आपूर्तिकर्ता को भुगतान');
+      } else if (trimmedLine == 'Purchase Bill') {
+        translated = AppLang.tr(isEn, 'Purchase Bill', 'खरीद बिल');
+      } else if (trimmedLine == 'Udhar Entry') {
+        translated = AppLang.tr(isEn, 'Udhar Entry', 'उधार प्रविष्टि');
+      } else if (trimmedLine == 'Fresh return - no reference bill') {
+        translated = AppLang.tr(isEn, 'Fresh Return (No Bill)', 'नई वापसी (बिना बिल)');
+      } else if (trimmedLine == 'Sale return - udhar reduced') {
+        translated = AppLang.tr(isEn, 'Sale Return (Udhar Reduced)', 'बिक्री वापसी (उधार कम हुआ)');
+      } else if (trimmedLine == 'Advance payment on credit sale') {
+        translated = AppLang.tr(isEn, 'Advance Payment on Credit Sale', 'उधार बिक्री पर अग्रिम भुगतान');
+      } else if (trimmedLine.contains('Return adjustment - credit for next purchase')) {
+        final billMatch = RegExp(r'Bill ref:\s*(\S+)').firstMatch(trimmedLine);
+        final billRef = billMatch != null ? ' (Ref: ${billMatch.group(1)})' : '';
+        translated = AppLang.tr(isEn, 'Return Adjustment$billRef', 'वापसी समायोजन$billRef');
+      } else {
+        // Sale return from bill X
+        final saleReturnMatch = RegExp(r'Sale return from bill (\S+)').firstMatch(trimmedLine);
+        if (saleReturnMatch != null) {
+          final billId = saleReturnMatch.group(1);
+          translated = AppLang.tr(isEn, 'Sale Return (Bill: $billId)', 'बिक्री वापसी (बिल: $billId)');
+        } else {
+          // Settlement: X
+          final settlementMatch = RegExp(r'Settlement:\s*(\S+)').firstMatch(trimmedLine);
+          if (settlementMatch != null) {
+            final mode = settlementMatch.group(1)!.toLowerCase();
+            String modeText = mode;
+            if (mode == 'cash') {
+              modeText = AppLang.tr(isEn, 'Cash', 'नकद');
+            } else if (mode == 'upi') {
+              modeText = 'UPI';
+            } else if (mode == 'card') {
+              modeText = AppLang.tr(isEn, 'Card', 'कार्ड');
+            } else if (mode == 'adjustment') {
+              modeText = AppLang.tr(isEn, 'Adjustment', 'समायोजन');
+            }
+            translated = AppLang.tr(isEn, 'Settlement: $modeText', 'निपटान: $modeText');
+          }
+        }
+      }
+
+      if (translated.isNotEmpty) {
+        cleanedLines.add(translated);
+      }
+    }
+
+    clean = cleanedLines.join(' | ');
+
+    if (clean.isEmpty) {
+      return AppLang.tr(isEn, 'Transaction', 'लेन-देन');
+    }
+
+    return clean;
   }
 }
 
