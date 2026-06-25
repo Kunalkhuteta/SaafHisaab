@@ -1037,6 +1037,7 @@ class _PurchaseReturnScreenState extends ConsumerState<PurchaseReturnScreen> {
     required String paymentMode,
     required bool isEn,
   }) async {
+    if (_saving) return;
     final selected = drafts.where((d) => d.qty > 0).toList();
     if (selected.isEmpty) return;
 

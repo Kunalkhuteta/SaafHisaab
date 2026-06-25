@@ -956,6 +956,8 @@ class _SaleEntryScreenState extends ConsumerState<SaleEntryScreen> {
   }
 
   Future<void> _saveSale(bool isEn) async {
+    if (_isSaving) return;
+
     if (_customerCtrl.text.trim().isEmpty) {
       await _showMissingCustomerAlert(isEn);
       return;
@@ -963,6 +965,8 @@ class _SaleEntryScreenState extends ConsumerState<SaleEntryScreen> {
     if (_adjustedAmount > _grandTotal) {
       setState(() => _adjustedAmount = _grandTotal);
     }
+
+    setState(() => _isSaving = true);
 
     final bool isCreditSale = (_paymentMode == 'credit' || _paymentMode == 'split') && _creditSale != null;
     final itemsToSave = <_SaleLineItem>[];
@@ -1022,6 +1026,7 @@ class _SaleEntryScreenState extends ConsumerState<SaleEntryScreen> {
       }
     } catch (e) {
       _showError('Failed to prepare items: $e');
+      setState(() => _isSaving = false);
       return;
     }
 
@@ -1031,16 +1036,19 @@ class _SaleEntryScreenState extends ConsumerState<SaleEntryScreen> {
       if (li.stockItemName.trim().isEmpty) {
         _showError(AppLang.tr(isEn, 'Select item for row ${i + 1}',
             'पंक्ति ${i + 1} के लिए आइटम चुनें'));
+        setState(() => _isSaving = false);
         return;
       }
       if (li.quantity <= 0) {
         _showError(AppLang.tr(isEn, 'Qty must be > 0 for ${li.stockItemName}',
             '${li.stockItemName} की मात्रा 0 से अधिक होनी चाहिए'));
+        setState(() => _isSaving = false);
         return;
       }
       if (li.unitPrice <= 0) {
         _showError(AppLang.tr(isEn, 'Price/Amount must be > 0 for ${li.stockItemName}',
             '${li.stockItemName} का मूल्य 0 से अधिक होना चाहिए'));
+        setState(() => _isSaving = false);
         return;
       }
       double availableStock = li.currentStock;
@@ -1053,12 +1061,10 @@ class _SaleEntryScreenState extends ConsumerState<SaleEntryScreen> {
             isEn,
             'Insufficient stock for ${li.stockItemName}! Available: ${availableStock.toStringAsFixed(0)} ${li.unit}',
             '${li.stockItemName} का स्टॉक कम! उपलब्ध: ${availableStock.toStringAsFixed(0)} ${li.unit}'));
+        setState(() => _isSaving = false);
         return;
       }
     }
-
-    if (_isSaving) return;
-    setState(() => _isSaving = true);
 
     final deductedItems = <_SaleLineItem>[];
     var oldSales = <SaleModel>[];

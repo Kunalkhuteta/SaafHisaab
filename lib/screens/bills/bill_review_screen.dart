@@ -102,6 +102,7 @@ class _BillReviewScreenState extends ConsumerState<BillReviewScreen> {
   }
 
   Future<void> _saveBill(bool isEn) async {
+    if (_isSaving) return;
     final vendorName = _vendorCtrl.text.trim();
     if (vendorName.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(SnackBar(

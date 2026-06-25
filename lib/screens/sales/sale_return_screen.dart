@@ -1093,6 +1093,7 @@ class _SaleReturnScreenState extends ConsumerState<SaleReturnScreen> {
     required String paymentMode,
     required bool isEn,
   }) async {
+    if (_saving) return;
     final qty = double.tryParse(_manualQtyCtrl.text) ?? 0;
     final price = double.tryParse(_manualPriceCtrl.text) ?? 0;
     final itemName = _manualItemCtrl.text.trim();
