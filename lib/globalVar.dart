@@ -1,5 +1,8 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
+import 'providers/app_providers.dart';
 
 late SharedPreferences prefs;
 
@@ -26,12 +29,41 @@ class AppLang {
 class ChartTypeNotifier extends Notifier<String> {
   @override
   String build() {
-    return prefs.getString('defaultChartType') ?? 'bar';
+    // Watch authStateProvider so the chart setting is reloaded/refreshed on login/logout
+    ref.watch(authStateProvider);
+
+    final local = prefs.getString('defaultChartType') ?? 'bar';
+    final user = Supabase.instance.client.auth.currentUser;
+    if (user != null) {
+      final dbType = user.userMetadata?['defaultChartType'] as String?;
+      if (dbType != null) {
+        if (local != dbType) {
+          prefs.setString('defaultChartType', dbType);
+        }
+        return dbType;
+      }
+    }
+    return local;
   }
 
-  void setChartType(String type) {
+  Future<void> setChartType(String type) async {
     state = type;
     prefs.setString('defaultChartType', type);
+
+    try {
+      final user = Supabase.instance.client.auth.currentUser;
+      if (user != null) {
+        await Supabase.instance.client.auth.updateUser(
+          UserAttributes(
+            data: {
+              'defaultChartType': type,
+            },
+          ),
+        );
+      }
+    } catch (e) {
+      debugPrint('Failed to save chart style to Supabase metadata: $e');
+    }
   }
 }
 
