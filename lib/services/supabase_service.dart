@@ -933,15 +933,44 @@ static Future<double> getTodaySalesTotal(String shopId) async {
 
   /// Update Udhar customer
   static Future<void> updateUdharCustomer(UdharCustomerModel customer) async {
+    // Get current accurate balance from entries
+    final calculatedDue = await recalculateCustomerTotalDue(customer.id, isRetry: true);
+    final desiredDue = customer.totalDue;
+    final diff = desiredDue - calculatedDue;
+
+    // If user changed the balance, insert an adjustment entry for the difference
+    if (diff.abs() > 0.01) {
+      if (diff > 0) {
+        await addCreditEntry(
+          shopId: customer.shopId,
+          userId: customer.userId,
+          customerId: customer.id,
+          amount: diff,
+          note: 'Balance Adjustment',
+        );
+      } else {
+        await addDebitEntry(
+          shopId: customer.shopId,
+          userId: customer.userId,
+          customerId: customer.id,
+          amount: -diff,
+          note: 'Balance Adjustment',
+        );
+      }
+    }
+
+    // Update customer metadata (name, phone) — NOT total_due directly
     await _client
         .from('udhar_customers')
         .update({
           'customer_name': customer.customerName,
           'customer_phone': customer.customerPhone,
-          'total_due': customer.totalDue,
           'updated_at': IndianDateTime.nowUtc().toIso8601String(),
         })
         .eq('id', customer.id);
+
+    // Recalculate to sync total_due from entries
+    await recalculateCustomerTotalDue(customer.id);
   }
 
   /// Delete Udhar record
@@ -1066,7 +1095,20 @@ static Future<double> getTodaySalesTotal(String shopId) async {
         .insert(customer.toJson())
         .select()
         .single();
-    return UdharCustomerModel.fromJson(data);
+    final saved = UdharCustomerModel.fromJson(data);
+
+    // Auto-create initial balance entry if totalDue > 0
+    if (saved.totalDue > 0.01) {
+      await addCreditEntry(
+        shopId: saved.shopId,
+        userId: saved.userId,
+        customerId: saved.id,
+        amount: saved.totalDue,
+        note: 'Initial Balance',
+      );
+    }
+
+    return saved;
   }
 
   static Future<List<UdharCustomerModel>> getUdharCustomers(
@@ -1400,7 +1442,8 @@ static Future<double> getTodaySalesTotal(String shopId) async {
     return (data['total_due'] as num?)?.toDouble() ?? 0.0;
   }
 
-  static Future<double> recalculateCustomerTotalDue(String customerId) async {
+  static Future<double> recalculateCustomerTotalDue(String customerId, {bool isRetry = false}) async {
+    final currentDue = await getCustomerTotalDue(customerId);
     final entries = await getUdharEntriesForCustomer(customerId);
     double creditTotal = 0.0;
     double debitTotal = 0.0;
@@ -1413,10 +1456,49 @@ static Future<double> getTodaySalesTotal(String shopId) async {
       }
     }
 
-    final due = (creditTotal - debitTotal).clamp(0.0, double.infinity).toDouble();
-    await updateCustomerTotalDue(customerId, due);
+    final calculatedDue = (creditTotal - debitTotal).clamp(0.0, double.infinity).toDouble();
+
+    // Self-correcting: if stored balance differs from calculated, insert adjustment entry
+    final diff = currentDue - calculatedDue;
+    if (diff.abs() > 0.01 && !isRetry) {
+      try {
+        final customerData = await _client
+            .from('udhar_customers')
+            .select('shop_id, user_id')
+            .eq('id', customerId)
+            .single();
+        final shopId = customerData['shop_id'] as String;
+        final userId = customerData['user_id'] as String? ??
+            _client.auth.currentUser?.id ?? '';
+
+        if (diff > 0) {
+          // Missing initial balance — insert credit entry
+          await addCreditEntry(
+            shopId: shopId,
+            userId: userId,
+            customerId: customerId,
+            amount: diff,
+            note: 'Initial Balance',
+          );
+        } else {
+          // Over-counted — insert debit entry
+          await addDebitEntry(
+            shopId: shopId,
+            userId: userId,
+            customerId: customerId,
+            amount: -diff,
+            note: 'Balance Adjustment',
+          );
+        }
+        return recalculateCustomerTotalDue(customerId, isRetry: true);
+      } catch (e) {
+        debugPrint('Self-correction failed for customer $customerId: $e');
+      }
+    }
+
+    await updateCustomerTotalDue(customerId, calculatedDue);
     await syncCustomerCreditEntriesPaidStatus(customerId);
-    return due;
+    return calculatedDue;
   }
 
   /// Computes available adjustment balance from udhar_entries.
@@ -1743,8 +1825,10 @@ static Future<double> getTotalUdhar(String shopId) async {
     required String shopId,
     required String partyId,
     required String partyName,
+    bool isRetry = false,
   }) async {
     try {
+      final currentPending = await getPurchasePartyPendingAmount(partyId);
       final bills = await getPurchaseBillsForParty(shopId, partyName);
       double totalPending = 0.0;
 
@@ -1773,9 +1857,80 @@ static Future<double> getTotalUdhar(String shopId) async {
         totalPending += creditAmount;
       }
 
-      final finalPending = totalPending < 0 ? 0.0 : totalPending;
-      await updatePurchasePartyPendingAmount(partyId, finalPending);
-      return finalPending;
+      final calculatedPending = totalPending < 0 ? 0.0 : totalPending;
+
+      // Self-correcting: if stored pending differs from bills total, insert adjustment
+      final diff = currentPending - calculatedPending;
+      if (diff.abs() > 0.01 && !isRetry) {
+        final userId = _client.auth.currentUser?.id ?? '';
+        if (diff > 0) {
+          // Missing initial balance — insert purchase bill
+          final billId = await saveBillGetId(BillModel(
+            id: '',
+            shopId: shopId,
+            userId: userId,
+            amount: diff,
+            billDate: IndianDateTime.now(),
+            vendorName: partyName,
+            billType: 'purchase',
+            notes: 'Initial Balance',
+            createdAt: IndianDateTime.now(),
+          ));
+          // Save a linked credit sale for the bill
+          await saveSale(SaleModel(
+            id: '',
+            shopId: shopId,
+            userId: userId,
+            itemName: 'Initial Balance',
+            quantity: 1,
+            unit: 'piece',
+            sellingPrice: diff,
+            totalAmount: diff,
+            paymentMode: 'credit',
+            billId: billId.isNotEmpty ? billId : null,
+            saleDate: IndianDateTime.now(),
+            notes: 'Initial Balance',
+            createdAt: IndianDateTime.now(),
+          ));
+        } else {
+          // Over-counted — insert payment bill to reduce
+          final billId = await saveBillGetId(BillModel(
+            id: '',
+            shopId: shopId,
+            userId: userId,
+            amount: -diff,
+            billDate: IndianDateTime.now(),
+            vendorName: partyName,
+            billType: 'purchase',
+            notes: 'Payment to Supplier',
+            createdAt: IndianDateTime.now(),
+          ));
+          await saveSale(SaleModel(
+            id: '',
+            shopId: shopId,
+            userId: userId,
+            itemName: 'Balance Adjustment',
+            quantity: 1,
+            unit: 'piece',
+            sellingPrice: -diff,
+            totalAmount: -diff,
+            paymentMode: 'cash',
+            billId: billId.isNotEmpty ? billId : null,
+            saleDate: IndianDateTime.now(),
+            notes: 'Balance Adjustment',
+            createdAt: IndianDateTime.now(),
+          ));
+        }
+        return recalculatePurchasePartyPendingAmount(
+          shopId: shopId,
+          partyId: partyId,
+          partyName: partyName,
+          isRetry: true,
+        );
+      }
+
+      await updatePurchasePartyPendingAmount(partyId, calculatedPending);
+      return calculatedPending;
     } catch (e) {
       debugPrint('Error recalculating pending amount: $e');
       return 0.0;
