@@ -123,11 +123,17 @@ class _PurchaseReturnScreenState extends ConsumerState<PurchaseReturnScreen> {
 
       final bundles = <_PurchaseBundle>[];
       for (final bill in filteredBills) {
+        if (!_isReturnablePurchaseBill(bill)) continue;
+
         final sales = await SupabaseService.getSalesByBillId(bill.id);
+        final purchaseLines =
+            sales.where(_isReturnablePurchaseLine).toList();
+        if (purchaseLines.isEmpty) continue;
+
         final returns = await SupabaseService.getReturnSalesForBill(bill.id);
         bundles.add(_PurchaseBundle(
           bill: bill,
-          sales: sales,
+          sales: purchaseLines,
           returnedSales: returns,
           isHighlighted: bill.id == widget.initialBill?.id,
         ));
@@ -145,6 +151,27 @@ class _PurchaseReturnScreenState extends ConsumerState<PurchaseReturnScreen> {
     }
   }
 
+  bool _isReturnablePurchaseBill(BillModel bill) {
+    if (bill.billType.toLowerCase() != 'purchase') return false;
+
+    final note = bill.notes.trim().toLowerCase();
+    return note != 'payment to supplier' &&
+        note != 'balance adjustment' &&
+        note != 'initial balance';
+  }
+
+  bool _isReturnablePurchaseLine(SaleModel sale) {
+    final itemName = sale.itemName.trim().toLowerCase();
+    final note = sale.notes.trim().toLowerCase();
+    final isAccountingLine = itemName == 'payment to supplier' ||
+        itemName == 'balance adjustment' ||
+        itemName == 'initial balance' ||
+        note == 'payment to supplier' ||
+        note == 'balance adjustment' ||
+        note == 'initial balance';
+
+    return !isAccountingLine && sale.quantity > 0 && sale.totalAmount > 0;
+  }
   DateTimeRange? _dateRangeForFilter(String filter) {
     final now = IndianDateTime.now();
     final today = IndianDateTime.date(now.year, now.month, now.day);
