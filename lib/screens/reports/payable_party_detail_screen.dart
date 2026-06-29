@@ -59,6 +59,9 @@ class _PayablePartyDetailScreenState
         return;
       }
 
+      final latestPending = widget.partyId.isEmpty
+          ? widget.pendingAmount
+          : await SupabaseService.getPurchasePartyPendingAmount(widget.partyId);
       final bills = await SupabaseService.getPurchaseBillsForParty(
           shop.id, widget.partyName);
       final salesByBillId = await SupabaseService.getSalesGroupedByBillIds(
@@ -147,7 +150,7 @@ class _PayablePartyDetailScreenState
           _entries = entries;
           _totalPurchased = totalPurchased;
           _totalPaid = totalPaid;
-          _pendingAmount = widget.pendingAmount;
+          _pendingAmount = latestPending;
           _loading = false;
         });
       }

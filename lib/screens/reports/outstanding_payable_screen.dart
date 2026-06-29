@@ -14,7 +14,7 @@ import 'payable_party_detail_screen.dart';
 /// Keep this list screen cheap: payment/return flows maintain `pending_amount`,
 /// while detail screens can do deeper reconciliation when needed.
 final outstandingPayableProvider =
-    FutureProvider<List<OutstandingPayableItem>>((ref) async {
+    FutureProvider.autoDispose<List<OutstandingPayableItem>>((ref) async {
   final shop = await ref.watch(shopProvider.future);
   if (shop == null) return [];
 

@@ -10,7 +10,7 @@ import '../../services/supabase_service.dart';
 import 'receivable_party_detail_screen.dart';
 
 final outstandingReceivableProvider =
-    FutureProvider<List<UdharCustomerModel>>((ref) async {
+    FutureProvider.autoDispose<List<UdharCustomerModel>>((ref) async {
   final shop = await ref.watch(shopProvider.future);
   if (shop == null) return [];
 
