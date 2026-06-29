@@ -54,10 +54,16 @@ class _PayablePartyDetailScreenState
     setState(() => _loading = true);
     try {
       final shop = ref.read(shopProvider).value;
-      if (shop == null) return;
+      if (shop == null) {
+        if (mounted) setState(() => _loading = false);
+        return;
+      }
 
       final bills = await SupabaseService.getPurchaseBillsForParty(
           shop.id, widget.partyName);
+      final salesByBillId = await SupabaseService.getSalesGroupedByBillIds(
+        bills.map((bill) => bill.id),
+      );
 
       final entries = <_PurchaseEntry>[];
       double totalPurchased = 0;
@@ -81,7 +87,7 @@ class _PayablePartyDetailScreenState
         bool hasCreditDetails = false;
 
         try {
-          final sales = await SupabaseService.getSalesByBillId(bill.id);
+          final sales = salesByBillId[bill.id] ?? const [];
           if (sales.isNotEmpty) {
             paymentMode = sales.first.paymentMode;
             
@@ -136,18 +142,12 @@ class _PayablePartyDetailScreenState
         ));
       }
 
-      final recalculatedPending = await SupabaseService.recalculatePurchasePartyPendingAmount(
-        shopId: shop.id,
-        partyId: widget.partyId,
-        partyName: widget.partyName,
-      );
-
       if (mounted) {
         setState(() {
           _entries = entries;
           _totalPurchased = totalPurchased;
           _totalPaid = totalPaid;
-          _pendingAmount = recalculatedPending;
+          _pendingAmount = widget.pendingAmount;
           _loading = false;
         });
       }

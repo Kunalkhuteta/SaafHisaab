@@ -7,7 +7,7 @@ import '../../../models/bill_model.dart';
 import '../../../providers/app_providers.dart';
 import '../../../services/supabase_service.dart';
 import '../../../services/auth_service.dart';
-import 'payable_party_detail_screen.dart';
+import '../../reports/payable_party_detail_screen.dart';
 
 /// Provider that fetches purchase parties with pending amounts > 0.
 ///
