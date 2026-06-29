@@ -10,23 +10,12 @@ import '../../../services/supabase_service.dart';
 import 'receivable_party_detail_screen.dart';
 
 final outstandingReceivableProvider =
-    FutureProvider.autoDispose<List<UdharCustomerModel>>((ref) async {
+    FutureProvider<List<UdharCustomerModel>>((ref) async {
   final shop = await ref.watch(shopProvider.future);
   if (shop == null) return [];
 
-  final customers = await SupabaseService.getAllUdharCustomers(shop.id);
-  final recalculated = <UdharCustomerModel>[];
-  for (final customer in customers) {
-    final totalDue =
-        await SupabaseService.recalculateCustomerTotalDue(customer.id);
-    if (totalDue > 0) {
-      recalculated.add(customer.copyWith(totalDue: totalDue));
-    }
-  }
-  recalculated.sort((a, b) => b.totalDue.compareTo(a.totalDue));
-  return recalculated;
+  return SupabaseService.getUdharCustomers(shop.id);
 });
-
 class OutstandingReceivableScreen extends ConsumerWidget {
   const OutstandingReceivableScreen({super.key});
 
