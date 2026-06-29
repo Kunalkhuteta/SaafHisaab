@@ -9,57 +9,24 @@ import '../../../services/supabase_service.dart';
 import '../../../services/auth_service.dart';
 import 'payable_party_detail_screen.dart';
 
-/// Provider that fetches purchase parties with pending amounts > 0
+/// Provider that fetches purchase parties with pending amounts > 0.
+///
+/// Keep this list screen cheap: payment/return flows maintain `pending_amount`,
+/// while detail screens can do deeper reconciliation when needed.
 final outstandingPayableProvider =
-    FutureProvider.autoDispose<List<OutstandingPayableItem>>((ref) async {
+    FutureProvider<List<OutstandingPayableItem>>((ref) async {
   final shop = await ref.watch(shopProvider.future);
   if (shop == null) return [];
 
-  final parties = await SupabaseService.getAllPurchaseParties(shop.id);
-  final items = <OutstandingPayableItem>[];
-
-  for (final party in parties) {
-    final partyName = party['name'] as String? ?? '';
-    final partyId = party['id'] as String? ?? '';
-    final pendingAmount = partyId.isEmpty
-        ? ((party['pending_amount'] as num?)?.toDouble() ?? 0.0)
-        : await SupabaseService.recalculatePurchasePartyPendingAmount(
-            shopId: shop.id,
-            partyId: partyId,
-            partyName: partyName,
-          );
-    if (pendingAmount <= 0) continue;
-
-    final refreshedParty = Map<String, dynamic>.from(party);
-    refreshedParty['pending_amount'] = pendingAmount;
-    final bills = await SupabaseService.getPurchaseBillsForParty(
-        shop.id, partyName);
-
-    // Filter to credit bills (bills where related sales have credit/split payment mode)
-    final creditBills = <BillModel>[];
-    for (final bill in bills) {
-      try {
-        final sales = await SupabaseService.getSalesByBillId(bill.id);
-        final isCreditBill = sales.any((s) =>
-            s.paymentMode == 'credit' || s.paymentMode == 'split');
-        if (isCreditBill) {
-          creditBills.add(bill);
-        }
-      } catch (_) {
-        // If no sales found, still include the bill
-      }
-    }
-
-    items.add(OutstandingPayableItem(
-      party: refreshedParty,
-      creditBills: creditBills,
-      allBills: bills,
-    ));
-  }
-
-  return items;
+  final parties = await SupabaseService.getPurchasePartiesWithPending(shop.id);
+  return parties
+      .map((party) => OutstandingPayableItem(
+            party: party,
+            creditBills: const [],
+            allBills: const [],
+          ))
+      .toList();
 });
-
 class OutstandingPayableItem {
   final Map<String, dynamic> party;
   final List<BillModel> creditBills;
