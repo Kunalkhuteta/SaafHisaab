@@ -549,6 +549,26 @@ class SupabaseService {
         .order('created_at');
     return (data as List).map((s) => SaleModel.fromJson(s)).toList();
   }
+  static Future<Map<String, List<SaleModel>>> getSalesGroupedByBillIds(
+      Iterable<String> billIds) async {
+    final ids = billIds.where((id) => id.isNotEmpty).toSet();
+    if (ids.isEmpty) return {};
+
+    final data = await _client
+        .from('sales')
+        .select()
+        .inFilter('bill_id', ids.toList())
+        .order('created_at');
+
+    final grouped = <String, List<SaleModel>>{};
+    for (final row in data as List) {
+      final sale = SaleModel.fromJson(row);
+      final billId = sale.billId;
+      if (billId == null || billId.isEmpty) continue;
+      grouped.putIfAbsent(billId, () => []).add(sale);
+    }
+    return grouped;
+  }
 
   static Future<List<BillModel>> getSaleBillsForCustomer(
     String shopId,
@@ -651,6 +671,23 @@ class SupabaseService {
     final rows = data as List;
     if (rows.isEmpty) return null;
     return BillModel.fromJson(rows.first);
+  }
+  static Future<Map<String, BillModel>> getBillsByIds(
+      Iterable<String> billIds) async {
+    final ids = billIds.where((id) => id.isNotEmpty).toSet();
+    if (ids.isEmpty) return {};
+
+    final data = await _client
+        .from('bills')
+        .select()
+        .inFilter('id', ids.toList());
+
+    final billsById = <String, BillModel>{};
+    for (final row in data as List) {
+      final bill = BillModel.fromJson(row);
+      billsById[bill.id] = bill;
+    }
+    return billsById;
   }
 
   // ─────────────────────────────────────────
