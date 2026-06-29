@@ -578,17 +578,6 @@ class _PurchaseReturnScreenState extends ConsumerState<PurchaseReturnScreen> {
                 const Icon(Icons.chevron_right_rounded, color: AppColors.purple),
               ]),
           ]),
-          if (paymentMode == 'credit' || paymentMode == 'split') ...[
-            const SizedBox(height: 8),
-            Text(
-              '${AppLang.tr(isEn, 'Supplier pending', 'आपूर्तिकर्ता बकाया')}: ${_currency.format(bundle.remainingCreditAmount)}',
-              style: const TextStyle(
-                color: AppColors.error,
-                fontSize: 12,
-                fontWeight: FontWeight.w800,
-              ),
-            ),
-          ],
         ]),
       ),
     );
