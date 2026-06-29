@@ -33,6 +33,20 @@ class SupabaseService {
   static const adjustmentAmountColumn = 'tobeadjustAmount';
   static const adjustmentAmountFallbackColumn = 'tobeadjust_amount';
   static const saleAdjustmentNoteMarker = '__saafhisaab_sale_adjustment_v1__';
+  static const purchasePaymentBillType = 'purchase_payment';
+  static const purchasePaymentNote = 'Supplier payment';
+  static const legacyPurchasePaymentNote = 'Payment to Supplier';
+  static bool _isVisibleInvoiceBill(BillModel bill) {
+    if (bill.billType == purchasePaymentBillType) return false;
+    if (bill.billType == 'purchase' &&
+        (bill.notes == legacyPurchasePaymentNote ||
+            bill.notes == purchasePaymentNote ||
+            bill.notes == 'Initial Balance' ||
+            bill.notes == 'Balance Adjustment')) {
+      return false;
+    }
+    return true;
+  }
 
   static double _creditAdvanceFromNotes(String notes) {
     final match = RegExp(r'__saafhisaab_credit_advance:([0-9.]+);credit:([0-9.]+)__')
@@ -647,7 +661,10 @@ class SupabaseService {
         .eq('shop_id', shopId)
         .eq('bill_date', today)
         .order('created_at', ascending: false);
-    return (data as List).map((b) => BillModel.fromJson(b)).toList();
+    return (data as List)
+        .map((b) => BillModel.fromJson(b))
+        .where(_isVisibleInvoiceBill)
+        .toList();
   }
 
   static Future<List<BillModel>> getBills(
@@ -659,7 +676,10 @@ class SupabaseService {
         .gte('bill_date', from.toIso8601String().split('T')[0])
         .lte('bill_date', to.toIso8601String().split('T')[0])
         .order('created_at', ascending: false);
-    return (data as List).map((b) => BillModel.fromJson(b)).toList();
+    return (data as List)
+        .map((b) => BillModel.fromJson(b))
+        .where(_isVisibleInvoiceBill)
+        .toList();
   }
 
   static Future<BillModel?> getBillById(String billId) async {
@@ -1865,115 +1885,54 @@ static Future<double> getTotalUdhar(String shopId) async {
     bool isRetry = false,
   }) async {
     try {
-      final currentPending = await getPurchasePartyPendingAmount(partyId);
-      final bills = await getPurchaseBillsForParty(shopId, partyName);
+      final bills = await getPurchaseAccountingBillsForParty(shopId, partyName);
+      final salesByBillId = await getSalesGroupedByBillIds(
+        bills.map((bill) => bill.id),
+      );
       double totalPending = 0.0;
 
       for (final bill in bills) {
-        if (bill.notes == 'Payment to Supplier') {
+        final billType = bill.billType.toLowerCase();
+        final isPayment = billType == purchasePaymentBillType ||
+            bill.notes == legacyPurchasePaymentNote ||
+            bill.notes == purchasePaymentNote;
+        if (isPayment) {
           totalPending -= bill.amount;
           continue;
         }
 
-        double creditAmount = 0.0;
-        try {
-          final sales = await getSalesByBillId(bill.id);
-          if (sales.isNotEmpty) {
-            final paymentMode = sales.first.paymentMode.toLowerCase();
-            creditAmount = sales
-                .map((s) => _creditDueFromNotes(s.notes))
-                .firstWhere((amount) => amount > 0, orElse: () => 0.0);
+        final sales = salesByBillId[bill.id] ?? const <SaleModel>[];
+        final paymentMode = sales.isNotEmpty
+            ? sales.first.paymentMode.toLowerCase()
+            : 'cash';
+        final markerCredit = sales
+            .map((sale) => _creditDueFromNotes(sale.notes))
+            .firstWhere((amount) => amount > 0, orElse: () => 0.0);
 
-            if (creditAmount <= 0) {
-              if (paymentMode == 'credit' || paymentMode == 'split') {
-                creditAmount = bill.amount;
-              }
-            }
+        if (billType == 'purchase') {
+          if (markerCredit > 0) {
+            totalPending += markerCredit;
+          } else if (paymentMode == 'credit' || paymentMode == 'split') {
+            totalPending += bill.amount;
           }
-        } catch (_) {}
-        totalPending += creditAmount;
-      }
-
-      final calculatedPending = totalPending < 0 ? 0.0 : totalPending;
-
-      // Self-correcting: if stored pending differs from bills total, insert adjustment
-      final diff = currentPending - calculatedPending;
-      if (diff.abs() > 0.01 && !isRetry) {
-        final userId = _client.auth.currentUser?.id ?? '';
-        if (diff > 0) {
-          // Missing initial balance — insert purchase bill
-          final billId = await saveBillGetId(BillModel(
-            id: '',
-            shopId: shopId,
-            userId: userId,
-            amount: diff,
-            billDate: IndianDateTime.now(),
-            vendorName: partyName,
-            billType: 'purchase',
-            notes: 'Initial Balance',
-            createdAt: IndianDateTime.now(),
-          ));
-          // Save a linked credit sale for the bill
-          await saveSale(SaleModel(
-            id: '',
-            shopId: shopId,
-            userId: userId,
-            itemName: 'Initial Balance',
-            quantity: 1,
-            unit: 'piece',
-            sellingPrice: diff,
-            totalAmount: diff,
-            paymentMode: 'credit',
-            billId: billId.isNotEmpty ? billId : null,
-            saleDate: IndianDateTime.now(),
-            notes: 'Initial Balance',
-            createdAt: IndianDateTime.now(),
-          ));
-        } else {
-          // Over-counted — insert payment bill to reduce
-          final billId = await saveBillGetId(BillModel(
-            id: '',
-            shopId: shopId,
-            userId: userId,
-            amount: -diff,
-            billDate: IndianDateTime.now(),
-            vendorName: partyName,
-            billType: 'purchase',
-            notes: 'Payment to Supplier',
-            createdAt: IndianDateTime.now(),
-          ));
-          await saveSale(SaleModel(
-            id: '',
-            shopId: shopId,
-            userId: userId,
-            itemName: 'Balance Adjustment',
-            quantity: 1,
-            unit: 'piece',
-            sellingPrice: -diff,
-            totalAmount: -diff,
-            paymentMode: 'cash',
-            billId: billId.isNotEmpty ? billId : null,
-            saleDate: IndianDateTime.now(),
-            notes: 'Balance Adjustment',
-            createdAt: IndianDateTime.now(),
-          ));
+        } else if (billType == 'purchase_return') {
+          if (markerCredit > 0) {
+            totalPending -= markerCredit;
+          } else if (paymentMode == 'credit') {
+            totalPending -= bill.amount;
+          }
         }
-        return recalculatePurchasePartyPendingAmount(
-          shopId: shopId,
-          partyId: partyId,
-          partyName: partyName,
-          isRetry: true,
-        );
       }
 
+      final calculatedPending =
+          totalPending.clamp(0.0, double.infinity).toDouble();
       await updatePurchasePartyPendingAmount(partyId, calculatedPending);
       return calculatedPending;
     } catch (e) {
       debugPrint('Error recalculating pending amount: $e');
-      return 0.0;
+      return getPurchasePartyPendingAmount(partyId);
     }
   }
-
   static Future<void> recordPurchasePartyPayment({
     required String shopId,
     required String userId,
@@ -1984,10 +1943,11 @@ static Future<double> getTotalUdhar(String shopId) async {
   }) async {
     final currentPending = await getPurchasePartyPendingAmount(partyId);
     final paidAmount = amount.clamp(0, currentPending).toDouble();
+    if (paidAmount <= 0) return;
+
     final newPending = (currentPending - paidAmount).clamp(0.0, double.infinity);
     await updatePurchasePartyPendingAmount(partyId, newPending);
 
-    // Save payment as purchase bill
     final billId = await saveBillGetId(BillModel(
       id: '',
       shopId: shopId,
@@ -1995,17 +1955,16 @@ static Future<double> getTotalUdhar(String shopId) async {
       amount: paidAmount,
       billDate: IndianDateTime.now(),
       vendorName: partyName,
-      billType: 'purchase',
-      notes: 'Payment to Supplier',
+      billType: purchasePaymentBillType,
+      notes: purchasePaymentNote,
       createdAt: IndianDateTime.now(),
     ));
 
-    // Save a linked sale to record the payment mode
     await saveSale(SaleModel(
       id: '',
       shopId: shopId,
       userId: userId,
-      itemName: 'Payment to Supplier',
+      itemName: purchasePaymentNote,
       quantity: 1,
       unit: 'piece',
       sellingPrice: paidAmount,
@@ -2013,20 +1972,12 @@ static Future<double> getTotalUdhar(String shopId) async {
       paymentMode: paymentMethod,
       billId: billId.isNotEmpty ? billId : null,
       saleDate: IndianDateTime.now(),
-      notes: 'Payment to Supplier',
+      notes: purchasePaymentNote,
       createdAt: IndianDateTime.now(),
     ));
 
-    await recalculatePurchasePartyPendingAmount(
-      shopId: shopId,
-      partyId: partyId,
-      partyName: partyName,
-    );
-
-    // Force sync daily balances
     await _trySyncDailyBalancesForDate(shopId, IndianDateTime.now());
   }
-
   static Future<List<LedgerRow>> fetchLedgerMonthly({
     required String accountId,
     required bool isReceivable,
@@ -2091,7 +2042,7 @@ static Future<double> getTotalUdhar(String shopId) async {
           .single();
       final partyName = partyData['name'] as String? ?? '';
 
-      final bills = await getPurchaseBillsForParty(shopId, partyName);
+      final bills = await getPurchaseAccountingBillsForParty(shopId, partyName);
       
       double debitsBefore = 0.0;
       double creditsBefore = 0.0;
@@ -2099,11 +2050,15 @@ static Future<double> getTotalUdhar(String shopId) async {
       for (final bill in bills) {
         final billDate = bill.billDate;
         final amount = bill.amount;
-        final isPayment = bill.notes == 'Payment to Supplier';
+        final billType = bill.billType.toLowerCase();
+        final isPayment = billType == purchasePaymentBillType ||
+            bill.notes == legacyPurchasePaymentNote ||
+            bill.notes == purchasePaymentNote;
+        final isReturn = billType == 'purchase_return';
 
         if (billDate.isBefore(startOfFy)) {
-          if (isPayment) {
-            debitsBefore += amount; // payment reduces payable = debit
+          if (isPayment || isReturn) {
+            debitsBefore += amount; // payment/return reduces payable = debit
           } else {
             creditsBefore += amount; // purchase increases payable = credit
           }
@@ -2112,7 +2067,7 @@ static Future<double> getTotalUdhar(String shopId) async {
           if (idx < 0) idx += 12;
           final mName = monthNames[idx];
 
-          if (isPayment) {
+          if (isPayment || isReturn) {
             monthlySums[mName]!['debit'] = (monthlySums[mName]!['debit'] ?? 0) + amount;
           } else {
             monthlySums[mName]!['credit'] = (monthlySums[mName]!['credit'] ?? 0) + amount;
@@ -2210,6 +2165,18 @@ static Future<double> getTotalUdhar(String shopId) async {
         .order('bill_date', ascending: false);
     return (data as List).map((b) => BillModel.fromJson(b)).toList();
   }
+  static Future<List<BillModel>> getPurchaseAccountingBillsForParty(
+      String shopId, String partyName) async {
+    final data = await _client
+        .from('bills')
+        .select()
+        .eq('shop_id', shopId)
+        .inFilter('bill_type', ['purchase', 'purchase_return', purchasePaymentBillType])
+        .ilike('vendor_name', partyName.trim())
+        .order('bill_date', ascending: false)
+        .order('created_at', ascending: false);
+    return (data as List).map((b) => BillModel.fromJson(b)).toList();
+  }
 
   // ─────────────────────────────────────────
   // DASHBOARD
@@ -2234,13 +2201,8 @@ static Future<double> getTotalUdhar(String shopId) async {
 
   /// Count of all bills from [bills] table for today
   static Future<int> getTodayBillCount(String shopId) async {
-    final today = IndianDateTime.now().toIso8601String().split('T')[0];
-    final data = await _client
-        .from('bills')
-        .select('id')
-        .eq('shop_id', shopId)
-        .eq('bill_date', today);
-    return (data as List).length;
+    final bills = await getTodayBills(shopId);
+    return bills.length;
   }
 
   static Future<Map<String, dynamic>> getDashboardStats(
@@ -2276,7 +2238,7 @@ static Future<double> getTotalUdhar(String shopId) async {
     // 1. Fetch bills for the month
     final billsData = await _client
         .from('bills')
-        .select('id, amount, bill_type, bill_date')
+        .select('id, amount, bill_type, bill_date, notes')
         .eq('shop_id', shopId)
         .gte('bill_date', start)
         .lte('bill_date', end);
@@ -2314,6 +2276,10 @@ static Future<double> getTotalUdhar(String shopId) async {
     for (var b in billsData) {
       final dateStr = b['bill_date'] as String;
       final billType = b['bill_type'] as String;
+      final notes = b['notes'] as String? ?? '';
+      if (billType == 'purchase' && notes == 'Balance Adjustment') {
+        continue;
+      }
       final amount = (b['amount'] as num).toDouble();
       final billId = b['id'] as String;
 
