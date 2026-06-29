@@ -62,7 +62,7 @@ class _PayablePartyDetailScreenState
       final latestPending = widget.partyId.isEmpty
           ? widget.pendingAmount
           : await SupabaseService.getPurchasePartyPendingAmount(widget.partyId);
-      final bills = await SupabaseService.getPurchaseBillsForParty(
+      final bills = await SupabaseService.getPurchaseAccountingBillsForParty(
           shop.id, widget.partyName);
       final salesByBillId = await SupabaseService.getSalesGroupedByBillIds(
         bills.map((bill) => bill.id),
@@ -73,11 +73,27 @@ class _PayablePartyDetailScreenState
       double totalPaid = 0;
 
       for (final bill in bills) {
-        if (bill.notes == 'Payment to Supplier') {
+        final billType = bill.billType.toLowerCase();
+        final isPaymentBill = billType == SupabaseService.purchasePaymentBillType ||
+            bill.notes == SupabaseService.legacyPurchasePaymentNote ||
+            bill.notes == SupabaseService.purchasePaymentNote;
+        final isReturnBill = billType == 'purchase_return';
+        if (isPaymentBill) {
           totalPaid += bill.amount;
           entries.add(_PurchaseEntry(
             bill: bill,
             paymentMode: 'payment',
+            cashPaid: bill.amount,
+            creditAmount: 0,
+          ));
+          continue;
+        }
+
+        if (isReturnBill) {
+          totalPaid += bill.amount;
+          entries.add(_PurchaseEntry(
+            bill: bill,
+            paymentMode: 'return',
             cashPaid: bill.amount,
             creditAmount: 0,
           ));
@@ -446,6 +462,7 @@ class _PayablePartyDetailScreenState
     final isCredit = entry.paymentMode == 'credit';
     final isSplit = entry.paymentMode == 'split';
     final isPayment = entry.paymentMode == 'payment';
+    final isReturn = entry.paymentMode == 'return';
 
     // Payment mode display
     String modeLabel;
@@ -455,6 +472,10 @@ class _PayablePartyDetailScreenState
       modeLabel = AppLang.tr(isEn, 'Payment', 'भुगतान');
       modeIcon = Icons.payments_rounded;
       modeColor = AppColors.success;
+    } else if (isReturn) {
+      modeLabel = AppLang.tr(isEn, 'Return', 'वापसी');
+      modeIcon = Icons.keyboard_return_rounded;
+      modeColor = AppColors.primary;
     } else if (isCredit) {
       modeLabel = AppLang.tr(isEn, 'Credit', 'उधार');
       modeIcon = Icons.access_time_rounded;
@@ -543,7 +564,7 @@ class _PayablePartyDetailScreenState
             // Amount
             Column(crossAxisAlignment: CrossAxisAlignment.end, children: [
               Text(
-                isPayment
+                (isPayment || isReturn)
                     ? '-${_currency.format(bill.amount)}'
                     : _currency.format(bill.amount),
                 style: const TextStyle(

@@ -609,20 +609,34 @@ class _PurchaseReturnScreenState extends ConsumerState<PurchaseReturnScreen> {
     );
   }
 
+  Future<double> _latestPurchasePartyPending({
+    required String shopId,
+    required String partyName,
+  }) async {
+    final selectedDbParty = _selectedParty?.dbParty;
+    final selectedId = selectedDbParty?['id'] as String? ?? '';
+    if (selectedId.isNotEmpty) {
+      return SupabaseService.getPurchasePartyPendingAmount(selectedId);
+    }
+
+    final dbParty = await SupabaseService.findPurchasePartyByName(shopId, partyName);
+    if (dbParty == null) return 0.0;
+
+    final partyId = dbParty['id'] as String? ?? '';
+    if (partyId.isNotEmpty) {
+      return SupabaseService.getPurchasePartyPendingAmount(partyId);
+    }
+    return (dbParty['pending_amount'] as num?)?.toDouble() ?? 0.0;
+  }
   Future<void> _showReturnSheet(_PurchaseBundle bundle, bool isEn) async {
     final items = bundle.returnableLines
         .map((line) => _ReturnLineDraft(line: line))
         .toList();
 
-    double currentPending = 0.0;
-    if (_selectedParty != null) {
-      currentPending = _selectedParty!.pendingAmount;
-    } else {
-      final dbParty = await SupabaseService.findPurchasePartyByName(bundle.bill.shopId, bundle.bill.vendorName);
-      if (dbParty != null) {
-        currentPending = (dbParty['pending_amount'] as num?)?.toDouble() ?? 0.0;
-      }
-    }
+    final currentPending = await _latestPurchasePartyPending(
+      shopId: bundle.bill.shopId,
+      partyName: bundle.bill.vendorName,
+    );
 
     if (!mounted) return;
 
@@ -855,21 +869,13 @@ class _PurchaseReturnScreenState extends ConsumerState<PurchaseReturnScreen> {
     _manualQtyCtrl.text = '1';
     _manualPriceCtrl.text = '0';
     
-    double currentPending = 0.0;
-    if (_selectedParty != null) {
-      currentPending = _selectedParty!.pendingAmount;
-    } else {
-      final shop = await ref.read(shopProvider.future);
-      if (shop != null) {
-        final dbParty = await SupabaseService.findPurchasePartyByName(
-          shop.id,
-          _partyCtrl.text.trim(),
-        );
-        if (dbParty != null) {
-          currentPending = (dbParty['pending_amount'] as num?)?.toDouble() ?? 0.0;
-        }
-      }
-    }
+    final shop = await ref.read(shopProvider.future);
+    final currentPending = shop == null
+        ? 0.0
+        : await _latestPurchasePartyPending(
+            shopId: shop.id,
+            partyName: (_selectedParty?.name ?? _partyCtrl.text).trim(),
+          );
 
     await showModalBottomSheet<void>(
       context: context,
@@ -1070,18 +1076,13 @@ class _PurchaseReturnScreenState extends ConsumerState<PurchaseReturnScreen> {
       final total = selected.fold<double>(0, (sum, d) => sum + d.amount);
 
       // Calculate how much of this bill's unpaid amount is being reversed vs refunded.
-      double currentPending = 0.0;
-      if (settlement == _ReturnSettlement.cashRefund ||
-          settlement == _ReturnSettlement.reduceUdhar) {
-        if (_selectedParty != null) {
-          currentPending = _selectedParty!.pendingAmount;
-        } else {
-          final dbParty = await SupabaseService.findPurchasePartyByName(shop.id, partyName);
-          if (dbParty != null) {
-            currentPending = (dbParty['pending_amount'] as num?)?.toDouble() ?? 0.0;
-          }
-        }
-      }
+      final currentPending = (settlement == _ReturnSettlement.cashRefund ||
+              settlement == _ReturnSettlement.reduceUdhar)
+          ? await _latestPurchasePartyPending(
+              shopId: shop.id,
+              partyName: partyName,
+            )
+          : 0.0;
       final billCreditLeft = await _remainingCreditForSourceBill(
         sourceBill: sourceBill,
         selectedDrafts: selected,
