@@ -53,7 +53,7 @@ class _ReceivablePartyDetailScreenState
       final entries =
           await SupabaseService.getUdharEntriesForCustomer(widget.customer.id);
       final currentDue =
-          await SupabaseService.recalculateCustomerTotalDue(widget.customer.id);
+          await SupabaseService.getCustomerTotalDue(widget.customer.id);
 
       double totalCredit = 0;
       double totalReceived = 0;
@@ -82,11 +82,7 @@ class _ReceivablePartyDetailScreenState
           .whereType<String>()
           .where((id) => id.isNotEmpty)
           .toSet();
-      final billsById = <String, BillModel>{};
-      for (final billId in billIds) {
-        final bill = await SupabaseService.getBillById(billId);
-        if (bill != null) billsById[billId] = bill;
-      }
+      final billsById = await SupabaseService.getBillsByIds(billIds);
 
       if (mounted) {
         setState(() {
