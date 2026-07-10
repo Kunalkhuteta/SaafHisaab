@@ -13,7 +13,7 @@ class ShareService {
   }) async {
     final dateStr =
         '${billDate.day.toString().padLeft(2, '0')}/${billDate.month.toString().padLeft(2, '0')}/${billDate.year}';
-    final typeStr = billType == 'sale' ? 'Sale / बिक्री' : 'Purchase / खरीद';
+    final typeStr = (billType == 'sale' || billType == 'sale_new') ? 'Sale / बिक्री' : 'Purchase / खरीद';
 
     String msg = '📋 *SaafHisaab Bill*\n\n';
     msg += '📌 Type: $typeStr\n';

@@ -24,6 +24,7 @@ import 'package:saafhisaab/utils/indian_date_time.dart';
 /// Invoice type codes and utilities
 class InvType {
   static const sin = 'sale';
+  static const sinNew = 'sale_new';
   static const pin = 'purchase';
   static const srn = 'sale_return';
   static const prn = 'purchase_return';
@@ -31,6 +32,7 @@ class InvType {
   static String label(String type, bool isEn) {
     switch (type) {
       case sin: return AppLang.tr(isEn, 'Sales Invoice (SIN)', 'बिक्री चालान (SIN)');
+      case sinNew: return AppLang.tr(isEn, 'Sales Invoice New', 'बिक्री चालान नया');
       case pin: return AppLang.tr(isEn, 'Purchase Invoice (PIN)', 'खरीद चालान (PIN)');
       case srn: return AppLang.tr(isEn, 'Sales Return (SRN)', 'बिक्री वापसी (SRN)');
       case prn: return AppLang.tr(isEn, 'Purchase Return (PRN)', 'खरीद वापसी (PRN)');
@@ -41,6 +43,7 @@ class InvType {
   static String shortCode(String type) {
     switch (type) {
       case sin: return 'SIN';
+      case sinNew: return 'SIN New';
       case pin: return 'PIN';
       case srn: return 'SRN';
       case prn: return 'PRN';
@@ -51,6 +54,7 @@ class InvType {
   static Color color(String type) {
     switch (type) {
       case sin: return AppColors.success;
+      case sinNew: return AppColors.success;
       case pin: return AppColors.primary;
       case srn: return AppColors.warning;
       case prn: return AppColors.purple;
@@ -61,6 +65,7 @@ class InvType {
   static IconData icon(String type) {
     switch (type) {
       case sin: return Icons.trending_up_rounded;
+      case sinNew: return Icons.trending_up_rounded;
       case pin: return Icons.shopping_cart_rounded;
       case srn: return Icons.assignment_return_rounded;
       case prn: return Icons.outbox_rounded;
@@ -68,7 +73,7 @@ class InvType {
     }
   }
 
-  static bool deductsStock(String type) => type == sin || type == prn;
+  static bool deductsStock(String type) => type == sin || type == sinNew || type == prn;
   static bool addsStock(String type) => type == pin || type == srn;
 }
 
