@@ -131,7 +131,7 @@ class _BillReviewScreenState extends ConsumerState<BillReviewScreen> {
     }
 
     // Check stock availability for sale/purchase_return
-    if ((_billType == 'sale' || _billType == 'purchase_return') && _selectedStockItem != null) {
+    if ((_billType == 'sale' || _billType == 'sale_new' || _billType == 'purchase_return') && _selectedStockItem != null) {
       if (_selectedStockItem!.currentStock < qty) {
         ScaffoldMessenger.of(context).showSnackBar(SnackBar(
           content: Text(AppLang.tr(isEn,
@@ -155,7 +155,7 @@ class _BillReviewScreenState extends ConsumerState<BillReviewScreen> {
       final notes = _notesCtrl.text.trim();
 
       // Stock logic
-      if (_billType == 'sale' || _billType == 'purchase_return') {
+      if (_billType == 'sale' || _billType == 'sale_new' || _billType == 'purchase_return') {
         if (_selectedStockItem != null) {
           final deducted = await SupabaseService.deductMasterStockById(_selectedStockItem!.id, qty);
           if (!deducted) {
@@ -190,10 +190,10 @@ class _BillReviewScreenState extends ConsumerState<BillReviewScreen> {
         amount: amount,
         billDate: _billDate,
         vendorName: vendorName,
-        billType: _billType,
+        billType: _billType == 'sale_new' ? 'sale' : _billType,
         isGstBill: _isGstBill,
         gstAmount: gstAmount,
-        notes: notes,
+        notes: _billType == 'sale_new' ? '__sales_invoice_payload__' + notes : notes,
         createdAt: IndianDateTime.now(),
       ));
 
@@ -397,7 +397,7 @@ class _BillReviewScreenState extends ConsumerState<BillReviewScreen> {
                         const Icon(Icons.inventory_2_rounded, color: AppColors.primary, size: 18),
                         const SizedBox(width: 8),
                         Expanded(child: Text(
-                          (_billType == 'sale' || _billType == 'purchase_return') 
+                          (_billType == 'sale' || _billType == 'sale_new' || _billType == 'purchase_return') 
                               ? AppLang.tr(isEn, 'Deduct from Stock (Optional)', 'स्टॉक से कटौती')
                               : AppLang.tr(isEn, 'Add to Stock (Optional)', 'स्टॉक में जोड़ें'),
                           style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: AppColors.primary),
@@ -420,7 +420,7 @@ class _BillReviewScreenState extends ConsumerState<BillReviewScreen> {
                         ]),
                       ],
 
-                      if ((_billType == 'sale' || _billType == 'purchase_return') || !_isNewItem) ...[
+                      if ((_billType == 'sale' || _billType == 'sale_new' || _billType == 'purchase_return') || !_isNewItem) ...[
                         ref.watch(itemMasterProvider).when(
                           loading: () => const Center(child: Padding(padding: EdgeInsets.all(8.0), child: CircularProgressIndicator(color: AppColors.primary, strokeWidth: 2))),
                           error: (e, _) => Text('Error loading stock', style: const TextStyle(color: AppColors.error, fontSize: 12)),

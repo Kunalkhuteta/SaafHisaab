@@ -89,6 +89,11 @@ final filteredBillsProvider = FutureProvider.family<List<BillModel>, String>((re
   }
 
   final bills = await SupabaseService.getBills(shop.id, from, to);
+  if (billType == 'sale_new') {
+    return bills.where((b) => b.billType == 'sale' && b.notes.startsWith('__sales_invoice_payload__')).toList();
+  } else if (billType == 'sale') {
+    return bills.where((b) => b.billType == 'sale' && !b.notes.startsWith('__sales_invoice_payload__')).toList();
+  }
   return bills.where((b) => b.billType == billType).toList();
 });
 
