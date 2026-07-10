@@ -69,6 +69,14 @@ class _BillScanScreenState extends ConsumerState<BillScanScreen> {
                     Icons.trending_up_rounded,
                     'sale',
                   ),
+                  const SizedBox(height: 12),
+                  _dashboardCard(
+                    isEn,
+                    'Sales Invoice New',
+                    'बिक्री चालान नया',
+                    Icons.trending_up_rounded,
+                    'sale_new',
+                  ),
                   if (role.canViewPurchases) const SizedBox(height: 12),
                   if (role.canViewPurchases)
                   _dashboardCard(

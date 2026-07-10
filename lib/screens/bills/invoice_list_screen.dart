@@ -13,6 +13,8 @@ import '../sales/sale_entry_screen.dart';
 import '../sales/sale_return_screen.dart';
 import '../purchase/purchase_return_screen.dart';
 import 'package:saafhisaab/utils/indian_date_time.dart';
+import '../../services/global_data.dart';
+import '../orderPages/CreateSalesInvoicePage.dart';
 
 
 class InvoiceListScreen extends ConsumerStatefulWidget {
@@ -165,6 +167,24 @@ class _InvoiceListScreenState extends ConsumerState<InvoiceListScreen> {
       return;
     }
 
+    if (widget.billType == 'sale_new') {
+      final shop = await ref.read(shopProvider.future);
+      final user = ref.read(currentUserProvider);
+      if (shop != null && user != null) {
+        GlobalData().shopId = shop.id;
+        GlobalData().userId = user.id;
+      }
+      final result = await Navigator.push<bool>(context, MaterialPageRoute(
+        builder: (_) => const CreateSalesInvoicePage(),
+      ));
+      if (result == true) {
+        ref.invalidate(filteredBillsProvider);
+        ref.invalidate(dashboardStatsProvider);
+        ref.invalidate(itemMasterProvider);
+      }
+      return;
+    }
+
     final result = await Navigator.push<bool>(context, MaterialPageRoute(
       builder: (_) => SaleEntryScreen(billType: widget.billType),
     ));
@@ -176,6 +196,24 @@ class _InvoiceListScreenState extends ConsumerState<InvoiceListScreen> {
   }
 
   void _openEditForm(BillModel bill) async {
+    if (bill.billType == 'sale' && bill.notes.startsWith('__sales_invoice_payload__')) {
+      final shop = await ref.read(shopProvider.future);
+      final user = ref.read(currentUserProvider);
+      if (shop != null && user != null) {
+        GlobalData().shopId = shop.id;
+        GlobalData().userId = user.id;
+      }
+      final result = await Navigator.push<bool>(context, MaterialPageRoute(
+        builder: (_) => CreateSalesInvoicePage(invoiceId: bill.id),
+      ));
+      if (result == true) {
+        ref.invalidate(filteredBillsProvider);
+        ref.invalidate(dashboardStatsProvider);
+        ref.invalidate(itemMasterProvider);
+      }
+      return;
+    }
+
     final result = await Navigator.push<bool>(context, MaterialPageRoute(
       builder: (_) => SaleEntryScreen(billType: bill.billType, bill: bill),
     ));
