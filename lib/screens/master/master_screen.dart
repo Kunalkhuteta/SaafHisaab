@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../constants/app_colors.dart';
 import '../../globalVar.dart';
 import 'item_master_list_screen.dart';
+import 'transportmaster.dart';
 
 class MasterScreen extends ConsumerWidget {
   const MasterScreen({super.key});
@@ -43,6 +44,18 @@ class MasterScreen extends ConsumerWidget {
                     context,
                     MaterialPageRoute(
                         builder: (_) => const ItemMasterListScreen()),
+                  );
+                },
+              ),
+              _buildMasterCard(
+                context,
+                title: AppLang.tr(isEn, 'Transporter Master', 'ट्रांसपोर्टर मास्टर'),
+                icon: Icons.local_shipping_rounded,
+                onTap: () {
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                        builder: (_) => const TransporterListPage()),
                   );
                 },
               ),
