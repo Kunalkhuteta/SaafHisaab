@@ -4,6 +4,8 @@ import '../../constants/app_colors.dart';
 import '../../globalVar.dart';
 import 'item_master_list_screen.dart';
 import 'transportmaster.dart';
+import '../purchase/purchase_parties_list_screen.dart';
+import '../sales/sale_parties_list_screen.dart';
 
 class MasterScreen extends ConsumerWidget {
   const MasterScreen({super.key});
@@ -59,7 +61,30 @@ class MasterScreen extends ConsumerWidget {
                   );
                 },
               ),
-              // Can add more masters here later like Party Master, etc.
+              _buildMasterCard(
+                context,
+                title: AppLang.tr(isEn, 'Purchase Parties', 'खरीद पार्टियां'),
+                icon: Icons.people_outline_rounded,
+                onTap: () {
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                        builder: (_) => const PurchasePartiesListScreen()),
+                  );
+                },
+              ),
+              _buildMasterCard(
+                context,
+                title: AppLang.tr(isEn, 'Sale Parties', 'बिक्री पार्टियां'),
+                icon: Icons.people_rounded,
+                onTap: () {
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                        builder: (_) => const SalePartiesListScreen()),
+                  );
+                },
+              ),
             ],
           ),
         ),
