@@ -184,6 +184,8 @@ class CalculationEngine {
 
     for (int i = 0; i < result.length; i++) {
       final row = result[i];
+      final int accId = (row['AccountId'] as num?)?.toInt() ?? 0;
+      if (accId == 0) continue;
       final bool editAmt = row['EditAmt'] == true;
       final String calcFlag = (row['CalcFlag'] ?? 'F').toString();
       final double rate = (row['Rate'] as num?)?.toDouble() ?? 0;
@@ -280,6 +282,7 @@ class CalculationEngine {
 
     for (final row in sidtl) {
       final int accId = (row['AccountId'] as num?)?.toInt() ?? 0;
+      if (accId == 0) continue;
       final double amt = (row['Amount'] as num?)?.toDouble() ?? 0;
       final String inclFlag = (row['Incl'] ?? 'N').toString();
       final String chrble = (row['Chrble'] ?? 'B').toString();
@@ -340,6 +343,8 @@ class CalculationEngine {
 
     double taxOnAmt = basicAmt;
     for (int i = 0; i < firstTaxIndex; i++) {
+      final int accId = (sidtl[i]['AccountId'] as num?)?.toInt() ?? 0;
+      if (accId == 0) continue;
       if (sidtl[i]['EditAmt'] != true) {
         taxOnAmt += (sidtl[i]['Amount'] as num?)?.toDouble() ?? 0;
       }

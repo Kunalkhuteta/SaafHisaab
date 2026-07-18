@@ -357,12 +357,16 @@ Future<void> _initialiseTaxTypeRate() async {
       mPrevAmt = (sidtl[lastIndex]['Amount'] as num?)?.toDouble() ?? 0;
       mBasicAmt = widget.cAmount;
       mSuccessAmt = sidtl
-              .where((e) => e['EditAmt'] != true && e['Chrble'] != 'L')
+              .where((e) =>
+                  e['EditAmt'] != true &&
+                  e['Chrble'] != 'L' &&
+                  ((e['AccountId'] as num?)?.toInt() ?? 0) != 0)
               .fold<double>(
                   0.0, (s, e) => s + ((e['Amount'] as num?)?.toDouble() ?? 0)) +
           widget.cAmount;
       pSuccessAmt = sidtl
               .sublist(0, sidtl.length - 1)
+              .where((e) => ((e['AccountId'] as num?)?.toInt() ?? 0) != 0)
               .fold<double>(
                   0.0, (s, e) => s + ((e['Amount'] as num?)?.toDouble() ?? 0)) +
           widget.cAmount;
@@ -436,9 +440,12 @@ void _runCalcSuccessAmt({bool updateEditAmt = false}) {
   double get _totalNetAmount {
     return sidtl.fold<double>(
         0.0,
-        (s, e) =>
-            s +
-            (e['Chrble'] == 'L' ? 0 : ((e['Amount'] as num?)?.toDouble() ?? 0)));
+        (s, e) {
+          final int accId = (e['AccountId'] as num?)?.toInt() ?? 0;
+          if (accId == 0) return s;
+          return s +
+              (e['Chrble'] == 'L' ? 0 : ((e['Amount'] as num?)?.toDouble() ?? 0));
+        });
   }
 
   /// Mirrors GetMaxCalcSNo()
@@ -593,10 +600,14 @@ void _onDone() {
   // totalOverHead = sum of non-Self (Chrble != 'L') row amounts
   final double totalOverHead = taxResult.sidtl.fold<double>(
     0.0,
-    (s, e) => s +
-        ((e['Chrble'] ?? '') == 'L'
-            ? 0.0
-            : ((e['Amount'] as num?)?.toDouble() ?? 0.0)),
+    (s, e) {
+      final int accId = (e['AccountId'] as num?)?.toInt() ?? 0;
+      if (accId == 0) return s;
+      return s +
+          ((e['Chrble'] ?? '') == 'L'
+              ? 0.0
+              : ((e['Amount'] as num?)?.toDouble() ?? 0.0));
+    },
   );
 
   Navigator.pop(
@@ -658,6 +669,10 @@ void _onDone() {
   }
 
   Widget _buildBody() {
+    final displayRows = sidtl
+        .where((e) => ((e['AccountId'] as num?)?.toInt() ?? 0) != 0)
+        .toList();
+
     return Column(
       children: [
         // Summary strip — mirrors ilh-bottom summary
@@ -679,7 +694,7 @@ void _onDone() {
         ),
         const Divider(height: 1),
         Expanded(
-          child: sidtl.isEmpty
+          child: displayRows.isEmpty
               ? const Center(
                   child: Padding(
                     padding: EdgeInsets.all(32),
@@ -689,12 +704,16 @@ void _onDone() {
                 )
               : ListView.separated(
                   padding: const EdgeInsets.all(8),
-                  itemCount: sidtl.length,
+                  itemCount: displayRows.length,
                   separatorBuilder: (_, __) => const SizedBox(height: 6),
-                  itemBuilder: (context, index) => _buildRowCard(index),
+                  itemBuilder: (context, index) {
+                    final item = displayRows[index];
+                    final realIndex = sidtl.indexOf(item);
+                    return _buildRowCard(realIndex);
+                  },
                 ),
         ),
-        _buildTotalsFooter(),
+        _buildTotalsFooter(displayRows.length),
       ],
     );
   }
@@ -821,7 +840,7 @@ void _onDone() {
     );
   }
 
-  Widget _buildTotalsFooter() {
+  Widget _buildTotalsFooter(int displayCount) {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
       decoration: BoxDecoration(
@@ -831,7 +850,7 @@ void _onDone() {
       child: Row(
         mainAxisAlignment: MainAxisAlignment.spaceBetween,
         children: [
-          Text('Total Charges: ${sidtl.length}',
+          Text('Total Charges: $displayCount',
               style: const TextStyle(fontWeight: FontWeight.w600)),
           Text(
             'Total Net Amount: ${_totalNetAmount.toStringAsFixed(2)}',
