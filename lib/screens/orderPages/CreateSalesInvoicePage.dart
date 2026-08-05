@@ -840,6 +840,7 @@ try {
     final basicAfterDisc = item.amount - item.discPrice;
     final derivedExtra = item.extraAmt - basicAfterDisc;
     if (derivedExtra > 0) return derivedExtra;
+    if (derivedExtra == 0) return 0;
     return item.extraAmt > 0 ? item.extraAmt : 0;
   }
 
