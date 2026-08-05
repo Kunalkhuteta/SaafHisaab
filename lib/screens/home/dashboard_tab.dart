@@ -20,6 +20,13 @@ import '../profile/profile_screen.dart';
 import 'chart_data_helper.dart';
 import 'package:saafhisaab/utils/indian_date_time.dart';
 
+// ─────────────────────────────────────────────────────────────────────────
+// All DATA / LOGIC below (Riverpod wiring, Supabase queries, role gating,
+// chart-point building, language switching, navigation) is unchanged from
+// the original DashboardTab. Only the widget tree (build methods, colors,
+// card styling, chart styling, filter control) was restyled to match the
+// new design reference.
+// ─────────────────────────────────────────────────────────────────────────
 
 class DashboardTab extends ConsumerStatefulWidget {
   const DashboardTab({super.key});
@@ -77,7 +84,7 @@ class _DashboardTabState extends ConsumerState<DashboardTab> {
 
   Future<_DashboardData> _loadData(String shopId, ShopRole? role) async {
     final now = IndianDateTime.now();
-    
+
     // Default range for bills/cards (this month)
     final gridStart = IndianDateTime.date(now.year, now.month, 1);
     final gridEnd = IndianDateTime.date(now.year, now.month, now.day, 23, 59, 59);
@@ -117,7 +124,7 @@ class _DashboardTabState extends ConsumerState<DashboardTab> {
     // Filter today's bills directly from the already-fetched allBills list
     final todayStr = IndianDateTime.now().toIso8601String().split('T')[0];
     final todayBills = allBills.where((b) => b.billDate.toIso8601String().split('T')[0] == todayStr).toList();
-    
+
     // For staff members, we only count today's sales bills (since they are restricted from purchases and their card navigates to the sales list).
     // For others, we count all bills today.
     final todayBillCount = (role?.isStaff ?? false)
@@ -126,7 +133,7 @@ class _DashboardTabState extends ConsumerState<DashboardTab> {
 
     // Filter bills for grid cards (Month)
     final gridBills = allBills.where((b) => !b.billDate.isBefore(gridStart) && !b.billDate.isAfter(gridEnd)).toList();
-    
+
     final gridBillIds = gridBills
         .where((b) => b.billType == 'sale' || b.billType == 'purchase')
         .map((b) => b.id)
@@ -141,7 +148,7 @@ class _DashboardTabState extends ConsumerState<DashboardTab> {
             .select('bill_id, payment_mode')
             .eq('shop_id', shopId)
             .inFilter('bill_id', gridBillIds);
-        
+
         for (var row in salesData as List) {
           final bId = row['bill_id'] as String?;
           if (bId != null) {
@@ -216,7 +223,7 @@ class _DashboardTabState extends ConsumerState<DashboardTab> {
 
   List<ChartPoint> _buildReturnPoints(List<BillModel> bills, String type, DateTimeRange range, ChartRange rangeType) {
     List<ChartBucket> buckets;
-    
+
     if (rangeType == ChartRange.year) {
       final months = range.end.difference(range.start).inDays ~/ 30 + 1;
       buckets = List.generate(months > 12 ? 12 : months, (i) {
@@ -233,7 +240,7 @@ class _DashboardTabState extends ConsumerState<DashboardTab> {
     }
 
     final points = buckets.map((b) => ChartPoint(b.label, 0, subLabel: b.subLabel)).toList();
-    
+
     for (final bill in bills.where((b) => b.billType == type)) {
       final day = IndianDateTime.date(bill.billDate.year, bill.billDate.month, bill.billDate.day);
       for (var i = 0; i < buckets.length; i++) {
@@ -252,6 +259,11 @@ class _DashboardTabState extends ConsumerState<DashboardTab> {
     const abbrs = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
     return abbrs[month - 1];
   }
+
+  // ── New palette tokens (visual only — layered on top of AppColors) ──────
+  static const Color _bgLight = Color(0xFFFAFAFB);
+  static const Color _navy = Color(0xFF1E2A45);
+  static const Color _secondaryText = Color(0xFF9AA0AC);
 
   @override
   Widget build(BuildContext context) {
@@ -276,49 +288,50 @@ class _DashboardTabState extends ConsumerState<DashboardTab> {
       data: (shop) {
         if (shop == null) return const SizedBox();
 
-        return Column(
-          children: [
-            _DashboardAppBar(
-              userName: ref.watch(currentUserNameProvider),
-              shopName: shop.shopName,
-              isEn: isEn,
-            ),
-            Expanded(
-              child: FutureBuilder<_DashboardData>(
-                future: _loadData(shop.id, role),
-                builder: (context, snapshot) {
-                  if (snapshot.connectionState == ConnectionState.waiting) {
-                    return const Center(child: CircularProgressIndicator(color: AppColors.primary));
-                  }
-                  if (snapshot.hasError) {
-                    return Center(child: Text('Error: ${snapshot.error}'));
-                  }
+        return Container(
+          color: _bgLight,
+          child: Column(
+            children: [
+              _DashboardAppBar(
+                userName: ref.watch(currentUserNameProvider),
+                shopName: shop.shopName,
+                isEn: isEn,
+              ),
+              Expanded(
+                child: FutureBuilder<_DashboardData>(
+                  future: _loadData(shop.id, role),
+                  builder: (context, snapshot) {
+                    if (snapshot.connectionState == ConnectionState.waiting) {
+                      return const Center(child: CircularProgressIndicator(color: AppColors.primary));
+                    }
+                    if (snapshot.hasError) {
+                      return Center(child: Text('Error: ${snapshot.error}'));
+                    }
 
-                  final data = snapshot.data ?? _DashboardData.empty();
-                  final cTypeStr = ref.watch(chartTypeProvider);
-                  final ChartType cType = cTypeStr == 'line' ? ChartType.line : cTypeStr == 'pie' ? ChartType.pie : ChartType.bar;
+                    final data = snapshot.data ?? _DashboardData.empty();
+                    final cTypeStr = ref.watch(chartTypeProvider);
+                    final ChartType cType = cTypeStr == 'line' ? ChartType.line : cTypeStr == 'pie' ? ChartType.pie : ChartType.bar;
 
-                  return RefreshIndicator(
-                    color: AppColors.primary,
-                    onRefresh: () async {
-                      ref.invalidate(shopProvider);
-                      setState(() {});
-                    },
-                    child: SingleChildScrollView(
-                      physics: const AlwaysScrollableScrollPhysics(),
-                      child: Padding(
-                        padding: const EdgeInsets.all(16.0),
+                    return RefreshIndicator(
+                      color: AppColors.primary,
+                      onRefresh: () async {
+                        ref.invalidate(shopProvider);
+                        setState(() {});
+                      },
+                      child: SingleChildScrollView(
+                        physics: const AlwaysScrollableScrollPhysics(),
+                        padding: const EdgeInsets.all(20.0),
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
-                            // 1/3 Space: 2x3 Grid
+                            // Stat cards grid — same data/role gating as before, new card visual style
                             GridView.count(
                               crossAxisCount: 2,
                               shrinkWrap: true,
                               physics: const NeverScrollableScrollPhysics(),
-                              mainAxisSpacing: 10,
-                              crossAxisSpacing: 10,
-                              childAspectRatio: 2.3,
+                              mainAxisSpacing: 12,
+                              crossAxisSpacing: 12,
+                              childAspectRatio: 1.55,
                               children: [
                                 if (role.isStaff)
                                   _gridCard(
@@ -330,99 +343,67 @@ class _DashboardTabState extends ConsumerState<DashboardTab> {
                                     onTap: () => _gotoInvoice('sale', isEn),
                                   ),
                                 if (!role.isStaff)
-                                _gridCard(
-                                  title: AppLang.tr(isEn, 'Cash Sales', 'नकद बिक्री'),
-                                  amount: data.cashSales,
-                                  color: AppColors.success,
-                                  icon: Icons.trending_up_rounded,
-                                  onTap: () => _gotoInvoice('sale', isEn),
-                                ),
-                                if (!role.isStaff)
-                                _gridCard(
-                                  title: AppLang.tr(isEn, 'Credit Sales', 'उधार बिक्री'),
-                                  amount: data.creditSales,
-                                  color: AppColors.warning,
-                                  icon: Icons.assignment_turned_in_rounded,
-                                  onTap: () => _gotoInvoice('sale', isEn),
-                                ),
-                                if (role.canViewPurchases)
-                                _gridCard(
-                                  title: AppLang.tr(isEn, 'Cash Purchase', 'नकद खरीद'),
-                                  amount: data.cashPurchase,
-                                  color: AppColors.primary,
-                                  icon: Icons.shopping_bag_rounded,
-                                  onTap: () => _gotoInvoice('purchase', isEn),
-                                ),
-                                if (role.canViewPurchases)
-                                _gridCard(
-                                  title: AppLang.tr(isEn, 'Credit Purchase', 'उधार खरीद'),
-                                  amount: data.creditPurchase,
-                                  color: AppColors.primaryLight,
-                                  icon: Icons.assignment_rounded,
-                                  onTap: () => _gotoInvoice('purchase', isEn),
-                                ),
-                                if (role.canViewUdhar)
-                                _gridCard(
-                                  title: AppLang.tr(isEn, 'Total Udhar', 'कुल उधार'),
-                                  amount: data.totalCredit,
-                                  color: AppColors.purple,
-                                  icon: Icons.account_balance_wallet_rounded,
-                                  onTap: () {
-                                    Navigator.push(context, MaterialPageRoute(builder: (_) => const UdharScreen())).then((_) => setState(() {}));
-                                  },
-                                ),
-                                if (role.canViewStock)
-                                _gridCard(
-                                  title: AppLang.tr(isEn, 'Low Stock', 'कम स्टॉक'),
-                                  amount: data.lowStockCount.toDouble(),
-                                  isCount: true,
-                                  color: AppColors.error,
-                                  icon: Icons.warning_rounded,
-                                  onTap: () {
-                                    Navigator.push(context, MaterialPageRoute(builder: (_) => const StockScreen())).then((_) => setState(() {}));
-                                  },
-                                ),
-                              ],
-                            ),
-                            if (role.canViewReports) const SizedBox(height: 16),
-                            
-                            // 1/3 Space: Charts
-                            if (role.canViewReports) Row(
-                              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                              children: [
-                                Text(
-                                  AppLang.tr(isEn, 'Analytics Overview', 'एनालिटिक्स अवलोकन'),
-                                  style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w800, color: AppColors.textPrimary),
-                                ),
-                                Container(
-                                  height: 32,
-                                  padding: const EdgeInsets.symmetric(horizontal: 8),
-                                  decoration: BoxDecoration(
-                                    color: AppColors.primary.withOpacity(0.08),
-                                    borderRadius: BorderRadius.circular(8),
+                                  _gridCard(
+                                    title: AppLang.tr(isEn, 'Cash Sales', 'नकद बिक्री'),
+                                    amount: data.cashSales,
+                                    color: AppColors.success,
+                                    icon: Icons.trending_up_rounded,
+                                    onTap: () => _gotoInvoice('sale', isEn),
                                   ),
-                                  child: DropdownButton<String>(
-                                    value: _chartFilter,
-                                    underline: const SizedBox(),
-                                    icon: const Icon(Icons.arrow_drop_down_rounded, size: 20, color: AppColors.primary),
-                                    style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: AppColors.primary),
-                                    items: [
-                                      DropdownMenuItem(value: 'week', child: Text(AppLang.tr(isEn, 'This Week', 'इस हफ़्ते'))),
-                                      DropdownMenuItem(value: 'month', child: Text(AppLang.tr(isEn, 'This Month', 'इस महीने'))),
-                                      DropdownMenuItem(value: 'year', child: Text(AppLang.tr(isEn, 'This Year', 'इस साल'))),
-                                    ],
-                                    onChanged: (val) {
-                                      if (val != null) {
-                                        setState(() => _chartFilter = val);
-                                      }
+                                if (!role.isStaff)
+                                  _gridCard(
+                                    title: AppLang.tr(isEn, 'Credit Sales', 'उधार बिक्री'),
+                                    amount: data.creditSales,
+                                    color: AppColors.warning,
+                                    icon: Icons.assignment_turned_in_rounded,
+                                    onTap: () => _gotoInvoice('sale', isEn),
+                                  ),
+                                if (role.canViewPurchases)
+                                  _gridCard(
+                                    title: AppLang.tr(isEn, 'Cash Purchase', 'नकद खरीद'),
+                                    amount: data.cashPurchase,
+                                    color: AppColors.primary,
+                                    icon: Icons.shopping_bag_rounded,
+                                    onTap: () => _gotoInvoice('purchase', isEn),
+                                  ),
+                                if (role.canViewPurchases)
+                                  _gridCard(
+                                    title: AppLang.tr(isEn, 'Credit Purchase', 'उधार खरीद'),
+                                    amount: data.creditPurchase,
+                                    color: AppColors.primaryLight,
+                                    icon: Icons.assignment_rounded,
+                                    onTap: () => _gotoInvoice('purchase', isEn),
+                                  ),
+                                if (role.canViewUdhar)
+                                  _gridCard(
+                                    title: AppLang.tr(isEn, 'Total Udhar', 'कुल उधार'),
+                                    amount: data.totalCredit,
+                                    color: AppColors.purple,
+                                    icon: Icons.account_balance_wallet_rounded,
+                                    onTap: () {
+                                      Navigator.push(context, MaterialPageRoute(builder: (_) => const UdharScreen())).then((_) => setState(() {}));
                                     },
                                   ),
-                                ),
+                                if (role.canViewStock)
+                                  _gridCard(
+                                    title: AppLang.tr(isEn, 'Low Stock', 'कम स्टॉक'),
+                                    amount: data.lowStockCount.toDouble(),
+                                    isCount: true,
+                                    color: AppColors.error,
+                                    icon: Icons.warning_rounded,
+                                    onTap: () {
+                                      Navigator.push(context, MaterialPageRoute(builder: (_) => const StockScreen())).then((_) => setState(() {}));
+                                    },
+                                  ),
                               ],
                             ),
-                            if (role.canViewReports) const SizedBox(height: 10),
+                            if (role.canViewReports) const SizedBox(height: 24),
+
+                            // Analytics section — same 4 chart pages / filter values as before, new header + segmented control style
+                            if (role.canViewReports) _buildOverviewHeader(isEn),
+                            if (role.canViewReports) const SizedBox(height: 16),
                             if (role.canViewReports) SizedBox(
-                              height: 220,
+                              height: 240,
                               child: PageView(
                                 controller: _chartsPageCtrl,
                                 padEnds: false,
@@ -434,59 +415,128 @@ class _DashboardTabState extends ConsumerState<DashboardTab> {
                                 ],
                               ),
                             ),
-                            // Small bottom padding
                             const SizedBox(height: 10),
                           ],
                         ),
                       ),
-                    ),
-                  );
-                },
+                    );
+                  },
+                ),
               ),
-            ),
-          ],
+            ],
+          ),
         );
       },
     );
   }
 
+  // ── Overview header: same three filter values (week/month/year), new
+  // segmented-pill look instead of the old dropdown ─────────────────────
+  Widget _buildOverviewHeader(bool isEn) {
+    return Row(
+      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+      children: [
+        Text(
+          AppLang.tr(isEn, 'Analytics Overview', 'एनालिटिक्स अवलोकन'),
+          style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w700, color: _navy),
+        ),
+        _buildFilterPill(isEn),
+      ],
+    );
+  }
+
+  Widget _buildFilterPill(bool isEn) {
+    final options = <String, String>{
+      'week': AppLang.tr(isEn, 'Week', 'हफ़्ता'),
+      'month': AppLang.tr(isEn, 'Month', 'महीना'),
+      'year': AppLang.tr(isEn, 'Year', 'साल'),
+    };
+    return Container(
+      height: 36,
+      padding: const EdgeInsets.all(3),
+      decoration: BoxDecoration(
+        color: const Color(0xFFF1F2F6),
+        borderRadius: BorderRadius.circular(999),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: options.entries.map((e) {
+          final selected = _chartFilter == e.key;
+          return GestureDetector(
+            onTap: () {
+              if (_chartFilter != e.key) setState(() => _chartFilter = e.key);
+            },
+            child: AnimatedContainer(
+              duration: const Duration(milliseconds: 200),
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 5),
+              decoration: BoxDecoration(
+                color: selected ? Colors.white : Colors.transparent,
+                borderRadius: BorderRadius.circular(999),
+                boxShadow: selected
+                    ? [BoxShadow(color: Colors.black.withOpacity(0.08), blurRadius: 8, offset: const Offset(0, 2))]
+                    : null,
+              ),
+              child: Text(
+                e.value,
+                style: TextStyle(
+                  fontSize: 12,
+                  fontWeight: selected ? FontWeight.w600 : FontWeight.w500,
+                  color: selected ? _navy : _secondaryText,
+                ),
+              ),
+            ),
+          );
+        }).toList(),
+      ),
+    );
+  }
+
+  // ── Stat card: same title/amount/color/icon/onTap contract as before,
+  // new visual treatment (gradient icon avatar + big rounded shadow card) ─
   Widget _gridCard({required String title, required double amount, required Color color, required IconData icon, required VoidCallback onTap, bool isCount = false}) {
+    final gradient = LinearGradient(
+      colors: [color, Color.lerp(color, Colors.black, 0.25)!],
+      begin: Alignment.topLeft,
+      end: Alignment.bottomRight,
+    );
+
     return InkWell(
       onTap: onTap,
-      borderRadius: BorderRadius.circular(12),
+      borderRadius: BorderRadius.circular(20),
       child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+        padding: const EdgeInsets.all(14),
         decoration: BoxDecoration(
-          color: AppColors.surface,
-          borderRadius: BorderRadius.circular(12),
-          border: Border.all(color: AppColors.border),
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(20),
           boxShadow: [
-            BoxShadow(color: color.withOpacity(0.05), blurRadius: 10, offset: const Offset(0, 4)),
+            BoxShadow(color: Colors.black.withOpacity(0.06), blurRadius: 16, offset: const Offset(0, 4)),
           ],
         ),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            Row(
-              children: [
-                Container(
-                  padding: const EdgeInsets.all(6),
-                  decoration: BoxDecoration(color: color.withOpacity(0.15), borderRadius: BorderRadius.circular(8)),
-                  child: Icon(icon, color: color, size: 16),
-                ),
-                const SizedBox(width: 8),
-                Expanded(child: Text(title, style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: AppColors.textSecondary))),
-              ],
+            Container(
+              width: 36,
+              height: 36,
+              decoration: BoxDecoration(gradient: gradient, shape: BoxShape.circle),
+              child: Icon(icon, color: Colors.white, size: 16),
             ),
-            const Spacer(),
+            const SizedBox(height: 10),
             FittedBox(
               fit: BoxFit.scaleDown,
               alignment: Alignment.centerLeft,
               child: Text(
                 isCount ? amount.toInt().toString() : '₹${_compactMoney(amount)}',
-                style: TextStyle(fontSize: 18, fontWeight: FontWeight.w900, color: color),
+                style: TextStyle(fontSize: 22, fontWeight: FontWeight.w800, color: _navy),
               ),
+            ),
+            const SizedBox(height: 4),
+            Text(
+              title,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: const TextStyle(fontSize: 12, color: _secondaryText, fontWeight: FontWeight.w500),
             ),
           ],
         ),
@@ -494,32 +544,36 @@ class _DashboardTabState extends ConsumerState<DashboardTab> {
     );
   }
 
+  // ── Chart card: same title/series/color/type contract as before, new
+  // rounded-20 white shadow card shell ─────────────────────────────────────
   Widget _chartCard(String title, List<ChartPoint> series, Color color, ChartType cType) {
     final hasData = series.any((p) => p.amount > 0);
     final peak = series.fold(0.0, (m, p) => p.amount > m ? p.amount : m);
 
     return Container(
-      margin: const EdgeInsets.only(right: 10),
-      padding: const EdgeInsets.all(12),
+      margin: const EdgeInsets.only(right: 12),
+      padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: AppColors.surface,
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: AppColors.border),
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(20),
+        boxShadow: [
+          BoxShadow(color: Colors.black.withOpacity(0.06), blurRadius: 16, offset: const Offset(0, 4)),
+        ],
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(title, style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: AppColors.textSecondary)),
-          const SizedBox(height: 10),
+          Text(title, style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w700, color: _navy)),
+          const SizedBox(height: 12),
           Expanded(
-            child: hasData ? _buildChart(series, color, peak, cType) : Center(child: Text('No Data', style: TextStyle(color: AppColors.textHint.withOpacity(0.5), fontSize: 12))),
+            child: hasData ? _buildChart(series, color, peak, cType) : Center(child: Text('No Data', style: TextStyle(color: _secondaryText.withOpacity(0.6), fontSize: 12))),
           ),
         ],
       ),
     );
   }
 
-  // --- CHART BUILDERS (Copied & simplified from charts_screen for Dashboard View) ---
+  // --- CHART BUILDERS (unchanged data logic, restyled colors/decoration) ---
   Widget _buildChart(List<ChartPoint> series, Color color, double peak, ChartType cType) {
     switch (cType) {
       case ChartType.line: return _lineChart(series, color, peak);
@@ -534,7 +588,11 @@ class _DashboardTabState extends ConsumerState<DashboardTab> {
       LineChartData(
         minY: 0, maxY: maxY,
         borderData: FlBorderData(show: false),
-        gridData: FlGridData(show: false),
+        gridData: const FlGridData(
+          show: true,
+          drawVerticalLine: false,
+          getDrawingHorizontalLine: _flatGridLine,
+        ),
         titlesData: FlTitlesData(
           topTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)),
           rightTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)),
@@ -547,7 +605,7 @@ class _DashboardTabState extends ConsumerState<DashboardTab> {
                 if (idx < 0 || idx >= series.length) return const SizedBox();
                 return Transform.rotate(
                   angle: -math.pi / 2.5,
-                  child: Text(series[idx].label, style: const TextStyle(fontSize: 8, color: AppColors.textHint)),
+                  child: Text(series[idx].label, style: const TextStyle(fontSize: 8, color: _secondaryText)),
                 );
               },
             ),
@@ -556,6 +614,7 @@ class _DashboardTabState extends ConsumerState<DashboardTab> {
         lineTouchData: LineTouchData(
           enabled: true,
           touchTooltipData: LineTouchTooltipData(
+            getTooltipColor: (_) => _navy,
             getTooltipItems: (spots) => spots.map((s) => LineTooltipItem('₹${_compactMoney(s.y)}', const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 10))).toList(),
           ),
         ),
@@ -572,11 +631,16 @@ class _DashboardTabState extends ConsumerState<DashboardTab> {
 
   Widget _barChart(List<ChartPoint> series, Color color, double peak) {
     final maxY = peak <= 0 ? 1.0 : peak * 1.2;
+    final darker = Color.lerp(color, Colors.black, 0.25)!;
     return BarChart(
       BarChartData(
         maxY: maxY,
         borderData: FlBorderData(show: false),
-        gridData: FlGridData(show: false),
+        gridData: const FlGridData(
+          show: true,
+          drawVerticalLine: false,
+          getDrawingHorizontalLine: _flatGridLine,
+        ),
         titlesData: FlTitlesData(
           topTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)),
           rightTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)),
@@ -589,7 +653,7 @@ class _DashboardTabState extends ConsumerState<DashboardTab> {
                 if (idx < 0 || idx >= series.length) return const SizedBox();
                 return Transform.rotate(
                   angle: -math.pi / 2.5,
-                  child: Text(series[idx].label, style: const TextStyle(fontSize: 8, color: AppColors.textHint)),
+                  child: Text(series[idx].label, style: const TextStyle(fontSize: 8, color: _secondaryText)),
                 );
               },
             ),
@@ -598,23 +662,31 @@ class _DashboardTabState extends ConsumerState<DashboardTab> {
         barTouchData: BarTouchData(
           enabled: true,
           touchTooltipData: BarTouchTooltipData(
+            getTooltipColor: (_) => _navy,
             getTooltipItem: (g, gIdx, r, rIdx) => BarTooltipItem('₹${_compactMoney(r.toY)}', const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 10)),
           ),
         ),
         barGroups: [
           for (var i = 0; i < series.length; i++)
             BarChartGroupData(x: i, barRods: [
-              BarChartRodData(toY: series[i].amount, width: 6, color: color, borderRadius: BorderRadius.circular(2))
+              BarChartRodData(
+                toY: series[i].amount,
+                width: 8,
+                borderRadius: const BorderRadius.vertical(top: Radius.circular(4)),
+                gradient: LinearGradient(colors: [color, darker], begin: Alignment.bottomCenter, end: Alignment.topCenter),
+              )
             ]),
         ],
       ),
     );
   }
 
+  static FlLine _flatGridLine(double value) => const FlLine(color: Color(0xFFEAECF0), strokeWidth: 1);
+
   Widget _pieChart(List<ChartPoint> series, Color baseColor) {
     final nonZero = <int>[];
     for (var i = 0; i < series.length; i++) if (series[i].amount > 0) nonZero.add(i);
-    
+
     final hsl = HSLColor.fromColor(baseColor);
     final colors = List.generate(nonZero.length, (i) {
       final hue = (hsl.hue + i * (360.0 / math.max(nonZero.length, 1))) % 360;
@@ -631,12 +703,12 @@ class _DashboardTabState extends ConsumerState<DashboardTab> {
               sections: [
                 for (var j = 0; j < nonZero.length; j++)
                   PieChartSectionData(
-                    value: series[nonZero[j]].amount, 
-                    color: colors[j], 
-                    radius: 34, 
+                    value: series[nonZero[j]].amount,
+                    color: colors[j],
+                    radius: 34,
                     showTitle: true,
                     title: _compactMoney(series[nonZero[j]].amount),
-                    titleStyle: const TextStyle(fontSize: 8, color: Colors.white, fontWeight: FontWeight.bold)
+                    titleStyle: const TextStyle(fontSize: 8, color: Colors.white, fontWeight: FontWeight.bold),
                   ),
               ],
             ),
@@ -654,9 +726,9 @@ class _DashboardTabState extends ConsumerState<DashboardTab> {
                 padding: const EdgeInsets.only(bottom: 6),
                 child: Row(
                   children: [
-                    Container(width: 8, height: 8, color: colors[j]),
+                    Container(width: 8, height: 8, decoration: BoxDecoration(color: colors[j], shape: BoxShape.circle)),
                     const SizedBox(width: 4),
-                    Expanded(child: Text(series[nonZero[j]].label, style: const TextStyle(fontSize: 9, color: AppColors.textSecondary), maxLines: 1, overflow: TextOverflow.ellipsis)),
+                    Expanded(child: Text(series[nonZero[j]].label, style: const TextStyle(fontSize: 9, color: _secondaryText), maxLines: 1, overflow: TextOverflow.ellipsis)),
                   ],
                 ),
               ),
@@ -674,6 +746,9 @@ class _DashboardTabState extends ConsumerState<DashboardTab> {
   }
 }
 
+// ── App bar: same data/navigation as before (drawer, hello+shop name,
+// settings → profile), restyled with rounded bottom corners + soft shadow
+// to match the new design's rounder, softer visual language ────────────────
 class _DashboardAppBar extends StatelessWidget {
   final String userName;
   final String shopName;
@@ -688,15 +763,32 @@ class _DashboardAppBar extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Container(
-      color: AppColors.primary,
-      padding: EdgeInsets.only(top: MediaQuery.of(context).padding.top + 12, left: 20, right: 20, bottom: 20),
+      decoration: BoxDecoration(
+        gradient: const LinearGradient(
+          colors: [AppColors.primary, Color(0xFF1E2A45)],
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+        ),
+        borderRadius: const BorderRadius.only(
+          bottomLeft: Radius.circular(28),
+          bottomRight: Radius.circular(28),
+        ),
+        boxShadow: [
+          BoxShadow(color: AppColors.primary.withOpacity(0.25), blurRadius: 20, offset: const Offset(0, 8)),
+        ],
+      ),
+      padding: EdgeInsets.only(top: MediaQuery.of(context).padding.top + 12, left: 20, right: 20, bottom: 24),
       child: Row(
         children: [
           GestureDetector(
             onTap: () => Scaffold.of(context).openDrawer(),
-            child: const Icon(Icons.menu_rounded, color: Colors.white, size: 28),
+            child: Container(
+              padding: const EdgeInsets.all(8),
+              decoration: BoxDecoration(color: Colors.white.withOpacity(0.15), shape: BoxShape.circle),
+              child: const Icon(Icons.menu_rounded, color: Colors.white, size: 22),
+            ),
           ),
-          const SizedBox(width: 16),
+          const SizedBox(width: 14),
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
@@ -726,6 +818,7 @@ class _DashboardAppBar extends StatelessWidget {
   }
 }
 
+// ── Data model — unchanged from the original ───────────────────────────────
 class _DashboardData {
   final double totalSales;
   final double totalPurchase;
