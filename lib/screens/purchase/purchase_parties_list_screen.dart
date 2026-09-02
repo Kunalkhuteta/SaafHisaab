@@ -219,7 +219,7 @@ class _PurchasePartiesListScreenState extends ConsumerState<PurchasePartiesListS
                   ),
                   const SizedBox(height: 4),
                   Text(
-                    AppLang.tr(isEn, 'Pending', 'बकाया'),
+                    AppLang.tr(isEn, 'Current Balance', 'वर्तमान शेष'),
                     style: const TextStyle(fontSize: 12, color: AppColors.textHint),
                   ),
                 ],
