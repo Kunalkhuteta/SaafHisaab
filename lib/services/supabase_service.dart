@@ -2404,6 +2404,32 @@ static Future<double> getTotalUdhar(String shopId) async {
   }
 
   // ─────────────────────────────────────────
+  // TRANSPORTERS CRUD
+  // ─────────────────────────────────────────
+
+  static Future<List<Map<String, dynamic>>> getTransporters(String shopId) async {
+    final response = await _client
+        .from('transporters')
+        .select('*')
+        .eq('shop_id', shopId)
+        .order('name');
+    return List<Map<String, dynamic>>.from(response);
+  }
+
+  static Future<Map<String, dynamic>> saveTransporter(Map<String, dynamic> data) async {
+    final response = await _client
+        .from('transporters')
+        .upsert(data, onConflict: 'id')
+        .select()
+        .single();
+    return response;
+  }
+
+  static Future<void> deleteTransporter(String id) async {
+    await _client.from('transporters').delete().eq('id', id);
+  }
+
+  // ─────────────────────────────────────────
   // CONNECTION TEST
   // ─────────────────────────────────────────
 
