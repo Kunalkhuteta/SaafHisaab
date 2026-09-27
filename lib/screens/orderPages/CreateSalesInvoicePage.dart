@@ -1,4 +1,3 @@
-import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import 'package:saafhisaab/services/general_service.dart';
@@ -360,7 +359,7 @@ try {
     try {
       final response =
           await HandleLibService.getSalesInvoiceByInvTranId(widget.invoiceId!);
-      if (response != null && response['statusCode'] == 200) {
+      if (response['statusCode'] == 200) {
         final data = response['data'] as Map<String, dynamic>? ?? {};
         final sihdr = data['SIHDR'] ?? {};
         final invTran = data['InvTranTbl'] ?? {};
@@ -1410,6 +1409,56 @@ Future<TransportDetailData?> _openTransportDialog() async {
   );
 }
 
+  Future<void> _onDeleteInvoice() async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Delete Invoice?'),
+        content: const Text(
+          'Are you sure you want to delete this invoice? '
+          'Stock items will be returned to inventory and any customer credit from this bill will be reversed.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('Cancel'),
+          ),
+          ElevatedButton(
+            style: ElevatedButton.styleFrom(backgroundColor: Colors.red, foregroundColor: Colors.white),
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('Delete'),
+          ),
+        ],
+      ),
+    );
+
+    if (confirmed == true && mounted) {
+      setState(() => loading = true);
+      try {
+        final resp = await HandleLibService.deleteSalesInvoice(widget.invoiceId!);
+        final ok = resp['statusCode'] == 200;
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+            content: Text(ok ? '✅ Invoice deleted successfully' : '❌ Delete failed: ${resp['message']}'),
+            backgroundColor: ok ? Colors.green : Colors.red,
+          ));
+          if (ok) {
+            Navigator.pop(context, true);
+          }
+        }
+      } catch (e) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+            content: Text('Delete error: $e'),
+            backgroundColor: Colors.red,
+          ));
+        }
+      } finally {
+        if (mounted) setState(() => loading = false);
+      }
+    }
+  }
+
   bool loading = false;
   bool _suppressPayModeAutoDerive = false;
 
@@ -1432,26 +1481,30 @@ Future<TransportDetailData?> _openTransportDialog() async {
         title: Text(appBarTitle),
         backgroundColor: Colors.blue.shade700,
         foregroundColor: Colors.white,
-        elevation: 0,
-        actions: _readOnlyMode
-            ? [
-                Container(
-                  margin: const EdgeInsets.only(right: 12),
-                  padding:
-                      const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-                  decoration: BoxDecoration(
-                    color: Colors.white.withOpacity(0.2),
-                    borderRadius: BorderRadius.circular(20),
-                  ),
-                  child: const Text('VIEW ONLY',
-                      style: TextStyle(
-                          fontSize: 11,
-                          fontWeight: FontWeight.w700,
-                          color: Colors.white,
-                          letterSpacing: 0.5)),
-                )
-              ]
-            : null,
+        actions: [
+          if (_readOnlyMode)
+            Container(
+              margin: const EdgeInsets.only(right: 12),
+              padding:
+                  const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+              decoration: BoxDecoration(
+                color: Colors.white.withOpacity(0.2),
+                borderRadius: BorderRadius.circular(20),
+              ),
+              child: const Text('VIEW ONLY',
+                  style: TextStyle(
+                      fontSize: 11,
+                      fontWeight: FontWeight.w700,
+                      color: Colors.white,
+                      letterSpacing: 0.5)),
+            )
+          else if (isEditMode && (widget.canDelete || widget.canEdit))
+            IconButton(
+              icon: const Icon(Icons.delete_outline_rounded, color: Colors.white),
+              tooltip: 'Delete Invoice',
+              onPressed: _onDeleteInvoice,
+            ),
+        ],
       ),
       body: FutureBuilder<void>(
         future: _initFuture,
