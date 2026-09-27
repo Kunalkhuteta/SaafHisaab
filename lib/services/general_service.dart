@@ -31,6 +31,10 @@ class GeneralService {
     _partyIntIdToUuid[intId] = uuid;
     return intId;
   }
+  static void setPartyUuidMapping(int intId, String uuid) {
+    _partyIntIdToUuid[intId] = uuid;
+    _partyUuidToIntId[uuid] = intId;
+  }
 
   static String? getItemUuid(int intId) => _itemIntIdToUuid[intId];
   static int getItemIntId(String uuid) {
@@ -42,6 +46,10 @@ class GeneralService {
     _itemIntIdToUuid[intId] = uuid;
     return intId;
   }
+  static void setItemUuidMapping(int intId, String uuid) {
+    _itemIntIdToUuid[intId] = uuid;
+    _itemUuidToIntId[uuid] = intId;
+  }
 
   static String? getTransporterUuid(int intId) => _transporterIntIdToUuid[intId];
   static int getTransporterIntId(String uuid) {
@@ -52,6 +60,10 @@ class GeneralService {
     _transporterUuidToIntId[uuid] = intId;
     _transporterIntIdToUuid[intId] = uuid;
     return intId;
+  }
+  static void setTransporterUuidMapping(int intId, String uuid) {
+    _transporterIntIdToUuid[intId] = uuid;
+    _transporterUuidToIntId[uuid] = intId;
   }
 
   // ── Party List ──
