@@ -8,6 +8,7 @@ import '../../services/supabase_service.dart';
 import '../../providers/app_providers.dart';
 import '../../models/udhar_model.dart';
 import 'sale_account_screen.dart';
+import '../reports/party_wise_sales_report_screen.dart';
 
 class SalePartiesListScreen extends ConsumerStatefulWidget {
   const SalePartiesListScreen({super.key});
@@ -80,6 +81,18 @@ class _SalePartiesListScreenState extends ConsumerState<SalePartiesListScreen> {
         title: Text(AppLang.tr(isEn, 'Sale Parties', 'बिक्री पार्टियां')),
         backgroundColor: AppColors.primary,
         foregroundColor: Colors.white,
+        actions: [
+          IconButton(
+            icon: const Icon(Icons.bar_chart_rounded),
+            tooltip: AppLang.tr(isEn, 'Party Wise Sale Report', 'पार्टी वार बिक्री रिपोर्ट'),
+            onPressed: () {
+              Navigator.push(
+                context,
+                MaterialPageRoute(builder: (_) => const PartyWiseSalesReportScreen()),
+              );
+            },
+          ),
+        ],
       ),
       body: _isLoading
           ? const Center(child: CircularProgressIndicator())
