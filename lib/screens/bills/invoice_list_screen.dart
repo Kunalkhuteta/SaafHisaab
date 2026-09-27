@@ -4,7 +4,6 @@ import 'package:image_picker/image_picker.dart';
 
 import '../../constants/app_colors.dart';
 import '../../providers/app_providers.dart';
-import '../../services/supabase_service.dart';
 import '../../models/bill_model.dart';
 import '../../globalVar.dart';
 import '../../services/ai_ocr_service.dart';
@@ -15,6 +14,8 @@ import '../purchase/purchase_return_screen.dart';
 import 'package:saafhisaab/utils/indian_date_time.dart';
 import '../../services/global_data.dart';
 import '../orderPages/CreateSalesInvoicePage.dart';
+import '../../services/invoice_pdf_service.dart';
+import 'invoice_preview_screen.dart';
 
 
 class InvoiceListScreen extends ConsumerStatefulWidget {
@@ -178,9 +179,7 @@ class _InvoiceListScreenState extends ConsumerState<InvoiceListScreen> {
         builder: (_) => const CreateSalesInvoicePage(),
       ));
       if (result == true) {
-        ref.invalidate(filteredBillsProvider);
-        ref.invalidate(dashboardStatsProvider);
-        ref.invalidate(itemMasterProvider);
+        _refreshAllProviders();
       }
       return;
     }
@@ -189,14 +188,12 @@ class _InvoiceListScreenState extends ConsumerState<InvoiceListScreen> {
       builder: (_) => SaleEntryScreen(billType: widget.billType),
     ));
     if (result == true) {
-      ref.invalidate(filteredBillsProvider);
-      ref.invalidate(dashboardStatsProvider);
-      ref.invalidate(itemMasterProvider);
+      _refreshAllProviders();
     }
   }
 
   void _openEditForm(BillModel bill) async {
-    if (bill.billType == 'sale' && bill.notes.startsWith('__sales_invoice_payload__')) {
+    if (bill.billType == 'sale' && (bill.notes.contains('__sales_invoice_payload__') || widget.billType == 'sale_new')) {
       final shop = await ref.read(shopProvider.future);
       final user = ref.read(currentUserProvider);
       if (shop != null && user != null) {
@@ -204,12 +201,14 @@ class _InvoiceListScreenState extends ConsumerState<InvoiceListScreen> {
         GlobalData().userId = user.id;
       }
       final result = await Navigator.push<bool>(context, MaterialPageRoute(
-        builder: (_) => CreateSalesInvoicePage(invoiceId: bill.id),
+        builder: (_) => CreateSalesInvoicePage(
+          invoiceId: bill.id,
+          canEdit: true,
+          canDelete: true,
+        ),
       ));
       if (result == true) {
-        ref.invalidate(filteredBillsProvider);
-        ref.invalidate(dashboardStatsProvider);
-        ref.invalidate(itemMasterProvider);
+        _refreshAllProviders();
       }
       return;
     }
@@ -218,10 +217,19 @@ class _InvoiceListScreenState extends ConsumerState<InvoiceListScreen> {
       builder: (_) => SaleEntryScreen(billType: bill.billType, bill: bill),
     ));
     if (result == true) {
-      ref.invalidate(filteredBillsProvider);
-      ref.invalidate(dashboardStatsProvider);
-      ref.invalidate(itemMasterProvider);
+      _refreshAllProviders();
     }
+  }
+
+  void _refreshAllProviders() {
+    ref.invalidate(filteredBillsProvider);
+    ref.invalidate(dashboardStatsProvider);
+    ref.invalidate(todayBillsProvider);
+    ref.invalidate(itemMasterProvider);
+    ref.invalidate(stockItemsProvider);
+    ref.invalidate(udharCustomersProvider);
+    ref.invalidate(purchasePartiesProvider);
+    ref.invalidate(shopMemberNamesProvider);
   }
 
   Widget _headerBtn(IconData icon, String label, VoidCallback onTap) {
@@ -345,6 +353,8 @@ class _InvoiceListScreenState extends ConsumerState<InvoiceListScreen> {
   Widget _billCard(BillModel bill, bool isEn, Color typeColor, Map<String, String> namesMap) {
     final code = InvType.shortCode(bill.billType);
     final creatorName = namesMap[bill.userId] ?? '';
+    final isSale = bill.billType == 'sale';
+
     return GestureDetector(
       onTap: () => _openEditForm(bill),
       child: Container(
@@ -398,10 +408,105 @@ class _InvoiceListScreenState extends ConsumerState<InvoiceListScreen> {
           ])),
           Text('₹${bill.amount.toStringAsFixed(0)}',
             style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: typeColor)),
-          const SizedBox(width: 6),
-          const Icon(Icons.chevron_right_rounded, color: AppColors.textHint, size: 20),
+          const SizedBox(width: 4),
+          if (isSale)
+            PopupMenuButton<String>(
+              icon: const Icon(Icons.more_vert, color: AppColors.textSecondary, size: 22),
+              padding: EdgeInsets.zero,
+              tooltip: AppLang.tr(isEn, 'Invoice Options', 'इनवॉइस विकल्प'),
+              onSelected: (action) => _handleInvoiceAction(bill, action, isEn),
+              itemBuilder: (ctx) => [
+                PopupMenuItem(
+                  value: 'pdf',
+                  child: Row(children: [
+                    const Icon(Icons.picture_as_pdf_rounded, color: AppColors.primary, size: 20),
+                    const SizedBox(width: 10),
+                    Text(AppLang.tr(isEn, 'PDF (Generate & Print)', 'PDF (बनाएं और प्रिंट)'),
+                      style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 13)),
+                  ]),
+                ),
+                PopupMenuItem(
+                  value: 'browser',
+                  child: Row(children: [
+                    const Icon(Icons.open_in_browser_rounded, color: Colors.teal, size: 20),
+                    const SizedBox(width: 10),
+                    Text(AppLang.tr(isEn, 'Preview HTML in Browser', 'ब्राउज़र में HTML देखें'),
+                      style: const TextStyle(fontSize: 13)),
+                  ]),
+                ),
+                PopupMenuItem(
+                  value: 'preview',
+                  child: Row(children: [
+                    const Icon(Icons.remove_red_eye_rounded, color: AppColors.purple, size: 20),
+                    const SizedBox(width: 10),
+                    Text(AppLang.tr(isEn, 'Invoice Preview & Code', 'इनवॉइस प्रीव्यू और कोड'),
+                      style: const TextStyle(fontSize: 13)),
+                  ]),
+                ),
+                PopupMenuItem(
+                  value: 'share',
+                  child: Row(children: [
+                    const Icon(Icons.share_rounded, color: AppColors.success, size: 20),
+                    const SizedBox(width: 10),
+                    Text(AppLang.tr(isEn, 'Share Invoice', 'इनवॉइस शेयर करें'),
+                      style: const TextStyle(fontSize: 13)),
+                  ]),
+                ),
+              ],
+            )
+          else
+            const Padding(
+              padding: EdgeInsets.only(left: 2),
+              child: Icon(Icons.chevron_right_rounded, color: AppColors.textHint, size: 20),
+            ),
         ]),
       ),
     );
+  }
+
+  Future<void> _handleInvoiceAction(BillModel bill, String action, bool isEn) async {
+    final title = 'Invoice_${bill.vendorName.replaceAll(' ', '_')}_${bill.billDate.day}';
+
+    if (action == 'preview') {
+      Navigator.push(context, MaterialPageRoute(
+        builder: (_) => InvoicePreviewScreen(bill: bill),
+      ));
+      return;
+    }
+
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+      content: Row(children: [
+        const SizedBox(width: 16, height: 16,
+          child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2)),
+        const SizedBox(width: 12),
+        Text(AppLang.tr(isEn, 'Generating dynamic PDF...', 'PDF तैयार हो रहा है...')),
+      ]),
+      duration: const Duration(seconds: 2),
+      backgroundColor: AppColors.primary,
+    ));
+
+    try {
+      final html = await InvoicePdfService.loadAndBuildInvoiceHtml(ref: ref, bill: bill);
+      if (!mounted) return;
+
+      if (action == 'pdf') {
+        await InvoicePdfService.printOrSavePdf(htmlContent: html, invoiceTitle: title);
+      } else if (action == 'browser') {
+        InvoicePdfService.openHtmlInBrowser(htmlContent: html, invoiceTitle: title);
+      } else if (action == 'share') {
+        await InvoicePdfService.shareInvoice(
+          htmlContent: html,
+          filename: title,
+          invoiceTitle: 'Tax Invoice - ${bill.vendorName}',
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+          content: Text('Error: $e'),
+          backgroundColor: AppColors.error,
+        ));
+      }
+    }
   }
 }
