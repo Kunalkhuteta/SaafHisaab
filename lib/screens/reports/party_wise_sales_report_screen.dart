@@ -11,6 +11,7 @@ import '../../models/shop_model.dart';
 import '../../providers/app_providers.dart';
 import '../../services/auth_service.dart';
 import '../../services/invoice_pdf_service.dart';
+import '../../services/supabase_service.dart';
 import '../../services/party_wise_sales_html_template.dart';
 import '../../utils/indian_date_time.dart';
 import 'party_sale_detail_screen.dart';
@@ -203,17 +204,14 @@ class _PartyWiseSalesReportScreenState extends ConsumerState<PartyWiseSalesRepor
         }
       }
 
-      // 3. Customer metadata lookup (phones / address)
-      Map<String, Map<String, dynamic>> customersByName = {};
+      // 3. Customer metadata lookup (phones)
+      final Map<String, String> phonesByName = {};
       try {
-        final custData = await client
-            .from('udhar_customers')
-            .select('name, phone, address')
-            .eq('shop_id', shop.id);
-        for (final c in custData as List) {
-          final cName = (c['name']?.toString() ?? '').trim().toLowerCase();
-          if (cName.isNotEmpty) {
-            customersByName[cName] = Map<String, dynamic>.from(c);
+        final custData = await SupabaseService.getAllUdharCustomers(shop.id);
+        for (final c in custData) {
+          final cName = c.customerName.trim().toLowerCase();
+          if (cName.isNotEmpty && c.customerPhone.isNotEmpty) {
+            phonesByName[cName] = c.customerPhone;
           }
         }
       } catch (e) {
@@ -366,9 +364,8 @@ class _PartyWiseSalesReportScreenState extends ConsumerState<PartyWiseSalesRepor
         itemsList.sort((a, b) => b.totalAmount.compareTo(a.totalAmount));
 
         // Phone & address
-        final custMatch = customersByName[partyName.toLowerCase()];
-        final phone = custMatch?['phone']?.toString() ?? '';
-        final address = custMatch?['address']?.toString() ?? '';
+        final phone = phonesByName[partyName.toLowerCase()] ?? '';
+        const address = '';
 
         summaries.add(PartySaleSummary(
           partyName: partyName,
