@@ -7,6 +7,7 @@ import '../reports/daily_balances_screen.dart';
 import '../reports/outstanding_receivable_screen.dart';
 import '../reports/outstanding_payable_screen.dart';
 import '../reports/ledger_party_selection_page.dart';
+import '../reports/party_wise_sales_report_screen.dart';
 
 class ReportsTab extends ConsumerStatefulWidget {
   const ReportsTab({super.key});
@@ -17,6 +18,11 @@ class ReportsTab extends ConsumerStatefulWidget {
 
 class _ReportsTabState extends ConsumerState<ReportsTab> {
   final List<_ReportItem> _allReports = [
+    _ReportItem(
+      title: 'Party Wise Sale Report',
+      icon: Icons.groups_rounded,
+      description: 'Customer-wise sales, item details, payment modes & statement PDF',
+    ),
     _ReportItem(
       title: 'Top Trending',
       icon: Icons.trending_up_rounded,
@@ -128,7 +134,12 @@ class _ReportsTabState extends ConsumerState<ReportsTab> {
                 child: InkWell(
                   borderRadius: BorderRadius.circular(12),
                   onTap: () {
-                    if (item.title == 'Daily Cash & Bank Balance') {
+                    if (item.title == 'Party Wise Sale Report') {
+                      Navigator.push(
+                        context,
+                        MaterialPageRoute(builder: (_) => const PartyWiseSalesReportScreen()),
+                      );
+                    } else if (item.title == 'Daily Cash & Bank Balance') {
                       Navigator.push(
                         context,
                         MaterialPageRoute(builder: (_) => const DailyBalancesScreen()),
