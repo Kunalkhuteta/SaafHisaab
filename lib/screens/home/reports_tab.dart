@@ -8,6 +8,10 @@ import '../reports/outstanding_receivable_screen.dart';
 import '../reports/outstanding_payable_screen.dart';
 import '../reports/ledger_party_selection_page.dart';
 import '../reports/party_wise_sales_report_screen.dart';
+import '../reports/top_trending_report_screen.dart';
+import '../reports/top_reorder_items_screen.dart';
+import '../reports/cash_received_from_party_screen.dart';
+import '../reports/daily_item_wise_sale_screen.dart';
 
 class ReportsTab extends ConsumerStatefulWidget {
   const ReportsTab({super.key});
@@ -26,7 +30,7 @@ class _ReportsTabState extends ConsumerState<ReportsTab> {
     _ReportItem(
       title: 'Top Trending',
       icon: Icons.trending_up_rounded,
-      description: 'Most frequently sold and popular items',
+      description: 'Top trending salesperson, location, item, customer, party & month',
     ),
     _ReportItem(
       title: 'Top Re-Order Items',
@@ -139,6 +143,11 @@ class _ReportsTabState extends ConsumerState<ReportsTab> {
                         context,
                         MaterialPageRoute(builder: (_) => const PartyWiseSalesReportScreen()),
                       );
+                    } else if (item.title == 'Top Trending') {
+                      Navigator.push(
+                        context,
+                        MaterialPageRoute(builder: (_) => const TopTrendingReportScreen()),
+                      );
                     } else if (item.title == 'Daily Cash & Bank Balance') {
                       Navigator.push(
                         context,
@@ -153,6 +162,21 @@ class _ReportsTabState extends ConsumerState<ReportsTab> {
                       Navigator.push(
                         context,
                         MaterialPageRoute(builder: (_) => const OutstandingPayableScreen()),
+                      );
+                    } else if (item.title == 'Top Re-Order Items') {
+                      Navigator.push(
+                        context,
+                        MaterialPageRoute(builder: (_) => const TopReorderItemsScreen()),
+                      );
+                    } else if (item.title == 'Cash Received from Party') {
+                      Navigator.push(
+                        context,
+                        MaterialPageRoute(builder: (_) => const CashReceivedFromPartyScreen()),
+                      );
+                    } else if (item.title == 'Daily Item Wise Sale') {
+                      Navigator.push(
+                        context,
+                        MaterialPageRoute(builder: (_) => const DailyItemWiseSaleScreen()),
                       );
                     } else if (item.title == 'Ledger Reports') {
                       Navigator.push(
