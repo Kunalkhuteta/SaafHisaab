@@ -12,6 +12,13 @@ import '../reports/top_trending_report_screen.dart';
 import '../reports/top_reorder_items_screen.dart';
 import '../reports/cash_received_from_party_screen.dart';
 import '../reports/daily_item_wise_sale_screen.dart';
+import '../reports/transaction_voucher_screen.dart';
+import '../reports/dump_stock_report_screen.dart';
+import '../reports/trading_account_report_screen.dart';
+import '../reports/profit_loss_report_screen.dart';
+import '../reports/balance_sheet_report_screen.dart';
+import '../reports/trial_balance_report_screen.dart';
+import '../reports/goods_trading_accounts_report_screen.dart';
 
 class ReportsTab extends ConsumerStatefulWidget {
   const ReportsTab({super.key});
@@ -148,10 +155,25 @@ class _ReportsTabState extends ConsumerState<ReportsTab> {
                         context,
                         MaterialPageRoute(builder: (_) => const TopTrendingReportScreen()),
                       );
+                    } else if (item.title == 'Top Re-Order Items') {
+                      Navigator.push(
+                        context,
+                        MaterialPageRoute(builder: (_) => const TopReorderItemsScreen()),
+                      );
+                    } else if (item.title == 'Transaction Voucher') {
+                      Navigator.push(
+                        context,
+                        MaterialPageRoute(builder: (_) => const TransactionVoucherScreen()),
+                      );
                     } else if (item.title == 'Daily Cash & Bank Balance') {
                       Navigator.push(
                         context,
                         MaterialPageRoute(builder: (_) => const DailyBalancesScreen()),
+                      );
+                    } else if (item.title == 'Cash Received from Party') {
+                      Navigator.push(
+                        context,
+                        MaterialPageRoute(builder: (_) => const CashReceivedFromPartyScreen()),
                       );
                     } else if (item.title == 'Outstanding Receivable') {
                       Navigator.push(
@@ -163,29 +185,45 @@ class _ReportsTabState extends ConsumerState<ReportsTab> {
                         context,
                         MaterialPageRoute(builder: (_) => const OutstandingPayableScreen()),
                       );
-                    } else if (item.title == 'Top Re-Order Items') {
+                    } else if (item.title == 'Dump Stock') {
                       Navigator.push(
                         context,
-                        MaterialPageRoute(builder: (_) => const TopReorderItemsScreen()),
-                      );
-                    } else if (item.title == 'Cash Received from Party') {
-                      Navigator.push(
-                        context,
-                        MaterialPageRoute(builder: (_) => const CashReceivedFromPartyScreen()),
+                        MaterialPageRoute(builder: (_) => const DumpStockReportScreen()),
                       );
                     } else if (item.title == 'Daily Item Wise Sale') {
                       Navigator.push(
                         context,
                         MaterialPageRoute(builder: (_) => const DailyItemWiseSaleScreen()),
                       );
+                    } else if (item.title == 'Balance Sheet') {
+                      Navigator.push(
+                        context,
+                        MaterialPageRoute(builder: (_) => const BalanceSheetReportScreen()),
+                      );
+                    } else if (item.title == 'Trading A/C') {
+                      Navigator.push(
+                        context,
+                        MaterialPageRoute(builder: (_) => const TradingAccountReportScreen()),
+                      );
+                    } else if (item.title == 'Profit & Loss Account') {
+                      Navigator.push(
+                        context,
+                        MaterialPageRoute(builder: (_) => const ProfitLossReportScreen()),
+                      );
+                    } else if (item.title == 'Trial Balance') {
+                      Navigator.push(
+                        context,
+                        MaterialPageRoute(builder: (_) => const TrialBalanceReportScreen()),
+                      );
                     } else if (item.title == 'Ledger Reports') {
                       Navigator.push(
                         context,
                         MaterialPageRoute(builder: (_) => const LedgerPartySelectionPage()),
                       );
-                    } else {
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        SnackBar(content: Text('${item.title} coming soon')),
+                    } else if (item.title == 'Goods Trading Accounts') {
+                      Navigator.push(
+                        context,
+                        MaterialPageRoute(builder: (_) => const GoodsTradingAccountsReportScreen()),
                       );
                     }
                   },
