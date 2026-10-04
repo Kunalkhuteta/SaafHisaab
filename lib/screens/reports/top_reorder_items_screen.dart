@@ -8,6 +8,8 @@ import '../../constants/app_colors.dart';
 import '../../globalVar.dart';
 import '../../providers/app_providers.dart';
 import '../../utils/indian_date_time.dart';
+import '../../services/reports_html_template.dart';
+import '../../widgets/report_pdf_action_button.dart';
 
 enum ReorderFilter {
   all,
@@ -293,6 +295,17 @@ class _TopReorderItemsScreenState extends ConsumerState<TopReorderItemsScreen> {
         backgroundColor: AppColors.primary,
         foregroundColor: Colors.white,
         actions: [
+          ReportPdfActionButton(
+            reportTitle: 'Top_ReOrder_Items_${_selectedFilter.name}',
+            onGenerateHtml: () async {
+              final shop = await ref.read(shopProvider.future);
+              return ReportsHtmlTemplate.generateTopReorderItems(
+                shop: shop,
+                filterLabel: _selectedFilter.name.toUpperCase(),
+                items: filteredItems,
+              );
+            },
+          ),
           IconButton(
             icon: const Icon(Icons.share_rounded, size: 20),
             tooltip: AppLang.tr(isEn, 'Share Re-Order List', 'ऑर्डर सूची शेयर करें'),

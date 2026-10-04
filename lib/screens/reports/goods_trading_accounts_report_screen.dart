@@ -8,6 +8,8 @@ import '../../constants/app_colors.dart';
 import '../../globalVar.dart';
 import '../../providers/app_providers.dart';
 import '../../utils/indian_date_time.dart';
+import '../../services/reports_html_template.dart';
+import '../../widgets/report_pdf_action_button.dart';
 
 enum GoodsDateFilter {
   thisMonth,
@@ -475,6 +477,18 @@ class _GoodsTradingAccountsReportScreenState
         foregroundColor: Colors.white,
         elevation: 0,
         actions: [
+          ReportPdfActionButton(
+            reportTitle: 'Goods_Trading_Accounts_${DateFormat('yyyy_MM_dd').format(_fromDate)}',
+            onGenerateHtml: () async {
+              final shop = await ref.read(shopProvider.future);
+              final periodStr = '${DateFormat('dd MMM yyyy').format(_fromDate)} to ${DateFormat('dd MMM yyyy').format(_toDate)}';
+              return ReportsHtmlTemplate.generateGoodsTradingAccounts(
+                shop: shop,
+                periodLabel: periodStr,
+                items: items,
+              );
+            },
+          ),
           IconButton(
             icon: const Icon(Icons.share_rounded),
             tooltip: AppLang.tr(isEn, 'Share Report', 'रिपोर्ट साझा करें'),

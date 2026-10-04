@@ -8,6 +8,8 @@ import '../../constants/app_colors.dart';
 import '../../globalVar.dart';
 import '../../providers/app_providers.dart';
 import '../../utils/indian_date_time.dart';
+import '../../services/reports_html_template.dart';
+import '../../widgets/report_pdf_action_button.dart';
 
 class DailyItemSale {
   final int rank;
@@ -256,6 +258,17 @@ class _DailyItemWiseSaleScreenState extends ConsumerState<DailyItemWiseSaleScree
         backgroundColor: AppColors.primary,
         foregroundColor: Colors.white,
         actions: [
+          ReportPdfActionButton(
+            reportTitle: 'Daily_Item_Sale_${DateFormat('yyyy_MM_dd').format(_selectedDate)}',
+            onGenerateHtml: () async {
+              final shop = await ref.read(shopProvider.future);
+              return ReportsHtmlTemplate.generateDailyItemWiseSale(
+                shop: shop,
+                date: _selectedDate,
+                items: _items,
+              );
+            },
+          ),
           IconButton(
             icon: const Icon(Icons.share_rounded, size: 20),
             tooltip: AppLang.tr(isEn, 'Share Report', 'शेयर करें'),

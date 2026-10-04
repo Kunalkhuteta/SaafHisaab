@@ -11,6 +11,8 @@ import '../../models/bill_model.dart';
 import '../../models/shop_access_model.dart';
 import '../../providers/app_providers.dart';
 import '../../services/supabase_service.dart';
+import '../../services/reports_html_template.dart';
+import '../../widgets/report_pdf_action_button.dart';
 import '../../utils/indian_date_time.dart';
 
 enum TrendingTab {
@@ -932,6 +934,50 @@ class _TopTrendingReportScreenState extends ConsumerState<TopTrendingReportScree
         backgroundColor: AppColors.primary,
         foregroundColor: Colors.white,
         actions: [
+          ReportPdfActionButton(
+            reportTitle: 'Top_Trending_${TrendingTab.values[_tabController.index].name}_${_getFilterLabel(isEn)}',
+            onGenerateHtml: () async {
+              final shop = await ref.read(shopProvider.future);
+              final activeIndex = _tabController.index;
+              String tabTitle = 'Salesperson';
+              List<TrendingRecord> records = _getFilteredList(_salespeople);
+              if (activeIndex == 1) {
+                tabTitle = 'Location';
+                records = _getFilteredList(_locations);
+              } else if (activeIndex == 2) {
+                tabTitle = 'Item';
+                records = _getFilteredList(_items);
+              } else if (activeIndex == 3) {
+                tabTitle = 'Customer';
+                records = _getFilteredList(_customers);
+              } else if (activeIndex == 4) {
+                tabTitle = 'Party';
+                records = _getFilteredList(_parties);
+              } else if (activeIndex == 5) {
+                tabTitle = 'Month';
+                records = _monthlyTrends.map((m) => TrendingRecord(
+                  rank: _monthlyTrends.indexOf(m) + 1,
+                  id: '${m.year}-${m.month}',
+                  title: m.label,
+                  subtitle: '${m.salesCount} Sales • Top: ${m.topCustomer}',
+                  amount: m.salesAmount,
+                  quantity: 0,
+                  billCount: m.salesCount,
+                  sharePercent: 0,
+                  highlightText: m.momGrowth >= 0 ? '+${m.momGrowth.toStringAsFixed(1)}%' : '${m.momGrowth.toStringAsFixed(1)}%',
+                  inactiveDays: m.inactiveDays,
+                  metadata: {},
+                )).toList();
+              }
+
+              return ReportsHtmlTemplate.generateTopTrending(
+                shop: shop,
+                tabTitle: tabTitle,
+                periodLabel: _getFilterLabel(isEn),
+                records: records,
+              );
+            },
+          ),
           IconButton(
             icon: const Icon(Icons.share_rounded, size: 20),
             tooltip: AppLang.tr(isEn, 'Share Report', 'रिपोर्ट शेयर करें'),

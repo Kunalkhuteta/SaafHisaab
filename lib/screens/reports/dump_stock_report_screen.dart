@@ -10,6 +10,8 @@ import '../../constants/app_colors.dart';
 import '../../globalVar.dart';
 import '../../providers/app_providers.dart';
 import '../../utils/indian_date_time.dart';
+import '../../services/reports_html_template.dart';
+import '../../widgets/report_pdf_action_button.dart';
 
 class DumpStockItem {
   final String id;
@@ -519,6 +521,16 @@ class _DumpStockReportScreenState extends ConsumerState<DumpStockReportScreen>
         foregroundColor: Colors.white,
         elevation: 0,
         actions: [
+          ReportPdfActionButton(
+            reportTitle: 'Dump_Stock_Report',
+            onGenerateHtml: () async {
+              final shop = await ref.read(shopProvider.future);
+              return ReportsHtmlTemplate.generateDumpStock(
+                shop: shop,
+                items: _dumpList,
+              );
+            },
+          ),
           IconButton(
             icon: const Icon(Icons.share_rounded),
             tooltip: AppLang.tr(isEn, 'Share Report', 'रिपोर्ट साझा करें'),
