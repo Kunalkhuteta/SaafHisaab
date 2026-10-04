@@ -8,6 +8,8 @@ import '../../constants/app_colors.dart';
 import '../../globalVar.dart';
 import '../../providers/app_providers.dart';
 import '../../utils/indian_date_time.dart';
+import '../../services/reports_html_template.dart';
+import '../../widgets/report_pdf_action_button.dart';
 
 enum PLDateFilter {
   thisMonth,
@@ -288,6 +290,23 @@ class _ProfitLossReportScreenState extends ConsumerState<ProfitLossReportScreen>
         foregroundColor: Colors.white,
         elevation: 0,
         actions: [
+          ReportPdfActionButton(
+            reportTitle: 'Profit_Loss_Statement_${DateFormat('yyyy_MM_dd').format(_fromDate)}',
+            onGenerateHtml: () async {
+              final shop = await ref.read(shopProvider.future);
+              final periodStr = '${DateFormat('dd MMM yyyy').format(_fromDate)} to ${DateFormat('dd MMM yyyy').format(_toDate)}';
+              return ReportsHtmlTemplate.generateProfitLoss(
+                shop: shop,
+                periodLabel: periodStr,
+                totalSales: _totalSales,
+                totalPurchases: _totalPurchases,
+                grossProfit: _grossProfit,
+                otherIncome: _otherIncome,
+                totalIndirectExpenses: _totalIndirectExpenses,
+                expenseCategories: _expenseCategories,
+              );
+            },
+          ),
           IconButton(
             icon: const Icon(Icons.share_rounded),
             tooltip: AppLang.tr(isEn, 'Share Statement', 'खाता साझा करें'),

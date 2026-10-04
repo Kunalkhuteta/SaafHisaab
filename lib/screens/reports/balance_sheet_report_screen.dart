@@ -8,6 +8,8 @@ import '../../constants/app_colors.dart';
 import '../../globalVar.dart';
 import '../../providers/app_providers.dart';
 import '../../utils/indian_date_time.dart';
+import '../../services/reports_html_template.dart';
+import '../../widgets/report_pdf_action_button.dart';
 
 class BalanceSheetReportScreen extends ConsumerStatefulWidget {
   const BalanceSheetReportScreen({super.key});
@@ -244,6 +246,23 @@ class _BalanceSheetReportScreenState
         foregroundColor: Colors.white,
         elevation: 0,
         actions: [
+          ReportPdfActionButton(
+            reportTitle: 'Balance_Sheet_${DateFormat('yyyy_MM_dd').format(_asOnDate)}',
+            onGenerateHtml: () async {
+              final shop = await ref.read(shopProvider.future);
+              return ReportsHtmlTemplate.generateBalanceSheet(
+                shop: shop,
+                asOnDate: _asOnDate,
+                cashInHand: _cashInHand,
+                bankBalance: _bankBalance,
+                sundryDebtors: _sundryDebtors,
+                closingStock: _closingStock,
+                sundryCreditors: _sundryCreditors,
+                outstandingExpenses: _outstandingExpenses,
+                proprietorCapital: _proprietorCapital,
+              );
+            },
+          ),
           IconButton(
             icon: const Icon(Icons.share_rounded),
             tooltip: AppLang.tr(isEn, 'Share Statement', 'खाता साझा करें'),

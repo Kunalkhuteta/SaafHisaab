@@ -7,7 +7,9 @@ import '../../globalVar.dart';
 import '../../models/udhar_model.dart';
 import '../../providers/app_providers.dart';
 import '../../services/supabase_service.dart';
+import '../../services/reports_html_template.dart';
 import '../../widgets/credit_entry_sheet.dart';
+import '../../widgets/report_pdf_action_button.dart';
 
 class LedgerParticularMonthPage extends ConsumerStatefulWidget {
   final String accountId;
@@ -167,6 +169,32 @@ class _LedgerParticularMonthPageState extends ConsumerState<LedgerParticularMont
             ),
           ],
         ),
+        actions: [
+          ReportPdfActionButton(
+            reportTitle: 'Ledger_${widget.partyName}_${widget.monthLabel}',
+            onGenerateHtml: () async {
+              final shop = await ref.read(shopProvider.future);
+              final mappedEntries = _entries.map((e) => {
+                'date': e.date,
+                'particulars': e.particular,
+                'ref': '',
+                'debit': e.debit,
+                'credit': e.credit,
+                'balance': e.balanceAfter,
+              }).toList();
+
+              return ReportsHtmlTemplate.generateLedgerParticularMonth(
+                shop: shop,
+                partyName: widget.partyName,
+                isReceivable: widget.isReceivable,
+                monthLabel: widget.monthLabel,
+                openingBalance: _openingBalance,
+                entries: mappedEntries,
+                closingBalance: _closingBalance,
+              );
+            },
+          ),
+        ],
       ),
       body: _loading
           ? const Center(child: CircularProgressIndicator(color: AppColors.primary))

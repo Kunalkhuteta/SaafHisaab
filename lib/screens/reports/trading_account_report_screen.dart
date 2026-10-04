@@ -8,6 +8,8 @@ import '../../constants/app_colors.dart';
 import '../../globalVar.dart';
 import '../../providers/app_providers.dart';
 import '../../utils/indian_date_time.dart';
+import '../../services/reports_html_template.dart';
+import '../../widgets/report_pdf_action_button.dart';
 
 enum TradingDateFilter {
   thisMonth,
@@ -323,6 +325,26 @@ class _TradingAccountReportScreenState
         foregroundColor: Colors.white,
         elevation: 0,
         actions: [
+          ReportPdfActionButton(
+            reportTitle: 'Trading_Account_${DateFormat('yyyy_MM_dd').format(_fromDate)}',
+            onGenerateHtml: () async {
+              final shop = await ref.read(shopProvider.future);
+              final periodStr = '${DateFormat('dd MMM yyyy').format(_fromDate)} to ${DateFormat('dd MMM yyyy').format(_toDate)}';
+              final grossProfit = _sales + _closingStock - (_openingStock + _purchases + _directExpenses);
+              return ReportsHtmlTemplate.generateTradingAccount(
+                shop: shop,
+                periodLabel: periodStr,
+                openingStock: _openingStock,
+                purchases: _purchases,
+                directExpenses: _directExpenses,
+                sales: _sales,
+                closingStock: _closingStock,
+                grossProfit: grossProfit,
+                purchaseCategories: _purchaseCategoryBreakdown,
+                directExpenseCategories: _directExpenseBreakdown,
+              );
+            },
+          ),
           IconButton(
             icon: const Icon(Icons.share_rounded),
             tooltip: AppLang.tr(isEn, 'Share Statement', 'खाता साझा करें'),
