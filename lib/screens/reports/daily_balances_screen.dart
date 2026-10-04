@@ -7,6 +7,8 @@ import '../../models/daily_balance_model.dart';
 import '../../providers/app_providers.dart';
 import '../../services/supabase_service.dart';
 import 'package:saafhisaab/utils/indian_date_time.dart';
+import '../../services/reports_html_template.dart';
+import '../../widgets/report_pdf_action_button.dart';
 
 
 // Provider to manage the selected month and year
@@ -40,6 +42,20 @@ class DailyBalancesScreen extends ConsumerWidget {
         backgroundColor: AppColors.primary,
         foregroundColor: Colors.white,
         elevation: 0,
+        actions: [
+          ReportPdfActionButton(
+            reportTitle: 'Daily_Balances_${selectedMonth.month}_${selectedMonth.year}',
+            onGenerateHtml: () async {
+              final shop = await ref.read(shopProvider.future);
+              final balances = balancesAsync.valueOrNull ?? [];
+              return ReportsHtmlTemplate.generateDailyBalances(
+                shop: shop,
+                month: selectedMonth,
+                balances: balances,
+              );
+            },
+          ),
+        ],
       ),
       body: Column(
         children: [

@@ -8,6 +8,8 @@ import '../../constants/app_colors.dart';
 import '../../globalVar.dart';
 import '../../providers/app_providers.dart';
 import '../../utils/indian_date_time.dart';
+import '../../services/reports_html_template.dart';
+import '../../widgets/report_pdf_action_button.dart';
 
 enum CashDateFilter {
   today,
@@ -389,6 +391,18 @@ class _CashReceivedFromPartyScreenState extends ConsumerState<CashReceivedFromPa
         backgroundColor: AppColors.primary,
         foregroundColor: Colors.white,
         actions: [
+          ReportPdfActionButton(
+            reportTitle: 'Cash_Received_${_getFilterLabel(isEn)}',
+            onGenerateHtml: () async {
+              final shop = await ref.read(shopProvider.future);
+              return ReportsHtmlTemplate.generateCashReceived(
+                shop: shop,
+                periodLabel: _getFilterLabel(isEn),
+                summaries: _partySummaries,
+                transactions: _transactions,
+              );
+            },
+          ),
           IconButton(
             icon: const Icon(Icons.share_rounded, size: 20),
             tooltip: AppLang.tr(isEn, 'Share Report', 'शेयर करें'),
