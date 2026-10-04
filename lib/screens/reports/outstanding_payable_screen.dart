@@ -7,6 +7,8 @@ import '../../models/bill_model.dart';
 import '../../providers/app_providers.dart';
 import '../../services/supabase_service.dart';
 import '../../services/auth_service.dart';
+import '../../services/reports_html_template.dart';
+import '../../widgets/report_pdf_action_button.dart';
 import 'payable_party_detail_screen.dart';
 
 /// Provider that fetches purchase parties with pending amounts > 0.
@@ -67,6 +69,19 @@ class OutstandingPayableScreen extends ConsumerWidget {
         )),
         backgroundColor: AppColors.primary,
         foregroundColor: Colors.white,
+        actions: [
+          ReportPdfActionButton(
+            reportTitle: 'Outstanding_Payables_Report',
+            onGenerateHtml: () async {
+              final shop = await ref.read(shopProvider.future);
+              final items = reportAsync.valueOrNull ?? [];
+              return ReportsHtmlTemplate.generateOutstandingPayables(
+                shop: shop,
+                items: items,
+              );
+            },
+          ),
+        ],
       ),
       body: reportAsync.when(
         loading: () => const Center(

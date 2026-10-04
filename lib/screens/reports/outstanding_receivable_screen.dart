@@ -7,6 +7,8 @@ import '../../models/udhar_model.dart';
 import '../../providers/app_providers.dart';
 import '../../services/auth_service.dart';
 import '../../services/supabase_service.dart';
+import '../../services/reports_html_template.dart';
+import '../../widgets/report_pdf_action_button.dart';
 import 'receivable_party_detail_screen.dart';
 
 final outstandingReceivableProvider =
@@ -34,6 +36,19 @@ class OutstandingReceivableScreen extends ConsumerWidget {
         )),
         backgroundColor: AppColors.primary,
         foregroundColor: Colors.white,
+        actions: [
+          ReportPdfActionButton(
+            reportTitle: 'Outstanding_Receivables_Report',
+            onGenerateHtml: () async {
+              final shop = await ref.read(shopProvider.future);
+              final items = reportAsync.valueOrNull ?? [];
+              return ReportsHtmlTemplate.generateOutstandingReceivables(
+                shop: shop,
+                items: items,
+              );
+            },
+          ),
+        ],
       ),
       body: reportAsync.when(
         loading: () => const Center(

@@ -7,6 +7,8 @@ import '../../globalVar.dart';
 import '../../models/bill_model.dart';
 import '../../providers/app_providers.dart';
 import '../../services/supabase_service.dart';
+import '../../services/reports_html_template.dart';
+import '../../widgets/report_pdf_action_button.dart';
 import 'bill_image_viewer_screen.dart';
 
 /// Detail screen showing all purchase entries for a specific supplier party.
@@ -191,6 +193,37 @@ class _PayablePartyDetailScreenState
         backgroundColor: AppColors.primary,
         foregroundColor: Colors.white,
         elevation: 0,
+        actions: [
+          ReportPdfActionButton(
+            reportTitle: 'Supplier_Statement_${widget.partyName}',
+            onGenerateHtml: () async {
+              final shop = await ref.read(shopProvider.future);
+              final mappedEntries = _entries.map((e) {
+                final isPayment = e.paymentMode == 'payment';
+                final isReturn = e.paymentMode == 'return';
+                return {
+                  'date': e.bill.billDate,
+                  'refNo': e.bill.id.length >= 8 ? e.bill.id.substring(0, 8).toUpperCase() : e.bill.id,
+                  'isPayment': isPayment,
+                  'isReturn': isReturn,
+                  'billAmount': (!isPayment && !isReturn) ? e.bill.amount : 0.0,
+                  'paidAmount': (isPayment || isReturn) ? e.cashPaid : (e.paymentMode == 'cash' ? e.cashPaid : 0.0),
+                };
+              }).toList();
+
+              return ReportsHtmlTemplate.generatePayablePartyStatement(
+                shop: shop,
+                partyName: widget.partyName,
+                partyPhone: widget.partyPhone,
+                partyStation: widget.partyStation,
+                pendingAmount: _pendingAmount,
+                totalPurchased: _totalPurchased,
+                totalPaid: _totalPaid,
+                entries: mappedEntries,
+              );
+            },
+          ),
+        ],
       ),
       body: _loading
           ? const Center(

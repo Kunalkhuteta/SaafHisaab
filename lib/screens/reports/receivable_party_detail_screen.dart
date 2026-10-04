@@ -8,7 +8,9 @@ import '../../models/bill_model.dart';
 import '../../models/udhar_model.dart';
 import '../../providers/app_providers.dart';
 import '../../services/supabase_service.dart';
+import '../../services/reports_html_template.dart';
 import '../../widgets/credit_entry_sheet.dart';
+import '../../widgets/report_pdf_action_button.dart';
 import 'bill_image_viewer_screen.dart';
 
 class ReceivablePartyDetailScreen extends ConsumerStatefulWidget {
@@ -120,6 +122,22 @@ class _ReceivablePartyDetailScreenState
         backgroundColor: AppColors.primary,
         foregroundColor: Colors.white,
         elevation: 0,
+        actions: [
+          ReportPdfActionButton(
+            reportTitle: 'Customer_Statement_${widget.customer.customerName}',
+            onGenerateHtml: () async {
+              final shop = await ref.read(shopProvider.future);
+              return ReportsHtmlTemplate.generateReceivablePartyStatement(
+                shop: shop,
+                customer: widget.customer,
+                entries: _entries,
+                currentDue: _currentDue,
+                totalCredit: _totalCredit,
+                totalReceived: _totalReceived,
+              );
+            },
+          ),
+        ],
       ),
       body: _loading
           ? const Center(
